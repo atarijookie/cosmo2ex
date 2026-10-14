@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 extern "C" volatile sig_atomic_t sigintReceived;
+extern "C" volatile sig_atomic_t fatalErrorOccurred;     // set together with sigintReceived when app terminates because of an error
 
 #ifndef MIN
     #define MIN(x, y)   (((x) < (y)) ? (x) : (y))
@@ -20,7 +21,7 @@ extern "C" volatile sig_atomic_t sigintReceived;
 class Utils {
 public:
     static uint32_t getCurrentMs(void);
-    static uint32_t getEndTime(uint32_t offsetFromNow);
+    static uint32_t elapsedMs(uint32_t startMs);        // ms since startMs (value of getCurrentMs()), wrap safe
     static void  sleepMs(uint32_t ms);
 
     static void attributesHostToAtari(bool isReadOnly, bool isDir, uint8_t &attrAtari);
@@ -108,6 +109,26 @@ public:
 private:
     static bool copyFileByHandles(FILE *from, FILE *to);
     static void getDefaultValueFromVarName(std::string& varName, std::string& defValue, const std::string& delim);
+};
+
+// Timeout measured from creation (or last restart()), safe across wraparound of the 32-bit ms counter
+// (getCurrentMs() wraps every ~49.7 days), because it only ever uses elapsed time = now - start,
+// which unsigned arithmetic computes correctly even after the wrap.
+class Timeout
+{
+public:
+    Timeout(uint32_t timeoutMs) : startMs(Utils::getCurrentMs()), durationMs(timeoutMs) { }
+
+    void restart(void)                      { startMs = Utils::getCurrentMs(); }
+    void restart(uint32_t timeoutMs)        { durationMs = timeoutMs; restart(); }
+
+    uint32_t elapsedMs(void) const          { return Utils::elapsedMs(startMs); }
+    bool     expired(void)   const          { return elapsedMs() >= durationMs; }
+    uint32_t leftMs(void)    const          { uint32_t e = elapsedMs(); return (e < durationMs) ? (durationMs - e) : 0; }
+
+private:
+    uint32_t startMs;
+    uint32_t durationMs;
 };
 
 void handlePthreadCreate(const char* threadName, pthread_t* pThreadInfo, void* threadCode);

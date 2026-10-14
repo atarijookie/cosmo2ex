@@ -13,9 +13,11 @@
 BufferedReader::BufferedReader()
 {
     fd = FD_EMPTY;
+    whichLog = LOGFILE_HDD;
     gotBytes = 0;
     dataSizeBytes = 0;
-    whichSyncTag = SYNC_TAG_HDD;
+    skippedBytes = 0;
+    setSyncTag(SYNC_TAG_HDD);
 }
 
 BufferedReader::~BufferedReader()
@@ -26,6 +28,18 @@ BufferedReader::~BufferedReader()
 void BufferedReader::setSyncTag(uint32_t whichSyncTagCode)
 {
     whichSyncTag = whichSyncTagCode;
+
+    // header with this sync tag comes from this chip
+    switch(whichSyncTag) {
+        case SYNC_TAG_HDD:  chipAtnId = NET_ATN_HANS_ID;    break;
+        case SYNC_TAG_FDD:  chipAtnId = NET_ATN_FRANZ_ID;   break;
+        default:            chipAtnId = NET_ATN_NONE_ID;    break;  // unknown sync tag - no header will be reported as valid
+    }
+}
+
+void BufferedReader::setLogFile(int whichLogFile)
+{
+    whichLog = whichLogFile;
 }
 
 void BufferedReader::setFd(int inFd)
@@ -35,12 +49,12 @@ void BufferedReader::setFd(int inFd)
 
 int BufferedReader::waitForAtn(uint8_t atnCode, uint32_t timeoutMs)
 {
-    if(fd <= 0) {                   //  no fd, no ATN
+    if(fd < 0) {                    //  no fd, no ATN
         return NET_ATN_NONE_ID;
     }
 
     bool waitedOnce = false;                                // when timeoutMs says don't wait for data, make it wait once for a short time to be able to detect client socket disconnect
-    uint32_t endTime = Utils::getEndTime(timeoutMs);        // when this time is reached and no data is available, quit
+    Timeout timeout(timeoutMs);                             // when this timeout expires and no data is available, quit
 
     while(sigintReceived == 0) {
         // got data? process
@@ -48,12 +62,17 @@ int BufferedReader::waitForAtn(uint8_t atnCode, uint32_t timeoutMs)
             int atnId = readHeaderFromBuffer(atnCode);
 
             if(atnId != NET_ATN_NONE_ID) {                  // if valid ATN ID found and header seems to be OK, return that ATN ID
-                //logHdd(LOG_DEBUG, "waitForAtn() - found valid atnId: %d", atnId);
+                if(skippedBytes > 0) {                      // had to skip some garbage before this header? log it once, not per each byte
+                    Debug::out(whichLog, LOG_DEBUG, "waitForAtn() - resynced, skipped %d bytes before valid header", skippedBytes);
+                    skippedBytes = 0;
+                }
+
                 return atnId;
             }
 
             // no known tag string or header invalid? remove 1 byte from begining, start loop over again
             popFirst();
+            skippedBytes++;
             continue;
         }
 
@@ -73,28 +92,26 @@ int BufferedReader::waitForAtn(uint8_t atnCode, uint32_t timeoutMs)
         }
 
         if(bytesAvailable <= 0) {                       // if no bytes available? wait at least once
-            uint32_t now = Utils::getCurrentMs();
-            uint32_t timeLeftUs = (endTime > now) ? ((endTime - now) * 1000) : 0;   // if still not timeout, calculate how much time is left in us; otherwise no time left
+            uint64_t timeLeftUs = (uint64_t) timeout.leftMs() * 1000;  // how much time is left in us; 0 if timeout expired
 
             if(timeoutMs == 0 && !waitedOnce) {         // if this is the wait for 1st ATN (with 0 wait time), but didn't wait at least once, wait at least once for a short time
                 waitedOnce = true;                      // now were about to wait once
                 timeLeftUs = 1000;                      // just a short 1 ms wait
             }
 
-            if(timeLeftUs <= 0) {                       // no time left? quit loop, return NONE ATN
-                logHdd(LOG_DEBUG, "waitForAtn() - timeLeftUs <= 0");
+            if(timeLeftUs <= 0) {                       // no time left? quit loop, return NONE ATN (normal outcome, don't log)
                 break;
             }
 
-            struct timeval timeout;
-            timeout.tv_sec = 0;
-            timeout.tv_usec = timeLeftUs;               // set timeout in us
+            struct timeval tv;
+            tv.tv_sec = timeLeftUs / 1000000;           // split timeout into s and us, as tv_usec must be < 1000000
+            tv.tv_usec = timeLeftUs % 1000000;
 
             fd_set readfds;
             FD_ZERO(&readfds);
             FD_SET(fd, &readfds);
 
-            res = select(fd + 1, &readfds, NULL, NULL, &timeout);     // wait for data or timeout here
+            res = select(fd + 1, &readfds, NULL, NULL, &tv);     // wait for data or timeout here
 
             if(res < 0 || !FD_ISSET(fd, &readfds)) {    // if select() failed or cannot read from fd, skip rest
                 continue;
@@ -107,7 +124,7 @@ int BufferedReader::waitForAtn(uint8_t atnCode, uint32_t timeoutMs)
         ssize_t recvCnt = recv(fd, &buffer[gotBytes], needCnt, 0);
 
         if(recvCnt == 0) {                              // if recv() returned 0, then client disconnected
-            logHdd(LOG_DEBUG, "waitForAtn() - recvCount=0, returning NET_ATN_DISCONNECTED");
+            Debug::out(whichLog, LOG_DEBUG, "waitForAtn() - recvCount=0, returning NET_ATN_DISCONNECTED");
             return NET_ATN_DISCONNECTED;
         }
 
@@ -151,8 +168,7 @@ int BufferedReader::readHeaderFromBuffer(uint8_t atnCodeWant)
     }
 
     uint32_t syncDword = Utils::getDword(&buffer[0]);
-    if(syncDword != whichSyncTag) {                       // sync bytes wrong?
-        logHdd(LOG_DEBUG, "readHeaderFromBuffer() - bad syncDword: %08x", syncDword);
+    if(syncDword != whichSyncTag) {                       // sync bytes wrong? happens for each byte while resyncing, caller logs summary
         return NET_ATN_NONE_ID;
     }
 
@@ -160,7 +176,7 @@ int BufferedReader::readHeaderFromBuffer(uint8_t atnCodeWant)
         uint8_t atnCodeGot = getAtnCode();
 
         if(atnCodeGot != atnCodeWant) {                         // the ATN code (command) is wrong, fail
-            logHdd(LOG_DEBUG, "readHeaderFromBuffer() - wanted atnCodeWant: %d, but got atnCodeGod: %d", atnCodeWant, atnCodeGot);
+            Debug::out(whichLog, LOG_DEBUG, "readHeaderFromBuffer() - wanted atnCodeWant: %d, but got atnCodeGod: %d", atnCodeWant, atnCodeGot);
             return NET_ATN_NONE_ID;
         }
     }
@@ -171,7 +187,7 @@ int BufferedReader::readHeaderFromBuffer(uint8_t atnCodeWant)
     //logHdd(LOG_DEBUG, "readHeaderFromBuffer() - got AtnCode=%d, txLen=%d, rxLen=%d", getAtnCode(), txLen, rxLen);
 
     // value other than NET_ATN_NONE_ID means success
-    return NET_ATN_HANS_ID;
+    return chipAtnId;
 }
 
 // from the current buffer gets and returns the ATN code found in header
@@ -202,4 +218,16 @@ void BufferedReader::clear(void)
 {
     gotBytes = 0;               // don't have any bytes anymore
     memset(buffer, 0, HEADER_BUFFER_SIZE);
+}
+
+// clear buffer and remaining data size, e.g. when client disconnects
+void BufferedReader::reset(void)
+{
+    clear();
+    dataSizeBytes = 0;          // no data left to read
+
+    if(skippedBytes > 0) {      // connection closing while still out of sync? log what we've dropped
+        Debug::out(whichLog, LOG_DEBUG, "BufferedReader::reset() - %d bytes skipped without finding valid header", skippedBytes);
+        skippedBytes = 0;
+    }
 }

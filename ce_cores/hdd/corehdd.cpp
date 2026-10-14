@@ -55,7 +55,10 @@ void CoreHdd::run(void)
 
     // create network chip interface
     ChipInterface* ciHdd = new ChipInterface(LOGFILE_HDD, NET_ATN_HANS_ID, SYNC_TAG_HDD, SERVER_TCP_PORT_HDD);
-    ciHdd->ciOpen();
+    if(!ciHdd->ciOpen()) {                // can't listen on our tcp port? we can't serve any data, so terminate the app
+        fatalErrorOccurred = 1;
+        sigintReceived = 1;
+    }
 
     int sharedMemFd;
     sem_t* sharedMemSemaphore;

@@ -56,13 +56,9 @@ uint32_t Utils::getCurrentMs(void)
     return val;
 }
 
-uint32_t Utils::getEndTime(uint32_t offsetFromNow)
+uint32_t Utils::elapsedMs(uint32_t startMs)
 {
-    uint32_t val;
-
-    val = getCurrentMs() + offsetFromNow;
-
-    return val;
+    return getCurrentMs() - startMs;    // unsigned subtraction - correct even when ms counter wraps around
 }
 
 void Utils::attributesHostToAtari(bool isReadOnly, bool isDir, uint8_t &attrAtari)

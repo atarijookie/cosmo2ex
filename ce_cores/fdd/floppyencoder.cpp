@@ -283,7 +283,7 @@ void *floppyEncodeThreadCode(void *ptr)
     // the following code should encode all the slots, but one track at the time, so when there are multiple not encoded images,
     // the one which is selected for streaming, will be encoded first, and then the rest. This should also act fine if you switch
     // current slot in the middle of encoding image (to prioritize the selected one)
-    uint32_t after50ms = Utils::getEndTime(50);        // this will help to add pauses at least every 50 ms to allow other threads to do stuff
+    Timeout pauseTimer(50);                            // this will help to add pauses at least every 50 ms to allow other threads to do stuff
 
     while(true) {
         floppyEncoder_handleSaveFiles();            // save all those images which need to be saved
@@ -301,7 +301,7 @@ void *floppyEncodeThreadCode(void *ptr)
             pthread_cond_timedwait(&floppyEncoderShouldWork, &floppyEncoderMutex, &max_wait);   // unlock, sleep; wake up, lock
             pthread_mutex_unlock(&floppyEncoderMutex);  // unlock the mutex
 
-            after50ms = Utils::getEndTime(50);      // after sleep - work for some time without pause
+            pauseTimer.restart();                   // after sleep - work for some time without pause
         }
 
         if(shouldStop) {                            // if we should already stop
@@ -309,9 +309,9 @@ void *floppyEncodeThreadCode(void *ptr)
             return 0;
         }
 
-        if(Utils::getCurrentMs() > after50ms) {     // if at least 50 ms passed since start or previous pause, add a small pause so other threads could do stuff
+        if(pauseTimer.expired()) {                  // if at least 50 ms passed since start or previous pause, add a small pause so other threads could do stuff
             Utils::sleepMs(5);
-            after50ms = Utils::getEndTime(50);
+            pauseTimer.restart();
         }
 
         slot = findSlotToEncode();  // find some slot which needs encoding

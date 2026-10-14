@@ -21,11 +21,17 @@ public:
     // set which sync tag this reader will look for - SYNC_TAG_HDD / SYNC_TAG_FDD
     void setSyncTag(uint32_t whichSyncTagCode);
 
+    // set to which log file this reader should log - LOGFILE_HDD / LOGFILE_FDD / ...
+    void setLogFile(int whichLogFile);
+
     // set file descriptor for reading
     void setFd(int inFd);
 
     // clear buffer after reading valid header
     void clear(void);
+
+    // clear buffer and remaining data size, e.g. when client disconnects
+    void reset(void);
 
     // reads (and waits for) data from socket and if valid header found, returns one of the NET_ATN_*_ID codes or NET_ATN_NONE_ID if header not received
     int waitForAtn(uint8_t atnCode, uint32_t timeoutMs);
@@ -44,12 +50,15 @@ public:
 
 private:
     int fd;
+    int whichLog;
     uint32_t whichSyncTag;
+    int      chipAtnId;         // NET_ATN_*_ID of the chip which uses whichSyncTag
 
     uint8_t buffer[HEADER_BUFFER_SIZE];
     int     gotBytes;
 
     uint32_t dataSizeBytes;
+    uint32_t skippedBytes;      // how many bytes were dropped while looking for valid header (for logging only)
 
     void popFirst(void);
     int readHeaderFromBuffer(uint8_t atnCodeWant);

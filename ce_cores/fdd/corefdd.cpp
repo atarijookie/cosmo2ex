@@ -70,7 +70,10 @@ void CoreFdd::run(void)
 
     // create network chip interface
     ciFdd = new ChipInterface(LOGFILE_FDD, NET_ATN_FRANZ_ID, SYNC_TAG_FDD, SERVER_TCP_PORT_FDD);
-    ciFdd->ciOpen();
+    if(!ciFdd->ciOpen()) {                // can't listen on our tcp port? we can't serve any data, so terminate the app
+        fatalErrorOccurred = 1;
+        sigintReceived = 1;
+    }
 
     imageSilo = new ImageSilo(ciFdd);
 
@@ -93,13 +96,13 @@ void CoreFdd::run(void)
             if(slotSendToDevice[i]) {                   // if slot #i should be sent to device
                 slotSendToDevice[i] = false;
 
-                ClientInfo* client = ciFdd->clientsGetOne(i);
+                ClientInfo* client = ciFdd->clientsGetOneByFloppySlot(i);    // slot # doesn't have to match client index, find client using this slot
 
-                if(client->fdClient == FD_EMPTY) {       // client not connected? skip
+                if(!client) {                           // no connected client uses this slot? skip
                     continue;
                 }
 
-                logFdd(LOG_DEBUG, "CoreFdd::run - sending whole image to client %d", i);
+                logFdd(LOG_DEBUG, "CoreFdd::run - sending whole image of slot %d to client %d", i, client->index);
                 handleSendImageToClient(client);
             }
         }
@@ -135,7 +138,7 @@ void CoreFdd::run(void)
             int idx = ciFdd->acceptSocketIfNeededAndPossible();
 
             if(idx != FD_EMPTY) {
-                loadLastImageIntoSlot(ciFdd->clientsGetOne(idx));
+                loadLastImageIntoSlot(ciFdd->clientGetByIndex(idx));
             }
         }
 
@@ -323,6 +326,11 @@ void CoreFdd::handleSectorWritten(ClientInfo* ci)
 {
     int side, track, sector, byteCount;
     uint8_t *writtenSector = ciFdd->fdd_sectorWritten(ci, side, track, sector, byteCount); // get side + track + sector number, byte count, and pointer to buffer where the written data is
+
+    if(byteCount <= 0) {        // no sector data received (maybe not even side / track / sector)? don't store anything
+        logFdd(LOG_WARNING, "handleSectorWritten -- no sector data received, ignoring");
+        return;
+    }
 
     // Debug::outBfr(LOGFILE_FDD, writtenSector, byteCount);
 

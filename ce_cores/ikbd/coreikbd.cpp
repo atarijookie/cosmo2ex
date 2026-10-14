@@ -154,7 +154,10 @@ void *ikbdThreadCode(void *ptr)
 
     // create network chip interface
     ChipInterface* ciIkbd = new ChipInterface(LOGFILE_IKBD, 0, 0, SERVER_TCP_PORT_IKBD);
-    ciIkbd->ciOpen();
+    if(!ciIkbd->ciOpen()) {                // can't listen on our tcp port? we can't serve any data, so terminate the app
+        fatalErrorOccurred = 1;
+        sigintReceived = 1;
+    }
 
     Ikbd ikbd(ciIkbd);
 

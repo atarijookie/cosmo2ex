@@ -23,6 +23,7 @@
 #include "ikbd/ikbd.h"
 
 volatile sig_atomic_t sigintReceived = 0;
+volatile sig_atomic_t fatalErrorOccurred = 0;
 void sigint_handler(int sig);
 
 void parseCmdLineArguments(int argc, char *argv[]);
@@ -120,6 +121,10 @@ int main(int argc, char *argv[])
     pthread_kill_join("floppy core", fddThreadInfo);
     pthread_kill_join("command socket", cmdSockThreadInfo);
     pthread_kill_join("discovery service", discoveryThreadInfo);
+
+    if(fatalErrorOccurred) {     // terminated because of an error? report failure, so a supervisor (e.g. systemd) can see it
+        ret = 1;
+    }
 
     return ret;
 }

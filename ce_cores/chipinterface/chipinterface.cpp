@@ -32,6 +32,7 @@ ChipInterface::ChipInterface(int whichLogFile, int whichAtnCode, uint32_t whichS
 
     for(int i=0; i<MAX_CLIENTS; i++) {
         clients[i].bufReader.setSyncTag(whichSyncTagCode);
+        clients[i].bufReader.setLogFile(whichLogFile);
     }
 
     fdListen = FD_EMPTY;
@@ -51,27 +52,25 @@ ChipInterface::~ChipInterface()
     delete []bufIn;
 }
 
-void ChipInterface::createListeningSocket(void)
+bool ChipInterface::createListeningSocket(void)
 {
     if(fdListen >= 0) { // if the listening socket seems to be already created, just quit
-        return;
+        return true;
     }
 
     // open socket
-    if ((fdListen = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        Debug::out(whichLog, LOG_ERROR, "ChipInterface::createListeningSocket - failed to open socket");
-        return;
+    if ((fdListen = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0)) < 0) {     // CLOEXEC - don't let processes started by system() inherit this socket
+        Debug::out(whichLog, LOG_ERROR, "ChipInterface::createListeningSocket - failed to open socket: %s", strerror(errno));
+        fdListen = FD_EMPTY;
+        return false;
     }
 
-    // Forcefully attach socket to the port
+    // SO_REUSEADDR allows bind() while old connections from previous (finished / crashed) instance are still in TIME_WAIT.
+    // Don't use SO_REUSEPORT - that would let a 2nd running instance bind the same port and silently steal half of the connections.
     int opt = 1;
 
     if (setsockopt(fdListen, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
         Debug::out(whichLog, LOG_ERROR, "ChipInterface::createListeningSocket - setsockopt() failed for SO_REUSEADDR");
-    }
-
-    if (setsockopt(fdListen, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) {
-        Debug::out(whichLog, LOG_ERROR, "ChipInterface::createListeningSocket - setsockopt() failed for SO_REUSEPORT");
     }
 
     // change the socket into non-blocking
@@ -83,17 +82,24 @@ void ChipInterface::createListeningSocket(void)
 
     // bind to address
     if (bind(fdListen, (struct sockaddr *) &addressListen, sizeof(addressListen)) < 0) {
-        Debug::out(whichLog, LOG_ERROR, "ChipInterface::createListeningSocket - bind() failed");
-        return;
+        if(errno == EADDRINUSE) {       // with SO_REUSEADDR this means some other running app is listening on this port
+            Debug::out(whichLog, LOG_ERROR, "ChipInterface::createListeningSocket - bind() failed, tcp port %d is used by another running app", portListen);
+        } else {
+            Debug::out(whichLog, LOG_ERROR, "ChipInterface::createListeningSocket - bind() failed for tcp port %d: %s", portListen, strerror(errno));
+        }
+        Utils::closeFdIfOpen(fdListen);     // close half-initialized socket, so next call will try again
+        return false;
     }
 
     // mark the socket as a passive socket
     if (listen(fdListen, 5) < 0) {
-        Debug::out(whichLog, LOG_ERROR, "ChipInterface::createListeningSocket - listen() failed");
-        return;
+        Debug::out(whichLog, LOG_ERROR, "ChipInterface::createListeningSocket - listen() failed for tcp port %d: %s", portListen, strerror(errno));
+        Utils::closeFdIfOpen(fdListen);     // close half-initialized socket, so next call will try again
+        return false;
     }
 
     Debug::out(whichLog, LOG_INFO, "ChipInterface::createListeningSocket - listening on tcp port: %d", portListen);
+    return true;
 }
 
 int ChipInterface::acceptSocketIfNeededAndPossible(void)
@@ -111,7 +117,7 @@ int ChipInterface::acceptSocketIfNeededAndPossible(void)
     struct sockaddr_in addressClient;
     socklen_t addrSize = sizeof(addressClient);
 
-    int newSock = accept(fdListen, (struct sockaddr *) &addressClient, &addrSize);
+    int newSock = accept4(fdListen, (struct sockaddr *) &addressClient, &addrSize, SOCK_CLOEXEC);  // CLOEXEC - don't let processes started by system() inherit this socket
 
     if(newSock < 0) {       // nothing to accept, would block? quit
         return FD_EMPTY;
@@ -146,8 +152,7 @@ int ChipInterface::acceptSocketIfNeededAndPossible(void)
 
 bool ChipInterface::ciOpen(void)
 {
-    createListeningSocket();
-    return true;
+    return createListeningSocket();
 }
 
 void ChipInterface::ciClose(void)
@@ -298,9 +303,13 @@ bool ChipInterface::hdd_sendData_start(int& fdClient, uint32_t totalDataCount, u
 
     // transmit this command
     uint8_t cmd = withStatus ? CMD_DATA_READ_WITH_STATUS : CMD_DATA_READ_WITHOUT_STATUS;  // store command - with or without status
-    sendHeaderAndDataToChip(fdClient, cmd, bufOut, 4);
+    bool good = sendHeaderAndDataToChip(fdClient, cmd, bufOut, 4);
 
-    return true;
+    if(!good) {
+        Debug::out(whichLog, LOG_ERROR, "ChipInterface::hdd_sendData_start -- failed to send command to Hans");
+    }
+
+    return good;
 }
 
 bool ChipInterface::hdd_sendData_transferBlock(int& fdClient, uint8_t *pData, uint32_t dataCount, bool withHeader)
@@ -326,9 +335,13 @@ bool ChipInterface::hdd_recvData_start(int& fdClient, uint8_t *recvBuffer, uint3
     bufOut[3] = 0xff;                                           // store INVALID status, because the real status will be sent on CMD_SEND_STATUS
 
     // transmit this command
-    sendHeaderAndDataToChip(fdClient, CMD_DATA_WRITE, bufOut, 4);
+    bool good = sendHeaderAndDataToChip(fdClient, CMD_DATA_WRITE, bufOut, 4);
 
-    return true;
+    if(!good) {
+        Debug::out(whichLog, LOG_ERROR, "ChipInterface::hdd_recvData_start() -- failed to send command to Hans");
+    }
+
+    return good;
 }
 
 bool ChipInterface::hdd_recvData_transferBlock(int& fdClient, uint8_t *pData, uint32_t dataCount, bool withHeader)
@@ -336,7 +349,7 @@ bool ChipInterface::hdd_recvData_transferBlock(int& fdClient, uint8_t *pData, ui
     ClientInfo* ci = clientGetByFd(fdClient);
     if(!ci) {
         Debug::out(whichLog, LOG_WARNING, "hdd_recvData_transferBlock() - failed to get client for fdClient: %d", fdClient);
-        return 0;
+        return false;
     }
 
     if(withHeader)
@@ -348,8 +361,6 @@ bool ChipInterface::hdd_recvData_transferBlock(int& fdClient, uint8_t *pData, ui
             return false;
         }
     }
-
-    memset(bufOut, 0, TX_RX_BUFF_SIZE);
 
     while(dataCount > 0) {
         // request maximum 512 bytes from host
@@ -372,9 +383,13 @@ bool ChipInterface::hdd_sendStatusToHans(int& fdClient, uint8_t statusByte)
     Debug::out(whichLog, LOG_DEBUG, "hdd_sendStatusToHans - statusByte: %02x", statusByte);
 
     bufOut[0] = statusByte;                          // set the command and the statusByte
-    sendHeaderAndDataToChip(fdClient, CMD_SEND_STATUS, bufOut, 1);
+    bool good = sendHeaderAndDataToChip(fdClient, CMD_SEND_STATUS, bufOut, 1);
 
-    return true;
+    if(!good) {
+        Debug::out(whichLog, LOG_ERROR, "hdd_sendStatusToHans - failed to send status to Hans");
+    }
+
+    return good;
 }
 
 void ChipInterface::fdd_sendTrackToChip(int& fdClient, int byteCount, uint8_t *encodedTrack)
@@ -410,9 +425,8 @@ uint8_t* ChipInterface::fdd_sectorWritten(ClientInfo* ci, int &side, int &track,
     track   = bufIn[0] & 0x7f;
     side    = (bufIn[0] & 0x80) ? 1 : 0;
 
-    if(byteCount > 2) {         // if has at least 2 bytes, remove 2 bytes from count
-        byteCount -= 2;
-    }
+    // remove the 2 bytes of side + track and sector from count, nothing left if not even those were received
+    byteCount = (byteCount > 2) ? (byteCount - 2) : 0;
 
     return (bufIn + 2);         // return pointer to received written sector (beyond sector / track bytes)
 }
@@ -480,6 +494,41 @@ void ChipInterface::storeHeaderToBuffer(uint16_t cmdCode, uint32_t futureDatalen
     Utils::storeDword(buffer + 6, futureDatalen); // 6..9: futureDatalen (4 bytes)
 }
 
+/*
+    Send all the data to client, looping over partial writes.
+    On any failure (disconnect, send timeout) the stream would be out of sync
+    (receiver expects the rest of the data), so the client gets closed.
+*/
+bool ChipInterface::sendAll(int& fdClient, const uint8_t* data, uint32_t len)
+{
+    uint32_t sent = 0;
+
+    while(sent < len) {
+        if(fdClient < 0) {                  // no client socket? quit
+            return false;
+        }
+
+        ssize_t res = send(fdClient, data + sent, len - sent, MSG_NOSIGNAL);
+
+        if(res > 0) {                       // some (or all) bytes sent? continue with the rest
+            sent += res;
+            continue;
+        }
+
+        if(res < 0 && errno == EINTR) {     // interrupted by signal before sending anything? try again
+            continue;
+        }
+
+        // EPIPE / ECONNRESET = client gone, EAGAIN / EWOULDBLOCK = SO_SNDTIMEO expired
+        Debug::out(whichLog, LOG_WARNING, "sendAll() - fdClient %d: sent %d of %d bytes, error: %s",
+                   fdClient, sent, len, (res < 0) ? strerror(errno) : "send() returned 0");
+        closeClientByFd(fdClient);
+        return false;
+    }
+
+    return true;
+}
+
 bool ChipInterface::sendHeaderToChip(int& fdClient, uint16_t cmdCode, uint32_t futureDatalen)        // send header to chip
 {
     if(fdClient < 0) {                      // no client socket? quit
@@ -488,29 +537,12 @@ bool ChipInterface::sendHeaderToChip(int& fdClient, uint16_t cmdCode, uint32_t f
 
     uint8_t head[10];
     storeHeaderToBuffer(cmdCode, futureDatalen, head);
-
-    int res = send(fdClient, head, 10, MSG_NOSIGNAL);        // send header
-
-    if(res < 0 && errno == EPIPE) {     // client closed connection?
-        closeClientByFd(fdClient);
-    }
-
-    return (res == 10);
+    return sendAll(fdClient, head, 10);     // send header
 }
 
 bool ChipInterface::sendDataToChip(int& fdClient, uint8_t* data, uint32_t len)        // send data to chip
 {
-    if(fdClient < 0) {                      // no client socket? quit
-        return false;
-    }
-
-    int res = send(fdClient, data, len, MSG_NOSIGNAL);   // send data
-
-    if(res < 0 && errno == EPIPE) {     // client closed connection?
-        closeClientByFd(fdClient);
-    }
-
-    return (((uint32_t)res) == len);
+    return sendAll(fdClient, data, len);    // send data
 }
 
 bool ChipInterface::sendHeaderAndDataToChip(int& fdClient, uint16_t cmdCode, uint8_t* data, uint32_t len)        // send header and data to chip
@@ -541,13 +573,7 @@ bool ChipInterface::sendHeaderAndDataToChip(int& fdClient, uint16_t cmdCode, uin
         storeHeaderToBuffer(cmdCode, len, bfr);     // store header at start
         memcpy(bfr + 10, data, len);                // copy data after the header
 
-        int res = send(fdClient, bfr, len + 10, MSG_NOSIGNAL);   // send header and data
-
-        if(res < 0 && errno == EPIPE) {     // client closed connection?
-            closeClientByFd(fdClient);
-        }
-
-        good = (res == ((int) (len + 10)));
+        good = sendAll(fdClient, bfr, len + 10);    // send header and data
     }
 
     return good;
@@ -621,6 +647,7 @@ void ChipInterface::clientsClearOne(ClientInfo* info)
     info->floppySlotIndex = FD_EMPTY;
     info->lastMs = 0;
     info->features = 0;
+    info->bufReader.reset();    // drop any partial header / remaining data size from previous connection
 }
 
 void ChipInterface::clientsClearAll(void)
@@ -656,8 +683,11 @@ int ChipInterface::clientsGetFloppySlotIndexForIp(uint32_t ipAddr)
     // check if this ip is already using some slot and build usedSlots bits
     for(int i=0; i<MAX_CLIENTS; i++) {
         if(clients[i].ipAddr == ipAddr) {   // if this slot is already using this ipAddress, return the floppy slot
-            Debug::out(whichLog, LOG_INFO, "clientsGetFloppySlotIndexForIp - found IP in table, will reuse floppySlotIndex: %d", clients[i].floppySlotIndex);
-            return clients[i].floppySlotIndex;
+            // same device reconnected before its old connection timed out - close the old one, so only 1 client uses this floppy slot
+            int floppySlotIndex = clients[i].floppySlotIndex;
+            Debug::out(whichLog, LOG_INFO, "clientsGetFloppySlotIndexForIp - found IP in table, closing old client #%d, will reuse floppySlotIndex: %d", i, floppySlotIndex);
+            clientsCloseOne(&clients[i]);
+            return floppySlotIndex;
         }
 
         if(clients[i].floppySlotIndex != FD_EMPTY) {        // this client has a floppy slot, add its bit to usedSlots
@@ -733,18 +763,17 @@ ClientInfo* ChipInterface::clientGetByFd(int fdClient)
     return NULL;    // not found, return null
 }
 
-ClientInfo* ChipInterface::clientsGetOne(int clientIndex)
+ClientInfo* ChipInterface::clientsGetOneByFloppySlot(int floppySlotIndex)     // get by floppy slot
 {
-    if(clientIndex < 0 || clientIndex >= MAX_CLIENTS) {
+    if(floppySlotIndex < 0) {           // invalid slot (e.g. FD_EMPTY)? would match empty clients, so don't search
         return NULL;
     }
 
-    return &clients[clientIndex];
-}
-
-ClientInfo* ChipInterface::clientsGetOneByFloppySlot(int floppySlotIndex)     // get by floppy slot
-{
     for(int i=0; i<MAX_CLIENTS; i++) {
+        if(clients[i].fdClient == FD_EMPTY) {                   // no client at this index? skip
+            continue;
+        }
+
         if(clients[i].floppySlotIndex == floppySlotIndex) {     // found matching floppy slot index? return pointer
             return &clients[i];
         }
@@ -755,7 +784,16 @@ ClientInfo* ChipInterface::clientsGetOneByFloppySlot(int floppySlotIndex)     //
 
 ClientInfo* ChipInterface::clientsGetOneByMac(uint8_t* mac)     // get by mac
 {
+    static const uint8_t zeroMac[6] = {0};
+    if(memcmp(mac, zeroMac, 6) == 0) {  // all-zero mac means unknown mac, would match empty clients or clients without mac yet
+        return NULL;
+    }
+
     for(int i=0; i<MAX_CLIENTS; i++) {
+        if(clients[i].fdClient == FD_EMPTY) {           // no client at this index? skip
+            continue;
+        }
+
         if(memcmp(clients[i].mac, mac, 6) == 0) {       // found matching mac? return pointer
             return &clients[i];
         }
@@ -785,17 +823,13 @@ void ChipInterface::ikbdUartWriteToAll(uint8_t* bfr, int len)
             continue;
         }
 
-        int res = send(clients[i].fdClient, bfr, len, MSG_NOSIGNAL);    // send it
-
-        if(res < 0 && errno == EPIPE) {     // client closed connection?
-            closeClientByFd(clients[i].fdClient);
-        }
+        sendAll(clients[i].fdClient, bfr, len);     // send it, client gets closed on failure
     }
 }
 
 void ChipInterface::closeClientByFd(int& fdClient)
 {
-    Debug::out(whichLog, LOG_INFO, "client fdClient %d disconnected - EPIPE", fdClient);
+    Debug::out(whichLog, LOG_INFO, "client fdClient %d disconnected", fdClient);
 
     ClientInfo* ci = clientGetByFd(fdClient);
     if(ci) {

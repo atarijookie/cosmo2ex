@@ -241,10 +241,10 @@ uint8_t *ImageSilo::getEncodedTrack(int floppySlotIndex, int track, int side, in
         floppyEncoder_addReencodeTrackRequest(floppySlotIndex, track, side);    // ask for reencoding
 
         // wait short while to see if the image gets encoded
-        uint32_t endTime = Utils::getEndTime(500);
+        Timeout timeout(500);
         bool isReady = false;
 
-        while(Utils::getCurrentMs() < endTime) {    // still should wait?
+        while(!timeout.expired()) {                 // still should wait?
             isReady = slots[floppySlotIndex].encImage.encodedTrackIsReady(track, side); // check if it's ready
 
             if(isReady) {   // ready? quit loop

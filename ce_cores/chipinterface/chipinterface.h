@@ -28,6 +28,10 @@ public:
     ChipInterface(int whichLogFile, int whichAtnCode, uint32_t whichSyncTagCode, uint16_t portListen);
     virtual ~ChipInterface();
 
+    // not copyable - owns buffers and socket fds, a copy would free / close them twice
+    ChipInterface(const ChipInterface&) = delete;
+    ChipInterface& operator=(const ChipInterface&) = delete;
+
     // this return CHIP_IF_V1_V2 or some other
     int chipInterfaceType(void);
 
@@ -69,11 +73,10 @@ public:
 
     // the following ones are called from FloppyThread
     void clientsDisconnectInactive(void);
-    ClientInfo* clientsGetOne(int clientIndex);                     // get by client index
     ClientInfo* clientsGetOneByFloppySlot(int floppySlotIndex);     // get by floppy slot
     ClientInfo* clientsGetOneByMac(uint8_t* mac);                   // get by mac
     ClientInfo* clientGetByFd(int clientFd);
-    ClientInfo* clientGetByIndex(int index);
+    ClientInfo* clientGetByIndex(int index);                        // get by client index
 
     void closeClientByFd(int& clientFd);
 
@@ -106,8 +109,9 @@ private:
     uint8_t  gotAtnId;      // which chip wants to talk? Franz, Hans?
     uint8_t  gotAtnCode;    // which command code chips sends?
 
-    void createListeningSocket(void);
+    bool createListeningSocket(void);
     uint32_t recvFromClient(int& fdClient, uint8_t* buf, int maxLen);
+    bool sendAll(int& fdClient, const uint8_t* data, uint32_t len);   // send all bytes or close client
 
     bool waitForAtn(int clientIndex, int atnIdWant, uint8_t atnCodeWant, uint32_t timeoutMs, uint8_t *inBuf);
 
