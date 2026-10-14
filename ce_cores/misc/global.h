@@ -12,10 +12,6 @@
 
 #define FD_EMPTY    -1
 
-// commands sent from host to device
-#define CMD_CURRENT_SECTOR          0x50                                // followed by sector #
-#define CMD_GET_FW_VERSION          0x60
-#define CMD_CURRENT_TRACK           0x90                                // followed by track #
 #define CMD_MARK_READ               0xF000                              // this is not sent from host, but just a mark that this uint16_t has been read and you shouldn't continue to read further
 
 #define MFM_4US     1
@@ -29,7 +25,7 @@
 
 
 #define DEVTYPE_OFF                 0
-#define DEVTYPE_SD                  1
+#define DEVTYPE_SD_UNUSED           1       // SD card on old HW only - this HW has no SD card slot, treated as DEVTYPE_OFF; number kept so stored settings keep their meaning
 #define DEVTYPE_RAW                 2
 #define DEVTYPE_TRANSLATED          3
 
@@ -112,13 +108,15 @@ typedef struct {
     volatile bool hddReloadRaw;
     volatile bool hddReloadTranslated;
 
-    volatile int fddAction;
-    std::string fddMac;
-
     volatile bool ikbdReloadConfig;
 } InterProcessEvents;
 
 extern InterProcessEvents events;
+
+// floppy actions (insert / eject) from command socket thread to FDD thread - queued under mutex, so no action is lost
+// and the mac always belongs to its action
+void fddActionPush(int action, const std::string& mac);     // called by command socket thread
+bool fddActionPop(int& action, std::string& mac);           // called by FDD thread, false if no action is waiting
 
 class ImageStorage;
 
@@ -160,8 +158,8 @@ extern std::string PATH_CE_DD_BS_L2;
 extern std::string PATH_CE_DD_PRG_PATH_AND_FILENAME;
 extern std::string CONFIG_DRIVE_PATH;
 
-#define LOG_DIR_DEFAULT     "/tmp/ce/log"
-#define DATA_DIR_DEFAULT    "/tmp/ce/data"
-#define PID_DIR_DEFAULT     "/tmp/ce/pid"
+#define LOG_DIR_DEFAULT     "/var/log/ce"
+#define DATA_DIR_DEFAULT    "/var/lib/ce"
+#define PID_DIR_DEFAULT     "/run/ce"
 
 #endif // GLOBAL_H

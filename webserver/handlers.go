@@ -25,7 +25,7 @@ func (s *Server) handleGetStatus(w http.ResponseWriter, r *http.Request) {
 	mac := chi.URLParam(r, "mac")
 	logDir := os.Getenv("LOG_DIR")
 	if logDir == "" {
-		logDir = "/tmp/ce/log"
+		logDir = "/var/log/ce"
 	}
 	statusFile := filepath.Join(logDir, mac+".txt")
 

@@ -4,10 +4,10 @@
 # Settings persist on the host (default: /opt/ce/settings, same as .env).
 # Override with CE_SETTINGS_HOST=/some/host/path
 #
-# Logs (LOG_DIR in .env, /tmp/ce/log in the container) are written to the host
+# Logs (LOG_DIR in .env, /var/log/ce in the container) are written to the host
 # next to the settings (default: /opt/ce/log). Override with CE_LOG_HOST=/some/host/path
 #
-# Log level defaults to 3 (warnings). For debug logs (4) start with:
+# Log level defaults to 3 (info). For debug logs (4) start with:
 #   CE_LOG_LEVEL=4 docker compose -f docker/docker-compose.yml up --build
 #
 # Host filesystem is visible inside the container at /mnt/hostdrive
@@ -38,7 +38,7 @@ services:
     image: ce-atari
     network_mode: host
     environment:
-      # ce_cores log level (LOG_LEVEL in .env): 1 info, 2 errors, 3 warnings, 4 debug
+      # ce_cores log level (LOG_LEVEL in .env): 0 off, 1 errors, 2 + warnings, 3 + info, 4 + debug
       CE_LOG_LEVEL: ${CE_LOG_LEVEL:-3}
     device_cgroup_rules:
       # Linux input subsystem: js*, mouse*, event* (needed for USB hotplug)
@@ -55,7 +55,7 @@ services:
       # Logs of ce_cores and webserver (writable). Target matches LOG_DIR in .env.
       - type: bind
         source: ${CE_LOG_HOST:-/opt/ce/log}
-        target: /tmp/ce/log
+        target: /var/log/ce
         bind:
           create_host_path: true
       # Entire host filesystem for HDD / GEM drive emulation

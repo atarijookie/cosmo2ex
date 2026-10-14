@@ -8,6 +8,7 @@
 
 Version::Version()
 {
+    downloadStatus = 0;
     clear();
 }
 
@@ -107,12 +108,11 @@ void Version::fromFirstLineOfFile(char *filePath, bool withDashes)
 
     char line[1024], *r;
     r = fgets(line, 1024, f);                   // try to read a line
+    fclose(f);                                  // close the file
 
     if(!r) {                                    // failed?
         return;
     }
-
-    fclose(f);                                  // close the file
 
     if(withDashes) {                            // with dashes
         fromString(line);                       // try to parse the line
@@ -180,6 +180,7 @@ void Version::readLineFromFile(const char *filename, char *buffer, int maxLen, c
     }
 
     char *res = fgets(buffer, maxLen - 1, f);   // try to read the line
+    fclose(f);                                  // close the file
 
     if(res == NULL) {
         strncpy(buffer, defValue, maxLen - 1);  // failed to read the line? use default value
@@ -199,6 +200,4 @@ void Version::readLineFromFile(const char *filename, char *buffer, int maxLen, c
             buffer[len - 2] = 0;
         }
     }
-
-    fclose(f);                                  // close the file
 }

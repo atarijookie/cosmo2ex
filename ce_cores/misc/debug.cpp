@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include <string>
 #include <map>
@@ -16,15 +17,30 @@
 #include "../libdospath/libdospath.h"
 #include "../hdd/native/scsi.h"
 
-uint32_t prevLogOut;
+uint32_t prevLogOut[4];         // time of previous log line, for each log file - for 'diff ms' column
+pthread_mutex_t logFileMutex = PTHREAD_MUTEX_INITIALIZER;   // log files are written from multiple threads - one writer (and log rotation) at a time
 uint8_t  g_outToConsole;
 
 DebugVars dbgVars;
 
 std::string coreLogFileName[4];
 
+// log files are kept open (instead of open + close on each line), all of these are accessed with logFileMutex locked
+static FILE*        logFile[4];             // open log file or NULL
+static std::string  logFileOpenedPath[4];   // path with which logFile was opened - reopen when log file name changes
+static long         logFileSize[4];         // current size of log file in bytes - for rotation without stat()
+static uint32_t     logFileCheckedMs[4];    // when the log file was last checked for being deleted / moved from outside
+
+static void logFileClose(int whichLog);
+static int  logPrintf(int whichLog, FILE* f, const char* format, ...);
+static int  logVPrintf(int whichLog, FILE* f, const char* format, va_list args);
+
 const char* Debug::getCoreLogFileName(bool forceCreate, int whichLog)
 {
+    if(whichLog < LOGFILE_DISCOVERY || whichLog > LOGFILE_IKBD) {     // invalid log file? use HDD log, don't go out of array
+        whichLog = LOGFILE_HDD;
+    }
+
     if(coreLogFileName[whichLog].length() > 0 && !forceCreate) {
         return coreLogFileName[whichLog].c_str();
     }
@@ -113,18 +129,6 @@ void logIkbd(int aLogLevel, const char *format, ...)
     va_end(args);
 }
 
-void logHdd(int whichLog, int aLogLevel, const char *format, ...)
-{
-    if(aLogLevel > logLevel) {         // if this log is higher than allowed, don't do this
-        return;
-    }
-
-    va_list args;
-    va_start(args, format);
-    Debug::outV(whichLog, aLogLevel, format, args);
-    va_end(args);
-}
-
 void Debug::out(int whichLog, int aLogLevel, const char *format, ...)
 {
     if(aLogLevel > logLevel) {         // if this log is higher than allowed, don't do this
@@ -143,7 +147,13 @@ void Debug::outV(int whichLog, int aLogLevel, const char *format, va_list args)
         return;
     }
 
+    if(whichLog < LOGFILE_DISCOVERY || whichLog > LOGFILE_IKBD) {     // invalid log file? use HDD log, don't go out of arrays
+        whichLog = LOGFILE_HDD;
+    }
+
     FILE *f;
+
+    pthread_mutex_lock(&logFileMutex);
 
     if(g_outToConsole) {                    // should log to console? f is null
         f = NULL;
@@ -152,15 +162,16 @@ void Debug::outV(int whichLog, int aLogLevel, const char *format, va_list args)
     }
 
     if(!f) {
-        printf("%08d: ", Utils::getCurrentMs());
+        printf("%08u: ", Utils::getCurrentMs());
         vprintf(format, args);
         printf("\n");
+        pthread_mutex_unlock(&logFileMutex);
         return;
     }
 
     uint32_t now = Utils::getCurrentMs();
-    uint32_t diff = now - prevLogOut;
-    prevLogOut = now;
+    uint32_t diff = now - prevLogOut[whichLog];
+    prevLogOut[whichLog] = now;
 
     const char* ll = logLevelString(aLogLevel);
 
@@ -169,21 +180,23 @@ void Debug::outV(int whichLog, int aLogLevel, const char *format, va_list args)
     if(gettimeofday(&tv, NULL) < 0) {
         memset(&tv, 0, sizeof(tv)); // failure
     }
-    struct tm tm = *localtime(&tv.tv_sec);
+    struct tm tm;
+    localtime_r(&tv.tv_sec, &tm);           // localtime_r() - thread safe version of localtime()
     sprintf(humanTime, "%02d:%02d:%02d.%06ld", tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
 
     if(aLogLevel == LOG_ERROR && dbgVars.isInHandleAcsiCommand) {    // it's an error, and we're debugging ACSI stuff
-        fprintf(f, "%s %4d %s\n", humanTime, diff, ll); // diff in ms, date/time in human readable format
-        fprintf(f, "     LOG_ERROR occurred\n");
-        fprintf(f, "     Time since beginning of ACSI command handling: %d\n", now - dbgVars.thisAcsiCmdTime);
-        fprintf(f, "     Time between this and previous ACSI command  : %d\n", dbgVars.thisAcsiCmdTime - dbgVars.prevAcsiCmdTime);
+        logPrintf(whichLog, f, "%s %4d %s\n", humanTime, diff, ll); // diff in ms, date/time in human readable format
+        logPrintf(whichLog, f, "     LOG_ERROR occurred\n");
+        logPrintf(whichLog, f, "     Time since beginning of ACSI command handling: %d\n", now - dbgVars.thisAcsiCmdTime);
+        logPrintf(whichLog, f, "     Time between this and previous ACSI command  : %d\n", dbgVars.thisAcsiCmdTime - dbgVars.prevAcsiCmdTime);
     }
 
-    fprintf(f, "%s %4d %s\t", humanTime, diff, ll); // CLOCK in ms, diff in ms, date/time in human readable format
+    logPrintf(whichLog, f, "%s %4d %s\t", humanTime, diff, ll); // CLOCK in ms, diff in ms, date/time in human readable format
 
-    vfprintf(f, format, args);
-    fprintf(f, "\n");
-    fclose(f);
+    logVPrintf(whichLog, f, format, args);
+    logPrintf(whichLog, f, "\n");                 // file is line buffered - the line is written to file here
+
+    pthread_mutex_unlock(&logFileMutex);
 }
 
 void Debug::outBfr(int whichLog, uint8_t *bfr, int count)
@@ -192,13 +205,20 @@ void Debug::outBfr(int whichLog, uint8_t *bfr, int count)
         return;
     }
 
-    FILE* f = logFileOpen(whichLog);
+    if(whichLog < LOGFILE_DISCOVERY || whichLog > LOGFILE_IKBD) {     // invalid log file? use HDD log, don't go out of arrays
+        whichLog = LOGFILE_HDD;
+    }
+
+    pthread_mutex_lock(&logFileMutex);
+
+    FILE* f = g_outToConsole ? stdout : logFileOpen(whichLog);     // log to console or to file
 
     if(!f) {
+        pthread_mutex_unlock(&logFileMutex);
         return;
     }
 
-    fprintf(f, "%08d: outBfr - %d bytes\n", Utils::getCurrentMs(), count);
+    logPrintf(whichLog, f, "%08u: outBfr - %d bytes\n", Utils::getCurrentMs(), count);
 
     int i, j;
 
@@ -206,34 +226,33 @@ void Debug::outBfr(int whichLog, uint8_t *bfr, int count)
 
     for(i=0; i<rows; i++) {
         int ofs = i * 16;
-        fprintf(f, "        ");//some indentation
+        logPrintf(whichLog, f, "        ");//some indentation
 
         for(j=0; j<16; j++) {
             if((ofs + j) < count) {
-                fprintf(f, "%02x ", bfr[ofs + j]);
+                logPrintf(whichLog, f, "%02x ", bfr[ofs + j]);
             } else {
-                fprintf(f, "   ");
+                logPrintf(whichLog, f, "   ");
             }
         }
 
-        fprintf(f, "| ");
+        logPrintf(whichLog, f, "| ");
 
         for(j=0; j<16; j++) {
             char v = bfr[ofs + j];
             v = (v >= 32 && v <= 126) ? v : '.';
 
             if((ofs + j) < count) {
-                fprintf(f, "%c", v);
+                logPrintf(whichLog, f, "%c", v);
             } else {
-                fprintf(f, " ");
+                logPrintf(whichLog, f, " ");
             }
         }
 
-        fprintf(f, "\n");
+        logPrintf(whichLog, f, "\n");
     }
 
-    //fprintf(f, "\n");
-    fclose(f);
+    pthread_mutex_unlock(&logFileMutex);
 }
 
 void Debug::setLogLevel(int newLogLevel)
@@ -253,27 +272,104 @@ void Debug::setLogLevel(int newLogLevel)
     ldp_setParam(1, (uint64_t) logLevel);                 // libDOSpath - set new log level to file
 }
 
-void Debug::logRotateIfNeeded(const char *logFilePath)
+// printf to log file (or console) and count written bytes for log rotation; must be called with logFileMutex locked
+static int logVPrintf(int whichLog, FILE* f, const char* format, va_list args)
 {
-    struct stat attr;
-    int res = stat(logFilePath, &attr);             // get file stat
+    int written = vfprintf(f, format, args);
 
-    if(res == 0 && (attr.st_size >= (1024*1024))) {             // file too big?
-        std::string logFilePathOld = std::string(logFilePath) + ".1";       // construct old log filename
-        printf("will rotate log file: %s -> %s\n", logFilePath, logFilePathOld.c_str());
-        unlink(logFilePathOld.c_str());                         // if some previous old file exist, remove it
-        rename(logFilePath, logFilePathOld.c_str());            // rename current to old
+    if(written > 0 && f == logFile[whichLog]) {     // written to log file (not console)? count it
+        logFileSize[whichLog] += written;
+    }
+
+    return written;
+}
+
+static int logPrintf(int whichLog, FILE* f, const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int written = logVPrintf(whichLog, f, format, args);
+    va_end(args);
+    return written;
+}
+
+static void logFileClose(int whichLog)
+{
+    if(logFile[whichLog]) {
+        fclose(logFile[whichLog]);
+        logFile[whichLog] = NULL;
     }
 }
 
+// true if the open log file is not at the path anymore - deleted or moved from outside (e.g. manual cleanup, logrotate)
+static bool logFileGoneFromPath(int whichLog)
+{
+    struct stat stOpen, stPath;
+
+    if(fstat(fileno(logFile[whichLog]), &stOpen) != 0 || stOpen.st_nlink == 0) {   // can't check open file, or it was deleted?
+        return true;
+    }
+
+    if(stat(logFileOpenedPath[whichLog].c_str(), &stPath) != 0) {      // nothing at path anymore?
+        return true;
+    }
+
+    return (stOpen.st_dev != stPath.st_dev || stOpen.st_ino != stPath.st_ino);     // other file at path now?
+}
+
+void Debug::closeLogFiles(void)
+{
+    pthread_mutex_lock(&logFileMutex);
+
+    for(int i=LOGFILE_DISCOVERY; i<=LOGFILE_IKBD; i++) {
+        logFileClose(i);
+    }
+
+    pthread_mutex_unlock(&logFileMutex);
+}
+
+// returns open log file, opens it if needed, rotates it when it's too big; must be called with logFileMutex locked
 FILE* Debug::logFileOpen(int whichLog)
 {
-    static std::string path;
+    const char* path = getCoreLogFileName(false, whichLog);
 
-    Debug::logRotateIfNeeded(getCoreLogFileName(false, whichLog));   // rotate log file if too big
+    if(logFile[whichLog]) {                                     // got open file? check if it's still usable
+        if(logFileOpenedPath[whichLog] != path) {               // log file name changed (e.g. LOG_DIR from .env)? open the new one
+            logFileClose(whichLog);
+        } else if(logFileSize[whichLog] >= LOG_ROTATE_SIZE) {   // file too big? rotate - current to .1, start new one
+            logFileClose(whichLog);
 
-    FILE *f = fopen(getCoreLogFileName(false, whichLog), "a+t");
-    return f;
+            std::string pathOld = std::string(path) + ".1";
+            printf("will rotate log file: %s -> %s\n", path, pathOld.c_str());
+            unlink(pathOld.c_str());                            // if some previous old file exist, remove it
+            rename(path, pathOld.c_str());                      // rename current to old
+        } else if(Utils::elapsedMs(logFileCheckedMs[whichLog]) >= LOG_FILE_CHECK_INTERVAL_MS) {    // time to check if it was deleted / moved?
+            logFileCheckedMs[whichLog] = Utils::getCurrentMs();
+
+            if(logFileGoneFromPath(whichLog)) {                 // not there anymore? open (create) it again
+                logFileClose(whichLog);
+            }
+        }
+    }
+
+    if(!logFile[whichLog]) {                                    // file not open? open it
+        FILE* f = fopen(path, "ae");                            // append, close on exec (don't leak fd to child processes)
+
+        if(!f) {
+            return NULL;
+        }
+
+        setvbuf(f, NULL, _IOLBF, 0);                            // line buffered - each line is written to file at '\n', so tail -f and crash logs work
+
+        fseek(f, 0, SEEK_END);                                  // file might already contain something - continue counting from its size
+        logFileSize[whichLog] = ftell(f);
+
+        logFile[whichLog]           = f;
+        logFileOpenedPath[whichLog] = path;
+        logFileCheckedMs[whichLog]  = Utils::getCurrentMs();
+    }
+
+    return logFile[whichLog];
 }
 
 void Debug::logLevelFromDotEnv(void)

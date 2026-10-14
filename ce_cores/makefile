@@ -73,6 +73,17 @@ HDRS += ../libdospath/libdospath.h
 OBJS = $(addprefix $(OBJDIR)/, $(patsubst %.cpp,%.o,$(SRCS:.c=.o)))
 DEPS = $(patsubst %.o,%.d,$(OBJS))
 
+# unit tests - doctest framework, see ../third_party/doctest
+# test binary links all app objects except main.o (tests/test_globals.cpp defines the globals from main.cpp)
+TEST_DIR  = tests
+TEST_SRCS = $(wildcard $(TEST_DIR)/*.cpp)
+TEST_OBJS = $(addprefix $(OBJDIR)/, $(patsubst %.cpp,%.o,$(TEST_SRCS)))
+TEST_DEPS = $(patsubst %.o,%.d,$(TEST_OBJS))
+TEST_BIN  = $(TEST_DIR)/run_tests.elf
+APP_OBJS_NO_MAIN = $(filter-out $(OBJDIR)/main.o, $(OBJS))
+
+$(TEST_OBJS) $(TEST_DEPS): CXXFLAGS += -I../third_party/doctest
+
 all:	$(TARGET)
 
 $(TARGET): $(LDLIBS) $(OBJS) $(HDRS)
@@ -82,6 +93,13 @@ $(TARGET): $(LDLIBS) $(OBJS) $(HDRS)
 
 print-%:	; @echo $* = $($*)
 
+$(TEST_BIN): $(LDLIBS) $(APP_OBJS_NO_MAIN) $(TEST_OBJS)
+	$(CXX_LINK) $(CFLAGS) $(APP_OBJS_NO_MAIN) $(TEST_OBJS) $(LDFLAGS) -o $@ $(LDLIBS)
+
+# build and run unit tests, pass extra doctest options via TEST_ARGS, e.g.: make test TEST_ARGS="-tc=*substitution* -s"
+test:	$(TEST_BIN)
+	./$(TEST_BIN) $(TEST_ARGS)
+
 -ldospath:	lib/libdospath.a
 
 lib/libdospath.a:
@@ -90,14 +108,14 @@ lib/libdospath.a:
 	cp ../libdospath/libdospath.a lib/
 	@echo "<- Leaving libdospath"
 
-.PHONY:	clean depclean
+.PHONY:	clean depclean test
 
 clean: depclean
-	$(AT)$(RM) $(OBJS)
-	$(AT)$(RM) *.o *~ $(TARGET)
+	$(AT)$(RM) $(OBJS) $(TEST_OBJS)
+	$(AT)$(RM) *.o *~ $(TARGET) $(TEST_BIN)
 
 depclean:
-	$(AT)$(RM) $(DEPS)
+	$(AT)$(RM) $(DEPS) $(TEST_DEPS)
 
 depend:	$(DEPS)
 
@@ -118,5 +136,6 @@ $(OBJDIR)/%.d:	%.c
 ifneq ($(MAKECMDGOALS),clean)
 ifneq ($(MAKECMDGOALS),depclean)
 -include $(DEPS)
+-include $(TEST_DEPS)
 endif
 endif

@@ -55,8 +55,8 @@ Folder DRIVERS\
 ce_dd.prg - You only need this in 
             your AUTO folder if you 
             boot from another 
-            harddrive or the CosmosEx
-            SD card. By default 
+            harddrive (e.g. RAW disk 
+            image). By default 
             CosmosEx boots a builtin 
             version of this - so 
             normally you don't need 
@@ -70,8 +70,8 @@ ce_dd.prg - You only need this in
             it's kind of a supercharger
             for TOS.
             Neither version is needed 
-            if you only want to use the 
-            ATARI formatted SD card and 
+            if you only want to use 
+            RAW disk images and 
             none of the other features.
 
 

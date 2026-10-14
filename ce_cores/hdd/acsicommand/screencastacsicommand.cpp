@@ -31,20 +31,25 @@ void ScreencastAcsiCommand::sharedMemoryOpen(int& aSharedMemFd, sem_t** aSharedM
 
     // create semaphore
     std::string semaphoreName = Utils::dotEnvValue("SCREENCAST_SEMAPHORE_NAME");
-    *aSharedMemSemaphore = sem_open(semaphoreName.c_str(), O_CREAT, 0666, 0);
+    *aSharedMemSemaphore = sem_open(semaphoreName.c_str(), O_CREAT, 0600, 0);    // owner only - only ce_cores uses it
 
     if(*aSharedMemSemaphore == SEM_FAILED) {
         logHdd(LOG_ERROR, "ScreenCastAcsiCommand::openSharedMemory - failed to create semaphore: %d", errno);
+    } else if(semaphoreName.length() > 1) {     // semaphore '/name' lives in /dev/shm/sem.name - fix mode if it existed before with other mode
+        std::string semPath = std::string("/dev/shm/sem.") + semaphoreName.substr(1);
+        chmod(semPath.c_str(), 0600);
     }
 
-    // open the shared memory file
+    // open the shared memory file - owner only, webserver runs as the same user and reads it
     std::string sharedMemoryName = Utils::dotEnvValue("SCREENCAST_MEMORY_NAME");
-    aSharedMemFd = shm_open(sharedMemoryName.c_str(), O_RDWR | O_CREAT, 0666);
+    aSharedMemFd = shm_open(sharedMemoryName.c_str(), O_RDWR | O_CREAT, 0600);
 
     if(aSharedMemFd < 0) {
         logHdd(LOG_ERROR, "ScreenCastAcsiCommand::openSharedMemory - failed to create shared memory file: %d", errno);
         return;
     }
+
+    fchmod(aSharedMemFd, 0600);                 // mode from shm_open() is not applied when it already existed
 
     // map the shared memory
     void* mmapRes = mmap(0, SCREENCAST_BUFFER_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, aSharedMemFd, 0);

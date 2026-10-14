@@ -84,9 +84,10 @@ void CoreFdd::run(void)
         Utils::sleepMs(1);      // intentional sleep to not utilize cpu to max when looping too much before client disconnect
 
         // handle floppy actions from command socket
-        if(events.fddAction != FDD_ACTION_NONE) {
-            handleFddAction();
-            events.fddAction = FDD_ACTION_NONE;
+        int fddAction;
+        std::string fddMac;
+        while(fddActionPop(fddAction, fddMac)) {
+            handleFddAction(fddAction, fddMac);
         }
 
         ciFdd->clientsDisconnectInactive();
@@ -355,26 +356,26 @@ void CoreFdd::parseMac(const std::string& macStr, uint8_t* mac)
     }
 }
 
-void CoreFdd::handleFddAction(void)
+void CoreFdd::handleFddAction(int fddAction, const std::string& fddMac)
 {
     uint8_t mac[6];
     memset(mac, 0, 6);
-    parseMac(events.fddMac, mac);
+    parseMac(fddMac, mac);
 
     ClientInfo* client = ciFdd->clientsGetOneByMac(mac);
 
     if(!client) {
-        logFdd(LOG_WARNING, "Failed to handle fdd action, because client with mac %s not found", events.fddMac.c_str());
+        logFdd(LOG_WARNING, "Failed to handle fdd action, because client with mac %s not found", fddMac.c_str());
         return;
     }
 
-    if(events.fddAction == FDD_ACTION_EJECT) {
+    if(fddAction == FDD_ACTION_EJECT) {
         logFdd(LOG_DEBUG, "ejecting slot %d", client->floppySlotIndex);
         imageSilo->remove(client->floppySlotIndex);
         return;
     }
 
-    if(events.fddAction == FDD_ACTION_INSERT) {
+    if(fddAction == FDD_ACTION_INSERT) {
         Settings s(client->mac);
         const char *pPathAndFile = s.getString("FLOPPY_IMAGE", ""); // try to read the value
         std::string pathAndFile = pPathAndFile;

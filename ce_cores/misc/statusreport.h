@@ -2,6 +2,8 @@
 #define _STATUSREPORT_H_
 
 #include <stdint.h>
+#include <time.h>
+#include <string>
 #include "../chipinterface/chipinterfacedefs.h"
 
 typedef struct {
@@ -21,12 +23,15 @@ extern TClientStatus statuses[MAX_CLIENTS];
 
 class StatusReport {
 public:
+    // these lock statuses mutex, can be called from any thread
     static void createReportFiles(void);
-    static void createSingleReportFile(int i);
-
-    static int getIndexFromMac(uint8_t* mac, bool& isNew);
     static void storeIpAndFwVer(uint8_t* mac, uint32_t ipAddr, char* fwVer, uint8_t features);
     static void storeTosAndMachine(uint8_t* mac, uint16_t tosVersion, int scsiMachine);
+
+private:
+    // these must be called with statuses mutex locked
+    static void createSingleReportFile(int i);
+    static int getIndexFromMac(uint8_t* mac, bool& isNew);
 };
 
 #endif

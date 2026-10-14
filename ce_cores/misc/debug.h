@@ -2,6 +2,7 @@
 #define _DEBUG_H_
 
 #include <stdint.h>
+#include <stdarg.h>
 #include <cstdio>
 
 #define DISCOVERY_LOG_FILENAME  "discovery.log"
@@ -14,10 +15,14 @@
 #define LOGFILE_FDD         2
 #define LOGFILE_IKBD        3
 
+#define LOG_ROTATE_SIZE             (1024*1024) // when log file reaches this size, it's renamed to .1 and new one is started
+#define LOG_FILE_CHECK_INTERVAL_MS  1000        // how often to check that open log file wasn't deleted / moved from outside
+
+// log levels - higher level shows also all the lower levels, e.g. LOG_WARNING shows errors and warnings
 #define LOG_OFF         0
-#define LOG_INFO        1       // info         - info which can be displayed when running at user's place
-#define LOG_ERROR       2       // errors       - should be always visible, even to users
-#define LOG_WARNING     3       // warnings
+#define LOG_ERROR       1       // errors       - should be always visible, even to users
+#define LOG_WARNING     2       // warnings
+#define LOG_INFO        3       // info         - info which can be displayed when running at user's place
 #define LOG_DEBUG       4       // debug info   - useful only to developers
 
 typedef struct {
@@ -45,11 +50,9 @@ public:
 
     static void setLogLevel(int newLogLevel);
     static void setOutputToConsole(void);
-    static void setLogFile(const char *path);
 
-    static void logRotateIfNeeded(const char *logFilePath);
-
-    static FILE* logFileOpen(int whichLog);
+    static FILE* logFileOpen(int whichLog);     // must be called with log mutex locked
+    static void  closeLogFiles(void);
     static const char* getCoreLogFileName(bool forceCreate, int whichLog);
 };
 

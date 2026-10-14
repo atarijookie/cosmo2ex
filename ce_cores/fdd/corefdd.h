@@ -46,7 +46,7 @@ private:
 
 
     void parseMac(const std::string& macStr, uint8_t* mac);
-    void handleFddAction(void);
+    void handleFddAction(int fddAction, const std::string& fddMac);
 
     //----------------------------------
     // recovery stuff

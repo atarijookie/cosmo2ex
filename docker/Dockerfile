@@ -10,7 +10,7 @@
 # Equivalent docker run:
 #   docker run --rm --network host \
 #     -v /opt/ce/settings:/opt/ce/settings \
-#     -v /opt/ce/log:/tmp/ce/log \
+#     -v /opt/ce/log:/var/log/ce \
 #     -e CE_LOG_LEVEL=3 \
 #     -v /:/mnt/hostdrive:rslave \
 #     -v /dev:/dev \
@@ -20,7 +20,7 @@
 #
 # Layout matches the defaults in /.env:
 #   BIN_DIR=/opt/ce/bin   SETTINGS_DIR=/opt/ce/settings
-#   DATA_DIR=/tmp/ce/data LOG_DIR=/tmp/ce/log  PID_DIR=/tmp/ce/pid
+#   DATA_DIR=/var/lib/ce  LOG_DIR=/var/log/ce  PID_DIR=/run/ce
 # Host root is mounted at /mnt/hostdrive (see docker-compose.yml).
 
 # ---------------------------------------------------------------------------
@@ -70,10 +70,10 @@ RUN apt-get update \
 ENV CE_DIR=/opt/ce \
     BIN_DIR=/opt/ce/bin \
     SETTINGS_DIR=/opt/ce/settings \
-    DATA_DIR=/tmp/ce/data \
-    LOG_DIR=/tmp/ce/log \
-    PID_DIR=/tmp/ce/pid \
-    CONFIG_DRIVE_PATH=/tmp/ce/data/configdrive \
+    DATA_DIR=/var/lib/ce \
+    LOG_DIR=/var/log/ce \
+    PID_DIR=/run/ce \
+    CONFIG_DRIVE_PATH=/var/lib/ce/configdrive \
     HOSTDRIVE=/mnt/hostdrive
 
 RUN mkdir -p "$BIN_DIR" "$SETTINGS_DIR" "$DATA_DIR" "$LOG_DIR" "$PID_DIR" "$HOSTDRIVE"

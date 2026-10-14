@@ -562,14 +562,8 @@ bool Scsi::eraseMedia(void)
 
 void Scsi::updateTranslatedBootMedia(void)
 {
-    int i, idOnBus = -1;
-
-    for(i=0; i<8; i++) {        // find where the CE_DD is on ACSI / SCSI bus
-        if(acsiIdInfo.acsiIDdevType[i] == DEVTYPE_TRANSLATED) {
-            idOnBus = i;
-            break;
-        }
-    }
+    // where the CE_DD is on ACSI / SCSI bus - first TRANSLATED ID, or default ID if no TRANSLATED ID is set (see Settings::loadAcsiIDs())
+    int idOnBus = (acsiIdInfo.ceddId == ACSI_ID_NONE) ? -1 : acsiIdInfo.ceddId;
 
     if(idOnBus == -1) {         // don't have this media?
         logHdd(LOG_ERROR, "Scsi::updateTranslatedBootMedia() - could not find CE_DD bus ID, fail");

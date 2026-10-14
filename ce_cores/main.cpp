@@ -126,6 +126,8 @@ int main(int argc, char *argv[])
         ret = 1;
     }
 
+    Debug::closeLogFiles();
+
     return ret;
 }
 
@@ -216,7 +218,7 @@ void parseCmdLineArguments(int argc, char *argv[])
 void printfPossibleCmdLineArgs(void)
 {
     printf("\nPossible command line args:\n");
-    printf("llx      - set log level to x (default is 1, max is 4)\n");
+    printf("llx      - set log level to x: 0 off, 1 errors (default), 2 + warnings, 3 + info, 4 + debug\n");
 }
 
 void sigint_handler(int sig)

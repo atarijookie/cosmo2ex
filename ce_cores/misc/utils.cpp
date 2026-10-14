@@ -7,6 +7,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <cmath>
+#include <cctype>
 
 #include <iostream>
 #include <sstream>
@@ -52,7 +54,7 @@ uint32_t Utils::getCurrentMs(void)
         return 0;
     }
 
-    uint32_t val = (tp.tv_sec * 1000) + (tp.tv_nsec / 1000000);    // convert to milli seconds
+    uint32_t val = ((uint32_t) tp.tv_sec * 1000) + (uint32_t) (tp.tv_nsec / 1000000);   // convert to milli seconds - unsigned math, wraps around well-defined
     return val;
 }
 
@@ -152,8 +154,7 @@ std::string Utils::mergeHostPaths2(const std::string& head, const std::string& t
 {
     // this method creates merged path, and it doesn't modifiy head:    rev_val = head + tail
 
-    static std::string retVal;              // static string, which will be used as return value
-    retVal = head;                          // copy of head into return value, so we won't modify head
+    std::string retVal = head;              // copy of head into return value, so we won't modify head (not static - this is called from multiple threads)
     Utils::mergeHostPaths(retVal, tail);    // merge retVal (head) with tail
     return retVal;                          // return merged value
 }
@@ -180,7 +181,7 @@ void Utils::mergeHostPaths(std::string &dest, const std::string &tail)
     }
 
     if(endsWithSepar && startsWithSepar) {      // both have separator char? remove one
-        dest[dest.length() - 1] = 0;
+        dest.erase(dest.length() - 1);          // really shorten the string (writing 0 there would leave the 0 inside of the string)
         dest = dest + tail;
         return;
     }
@@ -310,11 +311,24 @@ bool Utils::copyFileByHandles(FILE *from, FILE *to)
             break;
         }
 
-        fwrite(bfr64k, 1, read, to);
+        if(fwrite(bfr64k, 1, read, to) != read) {           // failed to write everything? (e.g. disk full)
+            logHdd(LOG_ERROR, "Utils::copyFileByHandles - fwrite() failed: %s", strerror(errno));
+            return false;
+        }
 
         if(feof(from)) {                                    // end of file reached? quit
             break;
         }
+    }
+
+    if(ferror(from)) {                                      // stopped because of read error, not end of file?
+        logHdd(LOG_ERROR, "Utils::copyFileByHandles - fread() failed: %s", strerror(errno));
+        return false;
+    }
+
+    if(fflush(to) != 0) {                                   // buffered data written? (fclose() result is not checked by callers)
+        logHdd(LOG_ERROR, "Utils::copyFileByHandles - fflush() failed: %s", strerror(errno));
+        return false;
     }
 
     return true;
@@ -387,10 +401,10 @@ void Utils::getIpAdds(uint8_t *bfrIPs, uint8_t *bfrMasks)
         }
 
         sockaddr_in *saiIp  = (sockaddr_in *) ifa->ifa_addr;
-        sockaddr_in *saiMsk = (sockaddr_in *) ifa->ifa_netmask;
+        sockaddr_in *saiMsk = (sockaddr_in *) ifa->ifa_netmask;     // can be NULL
 
         uint32_t ip            = saiIp->sin_addr.s_addr;
-        uint32_t mask          = saiMsk->sin_addr.s_addr;
+        uint32_t mask          = saiMsk ? saiMsk->sin_addr.s_addr : 0;
 
         uint8_t *pIp   = NULL;
         uint8_t *pMsk  = NULL;
@@ -421,7 +435,7 @@ void Utils::getIpAdds(uint8_t *bfrIPs, uint8_t *bfrMasks)
         pIp[3] = (uint8_t) (ip >> 16);
         pIp[4] = (uint8_t) (ip >> 24);
 
-        if(pMsk) {
+        if(pMsk && saiMsk) {                                    // got mask buffer and interface has mask?
             pMsk[0] = 1;                                        // enabled?
             pMsk[1] = (uint8_t)  mask;                             // store the mask
             pMsk[2] = (uint8_t) (mask >>  8);
@@ -510,9 +524,12 @@ void Utils::createTimezoneString(char *str)
     float     utcOffset;
     utcOffset = s.getFloat("TIME_UTC_OFFSET", 0);          // read UTC offset from settings
 
+    createTimezoneStringFromOffset(utcOffset, str);
+}
+
+void Utils::createTimezoneStringFromOffset(float utcOffset, char *str)
+{
     char  signChar;
-    int   ofsHours, ofsMinutes;
-    float fOfsHours;
 
     if(utcOffset >= 0.0f) {         // is UTC offset positive? (e.g. Berlin is +1 / +2) TZ should have '-' because it's east of Prime Meridian
         signChar = '-';
@@ -520,17 +537,17 @@ void Utils::createTimezoneString(char *str)
         signChar = '+';
     }
 
-    ofsHours    = (int)   utcOffset;                            // int  : hours only    (including sign)
-    fOfsHours   = (float) ofsHours;                             // float: hours only    (including sign)
-    ofsHours    = abs(ofsHours);                                // int  : hours only    (without   sign)
-    ofsMinutes  = abs((int) ((utcOffset - fOfsHours) * 60.0f)); // not get only minutes (without   sign)
+    // whole offset in minutes (without sign), rounded - so e.g. 5.75 doesn't become 5:44 because of float precision
+    int ofsTotalMinutes = (int) (fabsf(utcOffset) * 60.0f + 0.5f);
+    int ofsHours        = ofsTotalMinutes / 60;
+    int ofsMinutes      = ofsTotalMinutes % 60;
 
-    if(ofsHours != 0 && ofsMinutes != 0) {                      // got offset - both hours and minutes?
-        sprintf(str, "UTC%c%02d:%02d", signChar, ofsHours, ofsMinutes);
-    } else if(ofsHours != 0 && ofsMinutes == 0) {               // got offset - only hours (no minutes)
-        sprintf(str, "UTC%c%02d", signChar, ofsHours);
-    } else {                                                    // no offset?
+    if(ofsTotalMinutes == 0) {                                  // no offset?
         sprintf(str, "UTC");
+    } else if(ofsMinutes != 0) {                                // got offset with minutes? (also when hours are 0, e.g. 0.5)
+        sprintf(str, "UTC%c%02d:%02d", signChar, ofsHours, ofsMinutes);
+    } else {                                                    // got offset - only hours (no minutes)
+        sprintf(str, "UTC%c%02d", signChar, ofsHours);
     }
 }
 
@@ -595,14 +612,25 @@ std::string Utils::getDeviceLabel(const std::string & devicePath)
         //fclose(f);
         closedir(d);
     }
-    size_t pos;
-    while((pos = label.find("\\x")) != std::string::npos) {
-        int c;
-        std::stringstream ss;
-        ss << std::hex << label.substr(pos + 2, 2);
-        ss >> c;
-        label.replace(pos, 4, 1, (char)c);
+    return decodeHexEscapes(label);
+}
+
+std::string Utils::decodeHexEscapes(const std::string& in)
+{
+    // labels in /dev/disk/by-label have special chars escaped as \xNN, e.g. space is \x20 - decode them back
+    std::string label = in;
+    size_t pos = 0;
+
+    while((pos = label.find("\\x", pos)) != std::string::npos) {
+        if(pos + 3 < label.length() && isxdigit((unsigned char) label[pos + 2]) && isxdigit((unsigned char) label[pos + 3])) {    // got 2 hex digits after \x?
+            int c = (int) strtol(label.substr(pos + 2, 2).c_str(), NULL, 16);
+            label.replace(pos, 4, 1, (char) c);
+            pos += 1;           // continue after the decoded char
+        } else {                // not a valid escape? keep it as it is, continue after it
+            pos += 2;
+        }
     }
+
     return label;
 }
 
@@ -645,9 +673,19 @@ bool Utils::unZIPfloppyImageAndReturnFirstImage(const char *inZipFilePath, std::
     system("rm    -rf /tmp/zipedfloppy");           // delete this dir, if it exists
     system("mkdir -p  /tmp/zipedfloppy");           // create that dir
 
-    char unzipCommand[512];
-    sprintf(unzipCommand, "unzip -o '%s' -d /tmp/zipedfloppy > /dev/null 2> /dev/null", inZipFilePath);
-    system(unzipCommand);                           // unzip the downloaded ZIP file into that tmp directory
+    // put path in single quotes, and replace each ' in path with '\'' (end quote, escaped quote, start quote), so the path can't break out of quotes
+    std::string quotedPath = "'";
+    for(const char *p = inZipFilePath; *p; p++) {
+        if(*p == '\'') {
+            quotedPath += "'\\''";
+        } else {
+            quotedPath += *p;
+        }
+    }
+    quotedPath += "'";
+
+    std::string unzipCommand = "unzip -o " + quotedPath + " -d /tmp/zipedfloppy > /dev/null 2> /dev/null";
+    system(unzipCommand.c_str());                   // unzip the downloaded ZIP file into that tmp directory
 
     // find the first usable floppy image
     DIR *dir = opendir("/tmp/zipedfloppy");         // try to open the dir
@@ -659,6 +697,7 @@ bool Utils::unZIPfloppyImageAndReturnFirstImage(const char *inZipFilePath, std::
 
     bool found          = false;
     struct dirent *de   = NULL;
+    std::string foundFileName;                      // copy of found name - de points into dir, which is freed by closedir()
 
     const char *pExt = NULL;
 
@@ -687,6 +726,7 @@ bool Utils::unZIPfloppyImageAndReturnFirstImage(const char *inZipFilePath, std::
 
         if(strcasecmp(pExt, "st") == 0 || strcasecmp(pExt, "msa") == 0) {  // the extension of the file is valid for a floppy image?
             found = true;
+            foundFileName = de->d_name;
             break;
         }
     }
@@ -700,7 +740,7 @@ bool Utils::unZIPfloppyImageAndReturnFirstImage(const char *inZipFilePath, std::
 
     // construct path to unZIPed image
     outImageFilePath = "/tmp/zipedfloppy/";
-    outImageFilePath.append(de->d_name);
+    outImageFilePath.append(foundFileName);
 
     logHdd(LOG_DEBUG, "Utils::unZIPfloppyImageAndReturnFirstImage -- this ZIP file: %s contains this floppy image file: %s", inZipFilePath, outImageFilePath.c_str());
     return true;
@@ -837,8 +877,7 @@ std::string Utils::dotEnvValue(std::string key, const char* defValue, bool logOn
     char* envVar = getenv(key.c_str());
 
     if(envVar) {    // some real env var was found with this name?
-        static std::string retValueFromEnv;
-        retValueFromEnv = envVar;
+        std::string retValueFromEnv = envVar;   // not static - this is called from multiple threads
 
         if(logOnError) {
             logHdd(LOG_DEBUG, "Utils::dotEnvValue - ...but found env var '%s' with value '%s'", key.c_str(), retValueFromEnv.c_str());
@@ -851,18 +890,98 @@ std::string Utils::dotEnvValue(std::string key, const char* defValue, bool logOn
     return defValueStr;
 }
 
-void Utils::getDefaultValueFromVarName(std::string& varName, std::string& defValue, const std::string& delim)
+std::string Utils::dotEnvExpand(const std::string& value, int depth)
 {
-    std::size_t varDef = varName.find(delim);    // check if this var name has also default value specified
+    /* return value with all ${VAR}, ${VAR:-default} and ${VAR-default} replaced, like docker compose does:
+        - VAR is taken from .env (expanded recursively, so order of lines in .env doesn't matter), then from real env vars
+        - ${VAR:-default} uses default when VAR is not set or is empty, ${VAR-default} only when VAR is not set
+        - default can contain other vars, e.g. ${A:-${B}}
+        - unclosed ${ is left as it is
+    */
 
-    //logHdd(LOG_DEBUG, "Utils::getDefaultValueFromVarName - varName '%s'", varName.c_str());
-
-    if(varDef != std::string::npos) {           // if this variable name has also default value specified
-        std::string newVarName = varName.substr(0, varDef); // get just var name without default value
-        defValue = varName.substr(varDef + delim.length()); // get just the default value
-        //logHdd(LOG_DEBUG, "Utils::getDefaultValueFromVarName - varName with default: '%s', varName '%s', defValue: '%s'", varName.c_str(), newVarName.c_str(), defValue.c_str());
-        varName = newVarName;                               // use the new var name
+    if(depth > 10) {        // too deep? probably vars referencing each other in a loop, don't expand anymore
+        logHdd(LOG_ERROR, "Utils::dotEnvExpand - too deep recursion, are some .env vars referencing each other? value: '%s'", value.c_str());
+        return value;
     }
+
+    std::string result;
+    size_t pos = 0;
+
+    while(pos < value.length()) {
+        size_t varStart = value.find("${", pos);        // var start tag
+
+        if(varStart == std::string::npos) {             // no more vars? copy the rest and quit
+            result += value.substr(pos);
+            break;
+        }
+
+        // find matching '}' - count nested ${ } pairs, so default value can contain vars
+        size_t varEnd = std::string::npos;
+        int nested = 0;
+        for(size_t i = varStart + 2; i < value.length(); i++) {
+            if(value.compare(i, 2, "${") == 0) {
+                nested++;
+                i++;
+            } else if(value[i] == '}') {
+                if(nested == 0) {
+                    varEnd = i;
+                    break;
+                }
+                nested--;
+            }
+        }
+
+        if(varEnd == std::string::npos) {               // unclosed ${ ? copy the rest as it is and quit
+            result += value.substr(pos);
+            break;
+        }
+
+        result += value.substr(pos, varStart - pos);    // copy text before the var
+
+        // split var name from default value - var name ends at first '-' (var names don't contain '-')
+        std::string varName = value.substr(varStart + 2, varEnd - varStart - 2);
+        std::string defValue;
+        bool hasDefault = false, defaultIfEmpty = false;
+
+        size_t dashPos = varName.find('-');
+        if(dashPos != std::string::npos) {
+            hasDefault = true;
+            defValue = varName.substr(dashPos + 1);
+
+            if(dashPos > 0 && varName[dashPos - 1] == ':') {    // ':-' means use default also when var is empty
+                defaultIfEmpty = true;
+                dashPos--;
+            }
+
+            varName = varName.substr(0, dashPos);
+        }
+
+        // find var value - first in .env, then in real env vars
+        bool isSet = false;
+        std::string varValue;
+
+        std::map<std::string, std::string>::iterator it = dotEnv.find(varName);
+        if(it != dotEnv.end()) {                        // found in .env? expand it too
+            isSet = true;
+            varValue = dotEnvExpand(it->second, depth + 1);
+        } else {
+            char* envVar = getenv(varName.c_str());
+
+            if(envVar) {                                // found in real env vars?
+                isSet = true;
+                varValue = envVar;
+            }
+        }
+
+        if(hasDefault && (!isSet || (defaultIfEmpty && varValue.empty()))) {    // should use default value?
+            varValue = dotEnvExpand(defValue, depth + 1);
+        }
+
+        result += varValue;                             // var replaced with its value
+        pos = varEnd + 1;                               // continue after the var
+    }
+
+    return result;
 }
 
 int Utils::dotEnvSubstituteVars(void)
@@ -871,49 +990,91 @@ int Utils::dotEnvSubstituteVars(void)
 
     logHdd(LOG_DEBUG, "Utils::dotEnvSubstituteVars starting");
 
+    // expand all values from original (not yet expanded) values first, store them after that,
+    // so the result doesn't depend on the order in which the values are processed
+    std::map<std::string, std::string> expanded;
     int found = 0;
 
-    std::map<std::string, std::string>::iterator it = dotEnv.begin();
-    while (it != dotEnv.end())                          // go through all map values
-    {
-        std::string key = it->first;
-        std::string value = it->second;
+    for(std::map<std::string, std::string>::iterator it = dotEnv.begin(); it != dotEnv.end(); ++it) {
+        expanded[it->first] = dotEnvExpand(it->second, 0);
 
-        std::size_t varStart = value.find("${");       // var start tag
-        std::size_t varEnd = value.find("}");          // var end tag
-
-        if(varStart != std::string::npos) {                 // start tag was found?
-            std::string varName = value.substr(varStart + 2, varEnd - varStart - 2);    // get just var name
-
-            std::string defValue;
-            Utils::getDefaultValueFromVarName(varName, defValue, std::string(":-"));        // try the longer first
-            Utils::getDefaultValueFromVarName(varName, defValue, std::string("-"));         // then shorter next
-
-            std::size_t varDef = varName.find(":-");    // check if this var name has also default value specified
-
-            //logHdd(LOG_DEBUG, "Utils::dotEnvSubstituteVars - varName '%s'", varName.c_str());
-
-            if(varDef != std::string::npos) {           // if this variable name has also default value specified
-                std::string newVarName = varName.substr(0, varDef); // get just var name without default value
-                defValue = varName.substr(varDef + 2);              // get just the default value
-                //logHdd(LOG_DEBUG, "Utils::dotEnvSubstituteVars - varName with default: '%s', varName '%s', defValue: '%s'", varName.c_str(), newVarName.c_str(), defValue.c_str());
-                varName = newVarName;                               // use the new var name
-            }
-
-            std::string varValue = Utils::dotEnvValue(varName, defValue.c_str());   // get variable value with possible default value
-            //logHdd(LOG_DEBUG, "Utils::dotEnvSubstituteVars - for var '%s' found value '%s'", varName.c_str(), varValue.c_str());
-
-            value.replace(varStart, varEnd - varStart + 1, varValue);   // replace variable in original value
-            //logHdd(LOG_DEBUG, "Utils::dotEnvSubstituteVars - value after replacing var: '%s'", value.c_str());
-
-            dotEnv[key] = value;        // store new value back to map
+        if(expanded[it->first] != it->second) {     // something was replaced in this value?
             found++;
         }
-
-        ++it;
     }
 
+    dotEnv = expanded;
     return found;
+}
+
+static bool isBlankChar(char c)
+{
+    return (c == ' ' || c == '\t' || c == '\n' || c == '\r');
+}
+
+static std::string trimBlank(const std::string& s)
+{
+    size_t start = 0, end = s.length();
+
+    while(start < end && isBlankChar(s[start])) {       // skip leading blank chars
+        start++;
+    }
+
+    while(end > start && isBlankChar(s[end - 1])) {     // skip trailing blank chars
+        end--;
+    }
+
+    return s.substr(start, end - start);
+}
+
+bool Utils::parseDotEnvLine(const char* line, std::string& key, std::string& value)
+{
+    /* parse one .env line in the same way as docker compose does for the simple cases:
+        - empty lines and lines starting with '#' are skipped
+        - key is everything before the 1st '=', value is everything after it (so value can contain '=')
+        - value in "double" or 'single' quotes is taken as it is (can contain spaces and '#'), rest of line after closing quote is ignored
+        - unquoted value ends at ' #' (inline comment), leading and trailing blank chars are trimmed (spaces inside are kept)
+    */
+
+    std::string lineStr = trimBlank(line);
+
+    if(lineStr.empty() || lineStr[0] == '#') {      // empty line or comment? nothing here
+        return false;
+    }
+
+    size_t eqlPos = lineStr.find('=');              // the 1st '=' splits key and value
+
+    if(eqlPos == std::string::npos) {               // no '=' here? not a key-value line
+        return false;
+    }
+
+    key = trimBlank(lineStr.substr(0, eqlPos));
+
+    if(key.empty()) {                               // no key? skip
+        return false;
+    }
+
+    value = trimBlank(lineStr.substr(eqlPos + 1));
+
+    if(!value.empty() && (value[0] == '"' || value[0] == '\'')) {     // quoted value?
+        size_t closingQuote = value.find(value[0], 1);
+
+        if(closingQuote != std::string::npos) {     // closing quote found? take what is between the quotes
+            value = value.substr(1, closingQuote - 1);
+            return true;
+        }
+        // no closing quote - take the value as unquoted
+    }
+
+    // unquoted value - inline comment starts with '#' after blank char
+    for(size_t i=1; i<value.length(); i++) {
+        if(value[i] == '#' && isBlankChar(value[i - 1])) {
+            value = trimBlank(value.substr(0, i));
+            break;
+        }
+    }
+
+    return true;
 }
 
 bool Utils::loadDotEnvFrom(const char* path)
@@ -929,49 +1090,14 @@ bool Utils::loadDotEnvFrom(const char* path)
 
     char line[1024];
 
-    while(true) {                           // go through file line by line
-        if(feof(f)) {
-            break;
-        }
+    while(fgets(line, sizeof(line), f) != NULL) {   // go through file line by line
+        std::string key, value;
 
-        int eqlPos = -1;                    // where the '=' is
-        memset(line, 0, sizeof(line));
-        fgets(line, sizeof(line) - 1, f);   // get one line, including '\n' symbol
-
-        // first loop - remove new line chars, and everything after comment symbol
-        int len = strlen(line);     // get length of line
-        for(int i=0; i<len; i++) {
-            if(line[i] == '\n' || line[i] == '\r' || line[i] == '#') {     // remove EOL, RET, and if it's a start of comment, ignore the rest of line
-                line[i] = 0;        // string ends here now
-                break;
-            }
-
-            if(line[i] == '=') {    // found equal (=) sign? store position
-                eqlPos = i;
-            }
-        }
-
-        // second loop - trim trailing white spaces
-        len = strlen(line);         // get length of line
-        for(int i=(len-1); i>=0; i--) {
-            if(line[i] == ' ' || line[i] == '\t') {     // space or tab? trim
-                line[i] = 0;
-            }
-        }
-
-        // check if something remained after previous changes to line
-        len = strlen(line);         // get length of line
-        if(len < 1 || eqlPos < 0) { // line empty or no equal sign there? skip it
+        if(!parseDotEnvLine(line, key, value)) {    // empty line, comment or no '=' there? skip it
             continue;
         }
 
-        line[eqlPos] = 0;           // split the string on the equal sign
-
-        std::string key, value;
-        key = line;                 // key   is on [0 : eqlPos-1]
-        value = line + eqlPos + 1;  // value is on [eqlPos+1 : ...]
         //logHdd(LOG_DEBUG, "Utils::loadDotEnv - found %s -> %s", key.c_str(), value.c_str());
-
         dotEnv[key] = value;        // store to map
     }
 
@@ -1078,7 +1204,15 @@ void Utils::sendToMounter(const std::string& jsonString)
 	}
 
     struct sockaddr_un addr;
-    strcpy(addr.sun_path, sockPath.c_str());
+    memset(&addr, 0, sizeof(addr));
+
+    if(sockPath.empty() || sockPath.length() >= sizeof(addr.sun_path)) {     // no path or path too long for sun_path?
+        logHdd(LOG_ERROR, "sendToMounter: socket path '%s' is empty or longer than %d chars", sockPath.c_str(), (int) sizeof(addr.sun_path) - 1);
+        close(sockFd);
+        return;
+    }
+
+    strcpy(addr.sun_path, sockPath.c_str());    // fits, length checked above
     addr.sun_family = AF_UNIX;
 
     // try to send to mounter socket
@@ -1155,20 +1289,50 @@ void Utils::closeFdIfOpen(int& fd)
     }
 }
 
+// threads successfully created by handlePthreadCreate() and not joined yet - pthread_kill_join() must not touch other pthread_t values,
+// because when pthread_create() fails, the pthread_t is not set and using it is undefined behavior
+static std::vector<pthread_t> createdThreads;
+static pthread_mutex_t createdThreadsMutex = PTHREAD_MUTEX_INITIALIZER;
+
 void handlePthreadCreate(const char* threadName, pthread_t* pThreadInfo, void* threadCode)
 {
     int res = pthread_create(pThreadInfo, NULL, (void* (*)(void*)) threadCode, NULL);
 
-    if(res != 0) {
-        logHdd(LOG_ERROR, "Failed to create %s thread, %s won't work...", threadName, threadName);
+    if(res != 0) {      // app can't work without any of its threads - terminate whole app with error
+        logHdd(LOG_ERROR, "Failed to create %s thread (%s), terminating", threadName, strerror(res));
+        printf("Failed to create %s thread (%s), terminating\n", threadName, strerror(res));
+        fatalErrorOccurred = 1;
+        sigintReceived = 1;
     } else {
         logHdd(LOG_DEBUG, "%s thread created", threadName);
         pthread_setname_np(*pThreadInfo, threadName);
+
+        pthread_mutex_lock(&createdThreadsMutex);
+        createdThreads.push_back(*pThreadInfo);         // remember it, so pthread_kill_join() knows it can kill and join it
+        pthread_mutex_unlock(&createdThreadsMutex);
     }
 }
 
 void pthread_kill_join(const char* threadName, pthread_t& threadInfo)
 {
+    // was this thread really created (and not joined yet)? if so, remove it from the list, as it's joined below
+    bool found = false;
+
+    pthread_mutex_lock(&createdThreadsMutex);
+    for(size_t i=0; i<createdThreads.size(); i++) {
+        if(pthread_equal(createdThreads[i], threadInfo)) {
+            createdThreads.erase(createdThreads.begin() + i);
+            found = true;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&createdThreadsMutex);
+
+    if(!found) {        // thread not created (or already joined)? nothing to stop
+        printf("Not stopping %s thread, it was not started\n", threadName);
+        return;
+    }
+
     printf("Stoping %s thread\n", threadName);
     pthread_kill(threadInfo, SIGINT);           // stop the select()
     pthread_join(threadInfo, NULL);             // wait until thread finishes

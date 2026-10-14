@@ -46,10 +46,10 @@ func (s *Server) handleGetHDDRaw(w http.ResponseWriter, r *http.Request) {
 		// Read ACSI_DEVTYPE_{i}
 		devTypeFile := filepath.Join(deviceDir, "ACSI_DEVTYPE_"+strconv.Itoa(i))
 		if content, err := os.ReadFile(devTypeFile); err == nil {
-			if val, err := strconv.Atoi(strings.TrimSpace(string(content))); err == nil {
+			if val, err := strconv.Atoi(strings.TrimSpace(string(content))); err == nil && isValidDevType(val) {
 				devTypes[i] = val
 			} else {
-				devTypes[i] = 0 // Default to 0 if parsing fails
+				devTypes[i] = 0 // Default to 0 (off) if parsing fails or type is not supported (e.g. old SD type 1)
 			}
 		} else {
 			devTypes[i] = 0 // Default to 0 if file doesn't exist
@@ -107,6 +107,14 @@ func (s *Server) handlePutHDDRaw(w http.ResponseWriter, r *http.Request) {
 	if len(payload.Paths) != 8 || len(payload.DevTypes) != 8 {
 		http.Error(w, "paths and dev_types must each have 8 elements", http.StatusBadRequest)
 		return
+	}
+
+	// Validate dev types - only off, raw and ce_dd are supported
+	for i, devType := range payload.DevTypes {
+		if !isValidDevType(devType) {
+			http.Error(w, "dev_types["+strconv.Itoa(i)+"] must be 0 (off), 2 (raw) or 3 (ce_dd)", http.StatusBadRequest)
+			return
+		}
 	}
 	
 	// Get SETTINGS_DIR from environment, default to current directory if not set
@@ -347,4 +355,16 @@ func (s *Server) handlePutHDDTranslated(w http.ResponseWriter, r *http.Request) 
 	}
 	
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ACSI device types as stored in ACSI_DEVTYPE_{i} - same values as DEVTYPE_* in ce_cores/misc/global.h
+const (
+	devTypeOff        = 0
+	devTypeRaw        = 2
+	devTypeTranslated = 3 // ce_dd
+)
+
+// isValidDevType returns true for supported ACSI device types; 1 (SD card) was used only on old HW, this HW has no SD card slot
+func isValidDevType(devType int) bool {
+	return devType == devTypeOff || devType == devTypeRaw || devType == devTypeTranslated
 }

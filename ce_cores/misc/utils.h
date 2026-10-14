@@ -2,6 +2,7 @@
 #define _UTILS_H_
 
 #include <signal.h>
+#include <pthread.h>
 #include <string>
 #include <vector>
 
@@ -64,10 +65,12 @@ public:
     static void store24bits(uint8_t *bfr, uint32_t val);
 
     static void createTimezoneString(char *str);
+    static void createTimezoneStringFromOffset(float utcOffset, char *str);    // offset in hours, e.g. 5.5 -> "UTC-05:30"
     static void setTimezoneVariable_inProfileScript(void);
     static void setTimezoneVariable_inThisContext(void);
 
     static std::string getDeviceLabel(const std::string & devicePath);
+    static std::string decodeHexEscapes(const std::string& in);    // "My\\x20Disk" -> "My Disk", invalid escapes are kept
 
     static void splitString(const std::string &s, char delim, std::vector<std::string> &elems);
 
@@ -86,6 +89,7 @@ public:
     static std::string dotEnvValue(std::string key, const char* defValue=NULL, bool logOnError=true);
     static void loadDotEnv(void);
     static bool loadDotEnvFrom(const char* path);
+    static bool parseDotEnvLine(const char* line, std::string& key, std::string& value);   // false if line has no key-value pair
     static int  dotEnvSubstituteVars(void);
 
     static void intToFile(int value, const char* filePath);                 // int to text file
@@ -108,7 +112,7 @@ public:
 
 private:
     static bool copyFileByHandles(FILE *from, FILE *to);
-    static void getDefaultValueFromVarName(std::string& varName, std::string& defValue, const std::string& delim);
+    static std::string dotEnvExpand(const std::string& value, int depth);   // value with ${VAR} replaced
 };
 
 // Timeout measured from creation (or last restart()), safe across wraparound of the 32-bit ms counter

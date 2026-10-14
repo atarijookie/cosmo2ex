@@ -14,6 +14,7 @@
 #include "../hdd/native/scsi.h"
 
 TClientStatus statuses[MAX_CLIENTS];
+static pthread_mutex_t statusesMutex = PTHREAD_MUTEX_INITIALIZER;   // statuses are written by HDD / FDD / IKBD threads, read by command socket thread
 
 void StatusReport::createSingleReportFile(int i)
 {
@@ -27,8 +28,9 @@ void StatusReport::createSingleReportFile(int i)
     sprintf(tmp, "MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", statuses[i].mac[0], statuses[i].mac[1], statuses[i].mac[2], statuses[i].mac[3], statuses[i].mac[4], statuses[i].mac[5]);
     report += tmp;
 
-    struct tm *tm_info = localtime(&statuses[i].timestamp);
-    strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M", tm_info);
+    struct tm tm_info;
+    localtime_r(&statuses[i].timestamp, &tm_info);      // localtime_r() - thread safe version of localtime()
+    strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M", &tm_info);
     report += std::string("last seen: ");
     report += std::string(tmp);
     report += std::string("\n");
@@ -78,6 +80,8 @@ void StatusReport::createSingleReportFile(int i)
 
 void StatusReport::createReportFiles(void)
 {
+    pthread_mutex_lock(&statusesMutex);
+
     for(int i=0; i<MAX_CLIENTS; i++)
     {
         if(statuses[i].ipAddr == 0) {       // no ip == no device here
@@ -86,65 +90,79 @@ void StatusReport::createReportFiles(void)
 
         createSingleReportFile(i);
     }
+
+    pthread_mutex_unlock(&statusesMutex);
 }
 
 int StatusReport::getIndexFromMac(uint8_t* mac, bool& isNew)
 {
-    int idx = -1;
+    isNew = false;
+
     uint8_t emptyMac[6];
     memset(emptyMac, 0, 6);
+
+    if(memcmp(mac, emptyMac, 6) == 0) {                 // mac not known yet? can't store status for it
+        return -1;
+    }
+
+    int idxEmpty = -1;
 
     for(int i=0; i<MAX_CLIENTS; i++)
     {
         if(memcmp(statuses[i].mac, mac, 6) == 0) {         // found position of this mac?
-            idx = i;
-            break;
+            return i;
         }
 
-        if(memcmp(statuses[i].mac, emptyMac, 6) == 0) {    // found position of empty mac?
-            idx = i;
-            break;
+        if(idxEmpty < 0 && memcmp(statuses[i].mac, emptyMac, 6) == 0) {    // found position of empty mac? remember the first one
+            idxEmpty = i;
         }
     }
 
-    return idx;
+    if(idxEmpty >= 0) {         // mac not found, but got empty position? it's a new device
+        isNew = true;
+    }
+
+    return idxEmpty;
 }
 
 void StatusReport::storeIpAndFwVer(uint8_t* mac, uint32_t ipAddr, char* fwVer, uint8_t features)
 {
+    pthread_mutex_lock(&statusesMutex);
+
     bool isNew;
     int idx = getIndexFromMac(mac, isNew);
 
-    if(idx == -1) {     // matching and empty position not found? quit
-        return;
+    if(idx != -1) {     // matching or empty position found? store at index
+        memcpy(statuses[idx].mac, mac, 6);
+        statuses[idx].ipAddr = ipAddr;
+        snprintf(statuses[idx].fwVer, sizeof(statuses[idx].fwVer), "%s", fwVer);
+        statuses[idx].timestamp = time(NULL);
+        statuses[idx].features = features;
+
+        if(isNew) {
+            createSingleReportFile(idx);
+        }
     }
 
-    // store at index
-    memcpy(statuses[idx].mac, mac, 6);
-    statuses[idx].ipAddr = ipAddr;
-    strcpy(statuses[idx].fwVer, fwVer);
-    statuses[idx].timestamp = time(NULL);
-    statuses[idx].features = features;
-
-    if(isNew) {
-        createSingleReportFile(idx);
-    }
+    pthread_mutex_unlock(&statusesMutex);
 }
 
 void StatusReport::storeTosAndMachine(uint8_t* mac, uint16_t tosVersion, int scsiMachine)
 {
+    pthread_mutex_lock(&statusesMutex);
+
     bool isNew;
     int idx = getIndexFromMac(mac, isNew);
 
-    if(idx == -1) {     // matching and empty position not found? quit
-        return;
+    if(idx != -1) {     // matching or empty position found? store at index
+        memcpy(statuses[idx].mac, mac, 6);      // needed when this is a new device, so this slot is not empty anymore
+        statuses[idx].tosVersion = tosVersion;
+        statuses[idx].scsiMachine = scsiMachine;
+
+        if(isNew) {
+            createSingleReportFile(idx);
+        }
     }
 
-    // store at index
-    statuses[idx].tosVersion = tosVersion;
-    statuses[idx].scsiMachine = scsiMachine;
-
-    if(isNew) {
-        createSingleReportFile(idx);
-    }
+    pthread_mutex_unlock(&statusesMutex);
 }

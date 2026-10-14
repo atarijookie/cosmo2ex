@@ -3,10 +3,14 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <string>
+
+#define ACSI_ID_NONE            0xff    // no ACSI ID, e.g. ceddId when there's no ID for CE_DD booting
+#define CEDD_DEFAULT_ACSI_ID    1       // CE_DD boots from this ID when no TRANSLATED ID is set and this ID is not used
 
 typedef struct {
     uint8_t acsiIDdevType[8];       // array of device types for each ACSI ID
-    uint8_t ceddId;                 // id of CE_DD, which will be used to boot CE_DD.PRG
+    uint8_t ceddId;                 // id of CE_DD, which will be used to boot CE_DD.PRG; ACSI_ID_NONE if none
 
     uint8_t enabledIDbits;          // bit map of which ACSI IDs are enabled
 
@@ -59,8 +63,10 @@ private:
     void init(uint8_t* prefixBytes, int len);
 
     char prefix[32];
+    std::string settingsDir;            // settings dir including prefix subdir - from settingsDirPath(), updated by setPrefix()
 
     FILE *sOpen(const char *key, bool readNotWrite);
+    std::string settingsDirPath(void);      // settings dir, including prefix subdir if prefix is set
     void storeDefaultValues(void);
 };
 

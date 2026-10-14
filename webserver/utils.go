@@ -107,7 +107,7 @@ func resolveEnvVar(value string, envVars map[string]string, visited map[string]b
 func getPIDFilePath() string {
 	pidDir := os.Getenv("PID_DIR")
 	if pidDir == "" {
-		pidDir = "/tmp/ce/pid"
+		pidDir = "/run/ce"
 	}
 	// Use the executable name as the PID file name
 	exePath, err := os.Executable()

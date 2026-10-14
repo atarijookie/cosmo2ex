@@ -13,14 +13,15 @@ if [ -f ./.env ]; then
     . ./.env
 fi
 
-DATA_DIR="${DATA_DIR:-/tmp/ce/data}"
-LOG_DIR="${LOG_DIR:-/tmp/ce/log}"
-PID_DIR="${PID_DIR:-/tmp/ce/pid}"
+DATA_DIR="${DATA_DIR:-/var/lib/ce}"
+LOG_DIR="${LOG_DIR:-/var/log/ce}"
+PID_DIR="${PID_DIR:-/run/ce}"
 SETTINGS_DIR="${SETTINGS_DIR:-/opt/ce/settings}"
 CONFIG_DRIVE_PATH="${CONFIG_DRIVE_PATH:-${DATA_DIR}/configdrive}"
 IKBD_VIRTUAL_DEVICES_PATH="${IKBD_VIRTUAL_DEVICES_PATH:-${DATA_DIR}/vdev}"
 
 mkdir -p "$DATA_DIR" "$LOG_DIR" "$PID_DIR" "$SETTINGS_DIR" "$IKBD_VIRTUAL_DEVICES_PATH"
+chmod 0700 "$DATA_DIR" "$IKBD_VIRTUAL_DEVICES_PATH"    # owner only - command socket and virtual ikbd devices
 
 # PID files survive a container restart, and PIDs inside the container repeat,
 # so a stale file would make the apps think another instance is running.

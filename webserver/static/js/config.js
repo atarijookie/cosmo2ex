@@ -191,6 +191,10 @@ function setSaveMessage(text, isError) {
 // go through all the rows, switch combo boxes to selected values and show paths on screen
 function updateIdsFromData() {
     for (let i = 0; i < 8; i++) {
+        if (devTypes[i] != 0 && devTypes[i] != 2 && devTypes[i] != 3) {    // unknown type (e.g. old SD type 1)? show and save it as off
+            devTypes[i] = 0;
+        }
+
         var elem = document.getElementById("devtype" + i);
         elem.value = devTypes[i].toString();
         onComboChanged(i);

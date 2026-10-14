@@ -10,22 +10,37 @@
 #include "debug.h"
 #include "utils.h"
 
+#define SETTINGS_DIR_MODE   (S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)     // mode: 0775
+
 void Settings::init(uint8_t* prefixBytes, int len)
 {
     setPrefix(prefixBytes, len);
 
-    std::string settingsDir = Utils::dotEnvValue("SETTINGS_DIR", "./settings"); // path to settings dir
-    int res = mkdir(settingsDir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);      // mod: 0x775
+    // create settings dir for this prefix (e.g. for this device mac) - if it didn't exist yet, store default values there
+    std::string dir = settingsDir;
 
-    if(res == 0) {                  // dir created
-        logHdd(LOG_DEBUG, "Settings: directory %s was created.", settingsDir.c_str());
+    if(Utils::dirExists(dir)) {     // dir already exists? nothing to do
+        return;
+    }
+
+    if(Utils::mkpath(dir.c_str(), SETTINGS_DIR_MODE) == 0) {    // dir created
+        logHdd(LOG_DEBUG, "Settings: directory %s was created.", dir.c_str());
 
         storeDefaultValues();
-    } else {                        // dir not created
-        if(errno != EEXIST) {       // and it's not because it already exists...
-            logHdd(LOG_ERROR, "Settings: failed to create settings directory %s - %s", settingsDir.c_str(), strerror(errno));
-        }
+    } else if(errno != EEXIST) {    // dir not created, and it's not because it already exists...
+        logHdd(LOG_ERROR, "Settings: failed to create settings directory %s - %s", dir.c_str(), strerror(errno));
     }
+}
+
+std::string Settings::settingsDirPath(void)
+{
+    std::string dir = Utils::dotEnvValue("SETTINGS_DIR", "./settings"); // path to settings dir
+
+    if(prefix[0]) {     // prefix present? merge it into settings path
+        return Utils::mergeHostPaths2(dir, std::string(prefix));
+    }
+
+    return dir;
 }
 
 Settings::Settings(void)
@@ -45,6 +60,8 @@ void Settings::setPrefix(uint8_t* bytes, int len)
     } else {        // no pointer or length, clear prefix
         memset(prefix, 0, 32);
     }
+
+    settingsDir = settingsDirPath();    // prefix doesn't change often, so don't build the path on every get / set
 }
 
 void Settings::storeDefaultValues(void)
@@ -180,7 +197,7 @@ char *Settings::getString(const char *key, const char *defValue)
     FILE *file = sOpen(key, true);
     if(!file) {                                         // failed to open settings?
 //      logHdd(LOG_DEBUG, "Settings::getString -- returning default value for %s", key);
-        strcpy(buffer, defValue);
+        snprintf(buffer, sizeof(buffer), "%s", defValue);   // copy default value, cut if too long
         return buffer;
     }
 
@@ -190,8 +207,14 @@ char *Settings::getString(const char *key, const char *defValue)
 
     if(res == NULL) {                                   // failed to read value?
 //      logHdd(LOG_DEBUG, "Settings::getString -- returning default value for %s", key);
-        strcpy(buffer, defValue);
+        snprintf(buffer, sizeof(buffer), "%s", defValue);   // copy default value, cut if too long
         return buffer;
+    }
+
+    // remove trailing new line chars - setString() doesn't write them, but file could be edited by hand
+    size_t len = strlen(buffer);
+    while(len > 0 && (buffer[len - 1] == '\n' || buffer[len - 1] == '\r')) {
+        buffer[--len] = 0;
     }
 
     return buffer;                                          // return
@@ -215,18 +238,31 @@ char *Settings::getBinaryString(const char *key, int len)
     static char buffer[256];
     memset(buffer, 0, 256);
 
+    if(len < 0) {                                   // invalid length? return empty buffer
+        return buffer;
+    }
+
+    if(len > (int) sizeof(buffer)) {                // would not fit in our buffer? convert only what fits
+        len = sizeof(buffer);
+    }
+
     char *hexString = getString(key, "INVALID");
 
     bool good = (strcmp(hexString, "INVALID") != 0);    // if retrieved is something other than the default value, probably valid
 
+    if(good && strlen(hexString) < (size_t) (2 * len)) {    // hex string too short for requested length? don't read past its end
+        logHdd(LOG_WARNING, "Settings::getBinaryString -- value of %s is too short for %d bytes", key, len);
+        good = false;
+    }
+
     if(good) {                                      // if value seems good, convert it from hex to bin
         char tmp[3];
-        int val;
 
         for(int i=0; i<len; i++) {
             memcpy(tmp, hexString + 2*i, 2);        // copy 2 bytes from value to tmp
-            tmp[3] = 0;                             // terminate with zero
+            tmp[2] = 0;                             // terminate with zero
 
+            int val = 0;                            // stays 0 if not a valid hex value
             sscanf(tmp, "%X", &val);                // try to read HEX value from tmp
             buffer[i] = val;                        // store at position i
         }
@@ -291,6 +327,7 @@ void Settings::setChar(const char *key, char value)
 void Settings::loadAcsiIDs(AcsiIDinfo *aii, bool useDefaultsIfNoSettings)
 {
     aii->enabledIDbits = 0;                                 // no bits / IDs enabled yet
+    aii->ceddId        = ACSI_ID_NONE;                      // no CE_DD boot ID until TRANSLATED device is found
 
     aii->gotDevTypeRaw          = false;                    // no raw and translated types found yet
     aii->gotDevTypeTranslated   = false;
@@ -301,7 +338,7 @@ void Settings::loadAcsiIDs(AcsiIDinfo *aii, bool useDefaultsIfNoSettings)
 
         int devType = getInt(key, DEVTYPE_OFF);
 
-        if(devType < 0) {
+        if(devType != DEVTYPE_RAW && devType != DEVTYPE_TRANSLATED) {   // only RAW and TRANSLATED are supported, anything else (e.g. old DEVTYPE_SD_UNUSED) is OFF
             devType = DEVTYPE_OFF;
         }
 
@@ -317,18 +354,25 @@ void Settings::loadAcsiIDs(AcsiIDinfo *aii, bool useDefaultsIfNoSettings)
             aii->gotDevTypeRaw = true;
         }
 
-        if(devType == DEVTYPE_TRANSLATED) {             // found at least one TRANSLATED device?
+        if(devType == DEVTYPE_TRANSLATED && !aii->gotDevTypeTranslated) {   // first TRANSLATED device? CE_DD boots from it
             aii->ceddId = id;                           // ID of CE_DD device
             aii->gotDevTypeTranslated = true;
         }
     }
 
-    // no ACSI ID was enabled? enable ACSI ID 0
+    // no RAW or TRANSLATED device enabled? store defaults (ACSI ID 1 as TRANSLATED) and load them
     if(!aii->gotDevTypeRaw && !aii->gotDevTypeTranslated) {
         if(useDefaultsIfNoSettings) {                   // if should use defaults if no settings found, store those defaults and call this function again
             storeDefaultValues();
             loadAcsiIDs(aii, false);                    // ...but call this function without storing defaults next time - to avoid endless loop in some weird case
+            return;
         }
+    }
+
+    // no TRANSLATED device (e.g. only RAW devices)? CE_DD still boots from default ID, if that ID is not used by anything else
+    if(aii->ceddId == ACSI_ID_NONE && aii->acsiIDdevType[CEDD_DEFAULT_ACSI_ID] == DEVTYPE_OFF) {
+        aii->ceddId = CEDD_DEFAULT_ACSI_ID;
+        aii->enabledIDbits |= (1 << CEDD_DEFAULT_ACSI_ID);     // device must answer on this ID, otherwise nothing could boot from it
     }
 }
 //-------------------------
@@ -350,18 +394,15 @@ void Settings::saveFloppyConfig(FloppyConfig *fc)
 //-------------------------
 FILE *Settings::sOpen(const char *key, bool readNotWrite)
 {
-    std::string settingsDir = Utils::dotEnvValue("SETTINGS_DIR", "./settings"); // path to settings dir
-
-    std::string path = settingsDir;
-
-    if(prefix[0]) {     // prefix present? merge it into settings path
-        path = Utils::mergeHostPaths2(settingsDir, std::string(prefix));
-    }
-
-    Utils::mkpath(path.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);   // create dir if it does not exist
-
-    path = Utils::mergeHostPaths2(path, std::string(key));  // add key at the end of settings + prefix path
+    std::string path = Utils::mergeHostPaths2(settingsDir, std::string(key));  // add key at the end of settings + prefix path
 
     FILE *file = fopen(path.c_str(), readNotWrite ? "r" : "w");
+
+    // dir doesn't exist? on read just fail (getter returns default value), on write create dir and try again
+    if(!file && !readNotWrite && errno == ENOENT) {
+        Utils::mkpath(settingsDir.c_str(), SETTINGS_DIR_MODE);
+        file = fopen(path.c_str(), "w");
+    }
+
     return file;
 }

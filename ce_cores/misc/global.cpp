@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <string>
+#include <deque>
+#include <pthread.h>
 #include "utils.h"
 #include "global.h"
 #include "debug.h"
@@ -13,6 +15,50 @@ std::string PATH_CE_DD_BS_L1;
 std::string PATH_CE_DD_BS_L2;
 std::string PATH_CE_DD_PRG_PATH_AND_FILENAME;
 std::string CONFIG_DRIVE_PATH;
+
+typedef struct {
+    int         action;     // FDD_ACTION_*
+    std::string mac;        // mac of the device as 12 hex chars
+} FddActionItem;
+
+static std::deque<FddActionItem> fddActions;
+static pthread_mutex_t fddActionsMutex = PTHREAD_MUTEX_INITIALIZER;
+
+#define FDD_ACTIONS_MAX     32      // don't let the queue grow forever if FDD thread doesn't take the actions
+
+void fddActionPush(int action, const std::string& mac)
+{
+    FddActionItem item;
+    item.action = action;
+    item.mac = mac;
+
+    pthread_mutex_lock(&fddActionsMutex);
+
+    if(fddActions.size() >= FDD_ACTIONS_MAX) {      // queue full? drop the oldest action
+        fddActions.pop_front();
+        logFdd(LOG_WARNING, "fddActionPush - too many waiting floppy actions, dropping the oldest one");
+    }
+
+    fddActions.push_back(item);
+    pthread_mutex_unlock(&fddActionsMutex);
+}
+
+bool fddActionPop(int& action, std::string& mac)
+{
+    bool got = false;
+
+    pthread_mutex_lock(&fddActionsMutex);
+
+    if(!fddActions.empty()) {
+        action = fddActions.front().action;
+        mac = fddActions.front().mac;
+        fddActions.pop_front();
+        got = true;
+    }
+
+    pthread_mutex_unlock(&fddActionsMutex);
+    return got;
+}
 
 void preloadGlobalsFromDotEnv(void)
 {
