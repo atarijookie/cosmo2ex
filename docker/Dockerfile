@@ -10,6 +10,8 @@
 # Equivalent docker run:
 #   docker run --rm --network host \
 #     -v /opt/ce/settings:/opt/ce/settings \
+#     -v /opt/ce/log:/tmp/ce/log \
+#     -e CE_LOG_LEVEL=3 \
 #     -v /:/mnt/hostdrive:rslave \
 #     -v /dev:/dev \
 #     --device-cgroup-rule='c 13:* rwm' \

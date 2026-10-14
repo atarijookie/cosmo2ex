@@ -1,3 +1,13 @@
+Before the first build (and after changing the Atari drivers): the config drive
+drivers are gitignored build outputs, but the image needs them in
+ce_cores/configdrive/drivers/ (the build fails with "missing file from .env"
+otherwise). Build them with the m68k-atari-mint-gcc cross compiler and copy
+them there (from the repo root):
+make -C libacsiscsi
+make -C ce_dd_bootsectors all
+mkdir -p ce_cores/configdrive/drivers
+cp ce_dd_bootsectors/ce_dd.bs ce_dd_bootsectors/ce_dd_l2.bs ce_dd_prg/ce_dd.prg ce_cores/configdrive/drivers/
+
 To build docker image (from the repo root):
 docker build -f docker/Dockerfile -t ce-atari .
 
@@ -13,6 +23,8 @@ The same output is in docker logs when running with up -d.
 Equivalent docker run:
 docker run --rm --network host \
   -v /opt/ce/settings:/opt/ce/settings \
+  -v /opt/ce/log:/tmp/ce/log \
+  -e CE_LOG_LEVEL=3 \
   -v /:/mnt/hostdrive:rslave \
   -v /dev:/dev \
   --device-cgroup-rule='c 13:* rwm' \
@@ -21,6 +33,16 @@ docker run --rm --network host \
 
 Settings live on the host at /opt/ce/settings (same as SETTINGS_DIR in .env).
 Override the host path with CE_SETTINGS_HOST=/your/path.
+
+Logs of ce_cores and the webserver are on the host at /opt/ce/log, next to the
+settings (inside the container it is LOG_DIR=/tmp/ce/log from .env).
+Override the host path with CE_LOG_HOST=/your/path.
+
+Log level: the default is 3 (warnings). Set CE_LOG_LEVEL to change it:
+0 = off, 1 = info, 2 = + errors, 3 = + warnings, 4 = + debug (most verbose).
+For debug logs:
+CE_LOG_LEVEL=4 docker compose -f docker/docker-compose.yml up --build
+or with docker run: -e CE_LOG_LEVEL=4
 
 Web UI password: the default is 'ce'. After the first login you have to set a
 new password; its bcrypt hash is stored in SETTINGS_DIR/web_password_hash.
