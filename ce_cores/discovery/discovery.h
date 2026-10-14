@@ -1,6 +1,9 @@
 #ifndef __DISCOVERY_H__
 #define __DISCOVERY_H__
 
+#include <stdint.h>
+#include <time.h>
+
 #define SERVER_UDP_PORT             7200        // port where the CE discovery for reports from cores and for requests from devices
 #define CLIENT_UDP_PORT             7201        // this is where the CE device will wait for discovery response
 
