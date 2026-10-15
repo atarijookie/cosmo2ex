@@ -70,13 +70,14 @@ Folder TESTS\
 (Test tools for debugging issues that 
  may arise)
 
-ce_tsthd.tos - Tests ACSI/SCSI communi-
-               cation with several tests
-               (Stresstests, R/W checks-
-               ums etc.)
-
-ce_tstfd.tos - Tests Floppy Disk Emu-
-               lation
-
-tst_fsys.tos - Tests File System (mainly
-               Translated Drives)
+ce_tests.tos - All the test tools in one
+               app, pick the test from
+               its menu:
+               - ACSI/SCSI communication
+                 (Stresstests, R/W
+                 checksums etc.)
+               - Floppy Disk Emulation
+               - File System (mainly
+                 Translated Drives)
+               - IKBD and a few more
+                 ACSI/SCSI test tools

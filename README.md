@@ -12,8 +12,12 @@ This is a continuation / evolution of CosmosEx device. It is an ACSI/SCSI hard d
 - libacsiscsi - library for access to ACSI/SCSI interface via few functions
 - libdospath - long-to-short filename conversion library, emulating DOS paths (8.3)
 
-- test_acsi	- Atari ACSI/SCSI transfer tester
-- test_filesystem	- Atari filesystem tester
-- test_floppy	- Atari floppy emulation tester
-- test_floppy_read	- Atari another floppy emulation tester
-- test_manual	- Atari another ACSI transfer tester
+- test_ce	- Atari test tools, all built into a single app (ce_tests.tos) with a menu to pick the test:
+  - test_acsi	- Atari ACSI/SCSI transfer tester
+  - test_filesystem	- Atari filesystem tester
+  - test_floppy	- Atari floppy emulation tester
+  - test_floppy_read	- Atari another floppy emulation tester
+  - test_ikbd	- Atari IKBD injection chain tester
+  - test_manual, test_manual2	- Atari another ACSI/SCSI transfer testers
+  - test_rw, test_rw_user	- Atari ACSI write/read verification testers
+

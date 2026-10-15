@@ -46,11 +46,7 @@ extension_example_python3
 ffmpeg_build
 flash_stm32
 flash_xilinx
-test_acsi
-test_filesystem
-test_floppy
-test_floppy_read
-test_manual
-test_manual2
+test_ce
+
 test_sting
 update
