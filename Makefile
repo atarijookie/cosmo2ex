@@ -18,7 +18,6 @@ atari_progs:
 	$(MAKE) -C ce_mount_acc
 	$(MAKE) -C ce_hdimg_ttp
 	$(MAKE) -C test_ce
-
 	$(MAKE) -C test_sting
 
 ce_main_app:

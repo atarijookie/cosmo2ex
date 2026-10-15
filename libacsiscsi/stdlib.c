@@ -77,7 +77,6 @@ char *strcpy ( char * destination, const char * source)
 {
     int len = strlen(source);
     return strncpy (destination, source, len + 1);  // +1 to copy also the terminating zero
-
 }
 
 int strcmp(const char * str1, const char * str2)

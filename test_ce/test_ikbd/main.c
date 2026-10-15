@@ -389,7 +389,6 @@ void print_status(void)
 }
 
 //--------------------------------------------------
-
 void showConnectionErrorMessage(void)
 {
 //	Clear_home();

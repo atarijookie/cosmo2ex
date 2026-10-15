@@ -25,3 +25,4 @@ test_sting/test_server
 __pycache__/
 **/__pycache__/
 **/.vscode/
+release/out/

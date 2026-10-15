@@ -10,7 +10,6 @@
 	add.l	0x14(a5),d0				| length of data segment
 	add.l	0x1c(a5),d0				| length of bss segment
 	add.l	#0x2000+0x100,d0		| length of stack+basepage
-
 	move.l	a5,d1					| address to basepage
 	move.l	a5,__base				|
 	add.l	d0,d1					| end of program

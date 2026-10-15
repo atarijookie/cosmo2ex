@@ -7,6 +7,7 @@ This is a continuation / evolution of CosmosEx device. It is an ACSI/SCSI hard d
 - ce_dd_bootsectors	- ACSI/SCSI boot sectors
 - ce_dd_prg	- driver for translated/network drives, date setting and screenshots
 - docker - build and run scripts for ce_cores and webserver running in docker container
+- release - builds tarballs + install script for installing directly on a Linux machine (systemd service)
 - webserver - a configuration interface via browser
 
 - libacsiscsi - library for access to ACSI/SCSI interface via few functions
@@ -20,4 +21,3 @@ This is a continuation / evolution of CosmosEx device. It is an ACSI/SCSI hard d
   - test_ikbd	- Atari IKBD injection chain tester
   - test_manual, test_manual2	- Atari another ACSI/SCSI transfer testers
   - test_rw, test_rw_user	- Atari ACSI write/read verification testers
-

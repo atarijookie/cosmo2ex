@@ -272,7 +272,6 @@ int test_rw_user_main(void)
 			}
 			
 			end = getTicksAsUser();
-
 			
 			if(j != 0 ) {
 				(void) Cconws("Read 10x MAX SECTORS error!\r\n");

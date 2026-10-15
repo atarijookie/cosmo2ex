@@ -74,7 +74,6 @@ static void runSubTest(const TSubTest *test)
     // the test might have left the screen in some weird state, restore it
     VT52_Rev_off();
     (void) VT52_Cur_on();
-
     removeAllWaitingKeys();
 }
 

@@ -224,7 +224,6 @@ int test_manual_main(void)
             for(i=0; i<10; i++) {
                 cs_inquiry2(deviceID);
             }
-
             end = getTicksAsUser();
             diff = end - start;
             int timeMs  = (diff * 1000) / 200;
@@ -295,7 +294,6 @@ int test_manual_main(void)
         if(key == 'f') {
             showLogs = 0;           // turn off logs - there will be errors on findDevice when device doesn't exist 
             findDevice(FIND_DEV_CE | FIND_DEV_CS);
-
             showLogs = 1;           // turn on logs
             continue;
         }

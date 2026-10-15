@@ -39,7 +39,6 @@ char testFile[128];
 extern BYTE acsiBufferClear;        // should clear FIFO buffer on each acsi_cmd() call? 
 
 int test_rw_main(void)
-
 {
 	DWORD i, s, ind;
 	BYTE key, val;

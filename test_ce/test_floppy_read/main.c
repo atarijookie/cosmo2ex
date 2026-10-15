@@ -164,7 +164,6 @@ void jumpReadTest(int stopOnError)
         }
 
         didStop = 0;
-
     
         runs++;
     
@@ -235,7 +234,6 @@ void jumpReadTest(int stopOnError)
         
         ce_printf("Runs: %03d, Errors: %02d (%d.%d %%), Lazy: %02d (%d.%d %%)            \n", runs, errs, err / 10, err % 10, lazy, laz / 10, laz % 10);
         ce_printf("Runs: %03d, Errors: %02d (%d.%d %%), Lazy: %02d (%d.%d %%)            \n", runs, errs, err / 10, err % 10, lazy, laz / 10, laz % 10);
-
         
         Cconout(27);
         Cconout('k');       // restore cursor position

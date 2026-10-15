@@ -66,7 +66,6 @@ uint8_t hddIf;
 
 //--------------------------------------------------
 int test_manual2_main(void)
-
 {
     uint32_t scancode;
     uint32_t toEven;

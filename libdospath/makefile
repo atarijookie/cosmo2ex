@@ -18,7 +18,7 @@ TEST_CXXFLAGS	= $(CXXFLAGS) -I. -I../third_party/doctest
 all: libdospath.a
 
 libdospath.a: dirtranslator.o filenameshortener.o libexports.o utilslib.o
-	ar rcs libdospath.a dirtranslator.o filenameshortener.o libexports.o utilslib.o
+	$(AR) rcs libdospath.a dirtranslator.o filenameshortener.o libexports.o utilslib.o
 
 lib: libdospath.a
 

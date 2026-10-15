@@ -93,7 +93,6 @@ $(BUILD):
 
 clean:
 	$(AT)$(RM) $(TARGET) $(CONFIGDRIVE_TOS) $(OBJS) $(ALL_SUBTEST_OBJS) $(DEPS)
-
 	$(AT)$(RM) -r $(BUILD)
 
 -include $(DEPS)

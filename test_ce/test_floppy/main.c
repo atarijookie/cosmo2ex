@@ -193,7 +193,6 @@ void showMenu(void)
 }
 
 int test_floppy_main(void)
-
 {
     DWORD oldSp = Super(0);
 

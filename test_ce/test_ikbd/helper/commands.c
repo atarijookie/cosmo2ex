@@ -1,7 +1,6 @@
 #include "commands.h"
 #include "ikbd.h"
 
-
 const uint8_t ikbd_reset_data[]={0x80,0x01};
 
 void ikbd_reset(){

@@ -33,7 +33,6 @@ int test_filesystem_main(void)
     initBuffer();
 
     tosVersion = getTOSversion();
-
     out_sw("TOS version     : ", tosVersion);
     out_sc("Running from drv: ", fromDrive + 'A');
     
