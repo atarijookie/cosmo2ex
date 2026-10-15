@@ -53,24 +53,35 @@ void Scsi::SCSI_ReadWrite10(bool readNotWrite)
 }
 
 //---------------------------------------------
-void Scsi::readWriteGeneric(bool readNotWrite, uint32_t startingSector, uint32_t sectorCount)
+// check transfer size and range, on failure store sense + status and return false
+bool Scsi::checkTransferRange(uint32_t startingSector, uint32_t sectorCount)
 {
     uint32_t totalByteCount = sectorCount * 512;
 
     if(totalByteCount > 0xffffff) {                                     // if trying to send more than 16 MB of data at once, fail
-        logHdd(LOG_ERROR, "Scsi::readWriteGeneric() - tried to transfer more than 16 MB of data of once, fail");
+        logHdd(LOG_ERROR, "Scsi::checkTransferRange() - tried to transfer more than 16 MB of data of once, fail");
 
         storeSenseAndSendStatus(SCSI_ST_CHECK_CONDITION, SCSI_E_IllegalRequest, SCSI_ASC_NO_ADDITIONAL_SENSE, SCSI_ASCQ_NO_ADDITIONAL_SENSE);
-        return;
+        return false;
     }
 
     // get device capacity, so we can verify if we're not going out of range
     int64_t mediaCapacityInBytes, mediaCapacityInSectors;
     dataMedia->getCapacity(mediaCapacityInBytes, mediaCapacityInSectors);
 
-    if((startingSector + sectorCount - 1) > mediaCapacityInSectors) {   // trying to read out of range?
-        logHdd(LOG_ERROR, "Scsi::readWriteGeneric() - tried to go out of range");
+    if(((int64_t) startingSector + sectorCount) > mediaCapacityInSectors) {   // last sector would be past the end of media?
+        logHdd(LOG_ERROR, "Scsi::checkTransferRange() - tried to go out of range");
         storeSenseAndSendStatus(SCSI_ST_CHECK_CONDITION, SCSI_E_IllegalRequest, SCSI_ASC_LBA_OUT_OF_RANGE, SCSI_ASCQ_NO_ADDITIONAL_SENSE);
+        return false;
+    }
+
+    return true;
+}
+
+//---------------------------------------------
+void Scsi::readWriteGeneric(bool readNotWrite, uint32_t startingSector, uint32_t sectorCount)
+{
+    if(!checkTransferRange(startingSector, sectorCount)) {             // too big or out of range? status already set
         return;
     }
 
@@ -112,6 +123,10 @@ void Scsi::SCSI_Verify(void)
     sectorCount  = cmd[8];                      // get the # of sectors to read
     sectorCount  = sectorCount << 8;
     sectorCount |= cmd[9];
+
+    if(!checkTransferRange(startSectorNo, sectorCount)) {   // too big or out of range? status already set
+        return;
+    }
 
     if((cmd[2] & 0x02) == 0x02) {               // BytChk == 1? : compare with data
         bool res = compareSectors(startSectorNo, sectorCount);   // compare data
@@ -284,6 +299,8 @@ bool Scsi::compareSectors(uint32_t startSectorNo, uint32_t sectorCount)
 
     logHdd(LOG_DEBUG, "Scsi::compareSectors() - startSectorNo: %d, sectorCount: %d -- will do %d loops", startSectorNo, sectorCount, (sectorCount / BUFFER_SIZE_SECTORS) + 1);
 
+    sendDataAndStatus_notJustStatus = false;                // we're handling the _start(), _transferBlock() manually, so later we need to send the status manually
+
     uint32_t totalByteCount = sectorCount * 512;
     res = dataTrans->recvData_start(totalByteCount);        // try to start the write data transfer
 
@@ -292,6 +309,8 @@ bool Scsi::compareSectors(uint32_t startSectorNo, uint32_t sectorCount)
         return false;
     }
 
+    int blocks = 0;
+
     // now transfer the data in big chunks of BUFFER_SIZE_SECTORS
     while(sectorCount > 0) {
         // maximum transfer size is defined by the data media, so transfer that much or less
@@ -299,7 +318,8 @@ bool Scsi::compareSectors(uint32_t startSectorNo, uint32_t sectorCount)
         uint32_t byteCountNow      = sectorCountNow * 512;
 
         // get data from ST
-        res = dataTrans->recvData_transferBlock(dataBuffer, byteCountNow);
+        res = dataTrans->recvData_transferBlock(dataBuffer, byteCountNow, blocks == 0);     // transfer with header on 0th block, rest without header
+        blocks++;
 
         if(!res) {
             logHdd(LOG_ERROR, "Scsi::compareSectors() - dataTrans->recvData_transferBlock() failed");

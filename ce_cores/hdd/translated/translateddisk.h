@@ -10,7 +10,6 @@
 #include <string>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <semaphore.h>
 #include <unistd.h>
 
 #include "../../../libdospath/libdospath.h"
@@ -106,7 +105,7 @@ class ZipDirEntry {
 class TranslatedDisk
 {
 public:
-    TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig, int aSharedMemFd, sem_t* aSharedMemSemaphore, uint8_t* aSharedMemPointer);
+    TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig, int aSharedMemFd, uint8_t* aSharedMemPointer);
     virtual ~TranslatedDisk();
 
     void setMac(uint8_t* mac);
@@ -115,6 +114,7 @@ public:
     void findAttachedDisks(void);
 
     void processCommand(uint8_t *cmd);
+    void resetClientState(void);        // call when a new client connects - drop state of the previous one
 
     bool hostPathExists(std::string &hostPath, bool alsoCheckCaseInsensitive = false);
     bool hostPathExists_caseInsensitive(std::string hostPath, std::string &justPath, std::string &originalFileName, std::string &foundFileName);
@@ -128,7 +128,7 @@ public:
     bool driveIsEnabled(int driveIndex);
     void driveGetReport(int driveIndex, std::string &reportString);
 	const char * driveGetHostPath(int driveIndex) const {
-        if(driveIndex < 0 || driveIndex > MAX_DRIVES) return NULL;
+        if(driveIndex < 0 || driveIndex >= MAX_DRIVES) return NULL;
 		if(!conf[driveIndex].enabled) return NULL;
 		return conf[driveIndex].hostRootPath.c_str();
 	}
@@ -258,7 +258,7 @@ private:
     //-----------------------------------
     // helpers for Pexec()
     void onPexec_createImage(uint8_t *cmd);
-    void createImage(std::string &fullAtariPath, FILE *f, int fileSizeBytes, uint16_t atariTime, uint16_t atariDate);
+    bool createImage(std::string &fullAtariPath, FILE *f, int fileSizeBytes, uint16_t atariTime, uint16_t atariDate);
     void createDirEntry(bool isRoot, bool isDir, uint16_t date, uint16_t time, uint32_t fileSize, const char *dirEntryName, int sectorNoAbs, int sectorNoRel);
     void storeDirEntry(uint8_t *pEntry, const char *dirEntryName, bool isDir, uint16_t time, uint16_t date, uint16_t startingSector, uint32_t entrySizeBytes);
     void storeFatChain(uint8_t *pbFat, uint16_t sectorStart, uint16_t sectorEnd);
@@ -269,8 +269,6 @@ private:
     void onPexec_readSector(uint8_t *cmd);
     void onPexec_writeSector(uint8_t *cmd);
 
-    bool pexecWholeFileWasRead(void);
-
     uint16_t prgSectorStart;
     uint16_t prgSectorEnd;
     int  pexecDriveIndex;
@@ -280,7 +278,6 @@ private:
     std::string pexecFakeRootPath;
 
     uint8_t *pexecImage;
-    uint8_t *pexecImageReadFlags;
     //-----------------------------------
     // other ACSI command helpers
     ConfigService*          configService;

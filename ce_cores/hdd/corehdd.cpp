@@ -10,7 +10,6 @@
 #include <net/if.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <semaphore.h>
 #include <unistd.h>
 
 #include "misc/global.h"
@@ -25,11 +24,6 @@
 #include "../misc/statusreport.h"
 #include "../chipinterface/chipinterface.h"
 #include "../discovery/discovery.h"
-
-#define DEV_CHECK_TIME_MS       3000
-#define UPDATE_CHECK_TIME       1000
-#define INET_IFACE_CHECK_TIME   1000
-#define UPDATE_SCRIPTS_TIME     10000
 
 extern DebugVars    dbgVars;
 
@@ -48,9 +42,8 @@ CoreHdd::~CoreHdd()
 void CoreHdd::run(void)
 {
     // inBuff might contain whole written floppy sector + header size
-    uint8_t inBuff[INBUF_SIZE], outBuf[INBUF_SIZE];
+    uint8_t inBuff[INBUF_SIZE];
 
-    memset(outBuf, 0, INBUF_SIZE);
     memset(inBuff, 0, INBUF_SIZE);
 
     // create network chip interface
@@ -61,14 +54,13 @@ void CoreHdd::run(void)
     }
 
     int sharedMemFd;
-    sem_t* sharedMemSemaphore;
     uint8_t* sharedMemPointer;
-    ScreencastAcsiCommand::sharedMemoryOpen(sharedMemFd, &sharedMemSemaphore, &sharedMemPointer);
+    ScreencastAcsiCommand::sharedMemoryOpen(sharedMemFd, &sharedMemPointer);
 
     // create hdd clients, 1 hdd client per each tcp client
     for(int i=0; i<MAX_CLIENTS; i++) {
         ClientInfo* ci = ciHdd->clientGetByIndex(i);
-        hddClients[i] = new HddClient(ciHdd, ci, sharedMemFd, sharedMemSemaphore, sharedMemPointer);
+        hddClients[i] = new HddClient(ciHdd, ci, sharedMemFd, sharedMemPointer);
     }
 
     //------------------------------
@@ -116,6 +108,7 @@ void CoreHdd::run(void)
             int idx = ciHdd->acceptSocketIfNeededAndPossible();
 
             if(idx != FD_EMPTY) {
+                hddClients[idx]->onClientConnected();   // new client in this slot - drop state of the previous one
                 hddClients[idx]->onMacUpdated();
             }
         }
@@ -151,20 +144,11 @@ void CoreHdd::run(void)
         delete hddClients[i];
     }
 
-    ScreencastAcsiCommand::sharedMemoryClose(sharedMemFd, &sharedMemSemaphore, &sharedMemPointer);
+    ScreencastAcsiCommand::sharedMemoryClose(sharedMemFd, &sharedMemPointer);
 
     // destroy chip interface
     ciHdd->ciClose();
     delete ciHdd;
-}
-
-void CoreHdd::displayStatusToConsole(uint32_t now)
-{
-    static int progress = 0;
-
-    char progChars[4] = {'|', '/', '-', '\\'};
-    printf("\033[2K  [ %c ]  CE core is running\033[A\n", progChars[progress]);
-    progress = (progress + 1) % 4;
 }
 
 void CoreHdd::handleEvents(void)

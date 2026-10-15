@@ -3,7 +3,6 @@
 
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <semaphore.h>
 #include <unistd.h>
 
 #include "../misc/global.h"
@@ -22,7 +21,7 @@ class Scsi;
 class HddClient
 {
 public:
-    HddClient(ChipInterface* cin, ClientInfo* ci, int aSharedMemFd, sem_t* aSharedMemSemaphore, uint8_t* aSharedMemPointer);
+    HddClient(ChipInterface* cin, ClientInfo* ci, int aSharedMemFd, uint8_t* aSharedMemPointer);
     virtual ~HddClient();
 
     bool handleHdd(uint8_t* inBuff);
@@ -32,10 +31,9 @@ public:
     void sendHalfWord(void);
 
     void onMacUpdated(void);
+    void onClientConnected(void);
 
 private:
-    uint8_t inBuff[INBUF_SIZE];
-    uint8_t outBuf[INBUF_SIZE];
 
     ChipInterface* chipInterface;
     ClientInfo* ci;
@@ -44,11 +42,6 @@ private:
     Scsi* scsi;
     TranslatedDisk* translated;
     AcsiDataTrans* dataTrans;
-
-    // for screencast
-    int sharedMemFd;
-    sem_t* sharedMemSemaphore;
-    uint8_t *sharedMemPointer;
 
     //-----------------------------------
     // hard disk stuff
@@ -61,6 +54,7 @@ private:
     void handleFwVersion_hans(void);
 
     void saveHwConfig(void);
+    void resetHwConfig(void);
     uint8_t getIdBits(void);
 
     //----------------------------------

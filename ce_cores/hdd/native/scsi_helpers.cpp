@@ -108,22 +108,6 @@ void Scsi::ClearTheUnitAttention(void)
 }
 
 //----------------------------------------------
-void Scsi::showCommand(uint16_t id, uint16_t length, uint16_t errCode)
-{
-    char tmp[64];
-
-    memset(tmp, 0, 64);
-    sprintf(tmp, "%d - ", id);
-
-    uint16_t i;
-
-    for(i=0; i<length; i++) {
-        sprintf(tmp + 4 + i*3, "%02x ", cmd[i]);
-    }
-
-    int len = strlen(tmp);
-    sprintf(tmp + len, "- %02x", errCode);
-}
 //----------------------------------------------
 void Scsi::ICD7_to_SCSI6(void)
 {

@@ -26,7 +26,7 @@
 
 extern InterProcessEvents events;
 
-TranslatedDisk::TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig, int aSharedMemFd, sem_t* aSharedMemSemaphore, uint8_t* aSharedMemPointer)
+TranslatedDisk::TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig, int aSharedMemFd, uint8_t* aSharedMemPointer)
 {
     dataTrans = dt;
     this->hwConfig = hwConfig;
@@ -38,12 +38,18 @@ TranslatedDisk::TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig, int aShar
     pexecImage  = new uint8_t[PEXEC_DRIVE_SIZE_BYTES];
     memset(pexecImage, 0, PEXEC_DRIVE_SIZE_BYTES);
 
-    pexecImageReadFlags = new uint8_t[PEXEC_DRIVE_SIZE_SECTORS];
-    memset(pexecImageReadFlags, 0, PEXEC_DRIVE_SIZE_SECTORS);
 
     prgSectorStart  = 0;
     prgSectorEnd    = PEXEC_DRIVE_SIZE_SECTORS;
     pexecDriveIndex = -1;
+
+    for(int i=0; i<MAX_DRIVES; i++) {       // A and B are never set by findAttachedDisks(), so init all drives here
+        conf[i].enabled         = false;
+        conf[i].mediaChanged    = false;
+    }
+
+    currentDriveIndex   = 0;                // start on A: (floppy, not ours) until ST calls Dsetdrv() / Dsetpath()
+    currentDriveLetter  = 'A';
 
     for(int i=0; i<MAX_FILES; i++) {        // initialize host file structures
         files[i].hostHandle     = NULL;
@@ -61,7 +67,7 @@ TranslatedDisk::TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig, int aShar
 
     //ACSI commands "screencast"
     screencastAcsiCommand = new ScreencastAcsiCommand(dataTrans);
-    screencastAcsiCommand->sharedMemorySet(aSharedMemFd, aSharedMemSemaphore, aSharedMemPointer);
+    screencastAcsiCommand->sharedMemorySet(aSharedMemFd, aSharedMemPointer);
 
     initAsciiTranslationTable();
 }
@@ -75,7 +81,6 @@ TranslatedDisk::~TranslatedDisk()
     delete []dataBuffer2;
 
     delete []pexecImage;
-    delete []pexecImageReadFlags;
 
     destroyFindStorages();
 }
@@ -240,6 +245,24 @@ void TranslatedDisk::processCommand(uint8_t *cmd)
     dataTrans->sendDataAndStatus();     // send all the stuff after handling, if we got any
 }
 
+void TranslatedDisk::resetClientState(void)
+{
+    closeAllFiles();                        // previous client's open files
+
+    tempFindStorage.clear();                // previous client's Fsfirst() / Fsnext() results
+    clearFindStorages();
+
+    currentDriveIndex   = 0;                // start on A: (floppy, not ours) until ST calls Dsetdrv() / Dsetpath()
+    currentDriveLetter  = 'A';
+
+    for(int i=0; i<MAX_DRIVES; i++) {
+        conf[i].currentAtariPath = HOSTPATH_SEPAR_STRING;   // back to root on every drive
+        conf[i].mediaChanged     = conf[i].enabled;         // new client should re-read enabled drives
+    }
+
+    pexecDriveIndex = -1;                   // no Pexec() image for this client yet
+}
+
 void TranslatedDisk::onGetMounts(uint8_t *cmd)
 {
     char tmp[256];
@@ -305,7 +328,7 @@ void TranslatedDisk::closeAllFiles(void)
 
 void TranslatedDisk::closeFileByIndex(int index)
 {
-    if(index < 0 || index > MAX_FILES) {
+    if(index < 0 || index >= MAX_FILES) {
         return;
     }
 
@@ -402,9 +425,9 @@ void TranslatedDisk::onGetConfig(uint8_t *cmd)
     int iUtcOffset = (int) (utcOffset * 10.0);
 
     time_t timenow      = time(NULL);                           // get time -- the UTC offset / timezone will be applied in localtime()
-    struct tm loctime   = *localtime(&timenow);
+    struct tm loctime;
 
-    if((loctime.tm_year + 1900) < 2014) {                       // if the retrieved date/time seems to be wrong (too old), clear it and don't set it!
+    if(localtime_r(&timenow, &loctime) == NULL || (loctime.tm_year + 1900) < 2014) { // failed to convert, or the retrieved date/time seems to be wrong (too old), clear it and don't set it!
         memset(&loctime, 0, sizeof(tm));
         setDateTime = false;
     }
@@ -853,6 +876,8 @@ void TranslatedDisk::onStLog(uint8_t *cmd)
         return;
     }
 
+    dataBuffer[511] = 0;                            // make sure the text from ST is terminated
+
     logHdd(LOG_DEBUG, "ST log: %s", dataBuffer);
     dataTrans->setStatus(E_OK);
 }
@@ -869,6 +894,8 @@ void TranslatedDisk::onStHttp(uint8_t *cmd)
         dataTrans->setStatus(EINTRN);
         return;
     }
+
+    dataBuffer[511] = 0;                            // make sure the text from ST is terminated
 
 //    TDownloadRequest tdr;
 //    tdr.srcUrl          = std::string((const char*)dataBuffer);

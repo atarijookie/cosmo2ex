@@ -21,7 +21,6 @@ private:
     HddClient* hddClients[MAX_CLIENTS];
 
     void handleEvents(void);
-    void displayStatusToConsole(uint32_t now);
 };
 
 class LoadTracker {
@@ -53,7 +52,7 @@ public:
 
     void calculate(void) {  // call this on the end of 1 second interval to calculate load
         cycle.total     = Utils::getCurrentMs() - cycle.start;
-        loadPercents    = (busy.total * 100) / cycle.total;
+        loadPercents    = (cycle.total > 0) ? ((busy.total * 100) / cycle.total) : 0;  // called within the same ms as clear()? no load info yet
 
         suspicious      = false;
 

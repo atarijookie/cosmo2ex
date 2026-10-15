@@ -131,15 +131,16 @@ void TranslatedDisk::onPexec_createImage(uint8_t *cmd)
     //----------
     // get file date & time
     struct stat attr;
-    tm *timestr;
+    tm timeStruct;
+    tm *timestr = NULL;                                             // NULL -> date & time will be 0
 
 	int ires = stat(hostName.c_str(), &attr);					    // get the file status
 
 	if(ires != 0) {
 		logHdd(LOG_ERROR, "TranslatedDisk::onPexec_createImage -- stat() failed, errno %d", errno);
+	} else {
+		timestr = localtime_r(&attr.st_mtime, &timeStruct);         // convert time_t to tm structure, NULL on failure
 	}
-
-	timestr = localtime(&attr.st_mtime);			    	        // convert time_t to tm structure
 
     uint16_t atariTime = Utils::fileTimeToAtariTime(timestr);
     uint16_t atariDate = Utils::fileTimeToAtariDate(timestr);
@@ -157,13 +158,19 @@ void TranslatedDisk::onPexec_createImage(uint8_t *cmd)
         return;
     }
 
-    createImage(fullAtariPath, f, fileSizeBytes, atariTime, atariDate); // now create the image
+    res = createImage(fullAtariPath, f, fileSizeBytes, atariTime, atariDate); // now create the image
 
     fclose(f);                                                      // close the file
+
+    if(!res) {                                                      // failed to read the PRG into image? error
+        dataTrans->setStatus(EINTRN);
+        return;
+    }
+
     dataTrans->setStatus(E_OK);                                     // ok!
 }
 
-void TranslatedDisk::createImage(std::string &fullAtariPath, FILE *f, int fileSizeBytes, uint16_t atariTime, uint16_t atariDate)
+bool TranslatedDisk::createImage(std::string &fullAtariPath, FILE *f, int fileSizeBytes, uint16_t atariTime, uint16_t atariDate)
 {
     int fileSizeSectors = (fileSizeBytes / 512) + (((fileSizeBytes % 512) == 0) ? 0 : 1); // calculate how many sector the file takes
 
@@ -180,8 +187,6 @@ void TranslatedDisk::createImage(std::string &fullAtariPath, FILE *f, int fileSi
 
     //memset(pexecImage,        0, PEXEC_DRIVE_SIZE_BYTES);                                     // clear the whole image
     memset(pexecImage,          0, (fat1startingSector + 2*PEXEC_FAT_SECTORS_NEEDED) * 512);    // clear just the FAT section of image (to speed this up)
-
-    memset(pexecImageReadFlags, 0, PEXEC_DRIVE_SIZE_SECTORS);                   // clear all the READ flags
 
     //--------------
     uint8_t *pFat1 = pexecImage + (fat1startingSector * 512);  // pointer to FAT1
@@ -281,12 +286,18 @@ void TranslatedDisk::createImage(std::string &fullAtariPath, FILE *f, int fileSi
     logHdd(LOG_DEBUG, "TranslatedDisk::createImage() - storing PRG on relative sectors %d - %d (absolute starting sector: %d)", prgSectorStart, prgSectorEnd, curSectorAbs);
 
     uint8_t *pFileInImage = pexecImage + (curSectorAbs * 512); // get pointer to file in image
-    fread(pFileInImage, 1, fileSizeBytes, f);
+    size_t got = fread(pFileInImage, 1, fileSizeBytes, f);
+
+    if(got != (size_t) fileSizeBytes) {                     // didn't get the whole PRG? the image would be broken
+        logHdd(LOG_ERROR, "TranslatedDisk::createImage() - read only %d bytes out of %d", (int) got, fileSizeBytes);
+        return false;
+    }
 
     storeFatChain (pFat1, prgSectorStart, prgSectorEnd);    // mark PRG location in FAT chain
     //-------------
     //and now make copy of FAT1 to FAT2
     memcpy(pFat2, pFat1, PEXEC_FAT_BYTES_NEEDED);
+    return true;
 }
 
 void TranslatedDisk::storeFatChain(uint8_t *pbFat, uint16_t sectorStart, uint16_t sectorEnd)
@@ -393,7 +404,7 @@ void TranslatedDisk::onPexec_readSector(uint8_t *cmd)
 
     logHdd(LOG_DEBUG, "TranslatedDisk::onPexec_readSector() - startingSector: %d, sectorCount: %d", startingSector, sectorCount);
 
-    if(startingSector + sectorCount > PEXEC_DRIVE_SIZE_SECTORS) {       // would be out of boundary? fail
+    if(startingSector + sectorCount > PEXEC_DRIVE_SIZE_SECTORS || byteCount > ACSI_BUFFER_SIZE) {   // would be out of boundary or wouldn't fit in buffer? fail
         logHdd(LOG_ERROR, "TranslatedDisk::onPexec_readSector() - out of range!");
 
         dataTrans->setStatus(EINTRN);
@@ -402,10 +413,6 @@ void TranslatedDisk::onPexec_readSector(uint8_t *cmd)
 
     uint8_t *pSector = pexecImage + (startingSector * 512);                // get pointer to start of the sector
     dataTrans->addDataBfr(pSector, byteCount, true);                    // add that data to dataTrans
-
-    for(int i=0; i<sectorCount; i++) {                                  // now mark those read sectors as already read
-        pexecImageReadFlags[startingSector + i] = 1;
-    }
 
     dataTrans->setStatus(E_OK);                                         // everything OK
 }
@@ -418,7 +425,7 @@ void TranslatedDisk::onPexec_writeSector(uint8_t *cmd)
 
     logHdd(LOG_DEBUG, "TranslatedDisk::onPexec_writeSector() - startingSector: %d, sectorCount: %d", startingSector, sectorCount);
 
-    if(startingSector + sectorCount > PEXEC_DRIVE_SIZE_SECTORS) {       // would be out of boundary? fail
+    if(startingSector + sectorCount > PEXEC_DRIVE_SIZE_SECTORS || byteCount > ACSI_BUFFER_SIZE) {   // would be out of boundary or wouldn't fit in buffer? fail
         logHdd(LOG_ERROR, "TranslatedDisk::onPexec_writeSector() - out of range!");
 
         dataTrans->setStatus(EINTRN);
@@ -437,20 +444,6 @@ void TranslatedDisk::onPexec_writeSector(uint8_t *cmd)
     memcpy(pSector, dataBuffer, byteCount);
 
     dataTrans->setStatus(E_OK);                                         // everything OK
-}
-
-bool TranslatedDisk::pexecWholeFileWasRead(void)
-{
-    int i;
-
-    // go through all the sectors of the PRG and see if all were read
-    for(i = prgSectorStart; i <= prgSectorEnd; i++) {
-        if(pexecImageReadFlags[i] == 0) {       // this sector wasn't read? The whole wasn't read yet
-            return false;
-        }
-    }
-
-    return true;                                // we didn't find a sector which wasn't read, so the whole file was read
 }
 
 void TranslatedDisk::storeIntelWord(uint8_t *p, uint16_t a)

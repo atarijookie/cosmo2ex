@@ -68,14 +68,33 @@ void AcsiDataTrans::setStatus(uint8_t stat)
     statusWasSet    = true;
 }
 
+// check if 'cnt' more bytes can still fit into buffer, log error if they can't
+bool AcsiDataTrans::canFit(uint32_t cnt)
+{
+    if(count > ACSI_BUFFER_SIZE || cnt > (ACSI_BUFFER_SIZE - count)) {
+        logHdd(LOG_ERROR, "AcsiDataTrans - can't add %u bytes, buffer has %u of %u bytes used, data dropped!", cnt, count, ACSI_BUFFER_SIZE);
+        return false;
+    }
+
+    return true;
+}
+
 void AcsiDataTrans::addDataByte(uint8_t val)
 {
+    if(!canFit(1)) {
+        return;
+    }
+
     buffer[count] = val;
     count++;
 }
 
 void AcsiDataTrans::addDataDword(uint32_t val)
 {
+    if(!canFit(4)) {
+        return;
+    }
+
     buffer[count    ] = (val >> 24) & 0xff;
     buffer[count + 1] = (val >> 16) & 0xff;
     buffer[count + 2] = (val >>  8) & 0xff;
@@ -86,6 +105,10 @@ void AcsiDataTrans::addDataDword(uint32_t val)
 
 void AcsiDataTrans::addDataWord(uint16_t val)
 {
+    if(!canFit(2)) {
+        return;
+    }
+
     buffer[count    ] = (val >> 8) & 0xff;
     buffer[count + 1] = (val     ) & 0xff;
 
@@ -94,6 +117,10 @@ void AcsiDataTrans::addDataWord(uint16_t val)
 
 void AcsiDataTrans::addDataBfr(const void *data, uint32_t cnt, bool padToMul16)
 {
+    if(!canFit(cnt)) {
+        return;
+    }
+
     memcpy(&buffer[count], data, cnt);
     count += cnt;
 
@@ -114,6 +141,10 @@ void AcsiDataTrans::padDataToMul16(void)
     int pad = 16 - mod;             // how many we need to add to make count % 16 equal to 0?
 
     if(mod != 0) {                  // if we should pad something
+        if(!canFit(pad)) {
+            return;
+        }
+
         memset(&buffer[count], 0, pad); // set the padded bytes to zero and add this count
         count += pad;
 
@@ -254,6 +285,11 @@ uint32_t AcsiDataTrans::getCount(void)
 
 void AcsiDataTrans::addZerosUntilSize(uint32_t finalBufferCnt)
 {
+    if(finalBufferCnt > ACSI_BUFFER_SIZE) {
+        logHdd(LOG_ERROR, "AcsiDataTrans::addZerosUntilSize - %u is more than buffer size %u, limiting", finalBufferCnt, ACSI_BUFFER_SIZE);
+        finalBufferCnt = ACSI_BUFFER_SIZE;
+    }
+
     while(count < finalBufferCnt) {         // add zeros until we don't have enough
         addDataByte(0);
     }

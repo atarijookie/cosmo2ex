@@ -17,19 +17,14 @@
 #include "../misc/utils.h"
 #include "../misc/statusreport.h"
 
-#define DEV_CHECK_TIME_MS       3000
-#define UPDATE_CHECK_TIME       1000
-#define INET_IFACE_CHECK_TIME   1000
-#define UPDATE_SCRIPTS_TIME     10000
-
 extern DebugVars    dbgVars;
 
-HddClient::HddClient(ChipInterface* chipInterfaceIn, ClientInfo* ci, int aSharedMemFd, sem_t* aSharedMemSemaphore, uint8_t* aSharedMemPointer)
+HddClient::HddClient(ChipInterface* chipInterfaceIn, ClientInfo* ci, int aSharedMemFd, uint8_t* aSharedMemPointer)
 {
     chipInterface = chipInterfaceIn;
     this->ci = ci;
 
-    hwConfig.changed = false;
+    resetHwConfig();
 
     retryMod = new RetryModule();
 
@@ -41,10 +36,31 @@ HddClient::HddClient(ChipInterface* chipInterfaceIn, ClientInfo* ci, int aShared
     scsi->setAcsiDataTrans(dataTrans);
     scsi->updateTranslatedBootMedia();   // update CE_DD bootsector with proper SCSI ID
 
-    translated = new TranslatedDisk(dataTrans, &hwConfig, aSharedMemFd, aSharedMemSemaphore, aSharedMemPointer);
+    translated = new TranslatedDisk(dataTrans, &hwConfig, aSharedMemFd, aSharedMemPointer);
+}
 
-    memset(outBuf, 0, INBUF_SIZE);
-    memset(inBuff, 0, INBUF_SIZE);
+void HddClient::resetHwConfig(void)
+{
+    memset(&hwConfig, 0, sizeof(hwConfig));
+    hwConfig.version        = 0;                    // unknown until Hans reports it
+    hwConfig.hddIface       = HDD_IF_ACSI;          // assume ACSI until Hans reports the interface
+    hwConfig.scsiMachine    = SCSI_MACHINE_UNKNOWN;
+    hwConfig.tosVersion     = 0;
+    hwConfig.changed        = false;
+}
+
+// call this when a new TCP client was accepted into this slot - don't let it inherit state of the previous client
+void HddClient::onClientConnected(void)
+{
+    logHdd(LOG_DEBUG, "HddClient::onClientConnected - resetting client state");
+
+    resetHwConfig();                        // new device - HW info will come with its FW version
+    scsi->setHddIface(hwConfig.hddIface);   // keep CE_DD bootsector in sync with hwConfig
+
+    retryMod->clear();                      // previous client's command / data must not be used for RETRY
+    dataTrans->clear();
+
+    translated->resetClientState();         // close files, drop find storages, reset current drive & paths
 }
 
 HddClient::~HddClient()
@@ -99,6 +115,7 @@ void HddClient::handleAcsiCommand(uint8_t *bufIn)
     uint8_t acsiId = bufIn[0] >> 5;                            // get just ACSI ID
     if(acsiIdInfo->acsiIDdevType[acsiId] == DEVTYPE_OFF) {    // if this ACSI ID is off, reply with error and quit
         logHdd(LOG_WARNING, "HddClient::handleAcsiCommand - acsiId %d is OFF, sending CHECK CONDITION", acsiId);
+        dataTrans->clear();                                     // drop data / direction left over from previous command, send just status
         dataTrans->setStatus(SCSI_ST_CHECK_CONDITION);
         dataTrans->sendDataAndStatus();
         return;
@@ -200,6 +217,7 @@ void HddClient::handleFwVersion_hans(void)
     if(hwConfig.changed) {
         hwConfig.changed = false;
 
+        scsi->setHddIface(hwConfig.hddIface);       // ACSI or SCSI - CE_DD bootsector stores the ID differently for each
         scsi->updateTranslatedBootMedia();   // also update CE_DD bootsector with proper SCSI ID
 
         saveHwConfig();                             // save the new config
@@ -271,7 +289,8 @@ void HddClient::extractInterfaceInfo(uint8_t xilinxInfo)
         logHdd(LOG_DEBUG, "Found out that we're running on SCSI bus - will resend the ID bits configuration to Hans");
     }
 
-    if(memcmp(&hwConfigOld, &hwConfig, sizeof(THwConfig)) != 0) {    // config changed? save it
+    // compare fields, not memory (struct padding is not guaranteed to be copied by 'hwConfigOld = hwConfig')
+    if(hwConfigOld.version != hwConfig.version || hwConfigOld.hddIface != hwConfig.hddIface) {    // config changed? save it
         hwConfig.changed = true;
     }
 }

@@ -3,7 +3,6 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <semaphore.h>
 #include <unistd.h>
 
 #include "screencastacsicommand.h"
@@ -22,40 +21,33 @@ ScreencastAcsiCommand::~ScreencastAcsiCommand()
 	delete []dataBuffer;
 }
 
-void ScreencastAcsiCommand::sharedMemoryOpen(int& aSharedMemFd, sem_t** aSharedMemSemaphore, uint8_t** aSharedMemPointer)
+void ScreencastAcsiCommand::sharedMemoryOpen(int& aSharedMemFd, uint8_t** aSharedMemPointer)
 {
 	// initialize values
 	aSharedMemFd = -1;
 	*aSharedMemPointer = NULL;
-	*aSharedMemSemaphore = SEM_FAILED;
-
-    // create semaphore
-    std::string semaphoreName = Utils::dotEnvValue("SCREENCAST_SEMAPHORE_NAME");
-    *aSharedMemSemaphore = sem_open(semaphoreName.c_str(), O_CREAT, 0600, 0);    // owner only - only ce_cores uses it
-
-    if(*aSharedMemSemaphore == SEM_FAILED) {
-        logHdd(LOG_ERROR, "ScreenCastAcsiCommand::openSharedMemory - failed to create semaphore: %d", errno);
-    } else if(semaphoreName.length() > 1) {     // semaphore '/name' lives in /dev/shm/sem.name - fix mode if it existed before with other mode
-        std::string semPath = std::string("/dev/shm/sem.") + semaphoreName.substr(1);
-        chmod(semPath.c_str(), 0600);
-    }
 
     // open the shared memory file - owner only, webserver runs as the same user and reads it
     std::string sharedMemoryName = Utils::dotEnvValue("SCREENCAST_MEMORY_NAME");
     aSharedMemFd = shm_open(sharedMemoryName.c_str(), O_RDWR | O_CREAT, 0600);
 
     if(aSharedMemFd < 0) {
-        logHdd(LOG_ERROR, "ScreenCastAcsiCommand::openSharedMemory - failed to create shared memory file: %d", errno);
+        logHdd(LOG_ERROR, "ScreencastAcsiCommand::sharedMemoryOpen - failed to create shared memory file: %d", errno);
         return;
     }
 
     fchmod(aSharedMemFd, 0600);                 // mode from shm_open() is not applied when it already existed
 
+    // resize from 0 to required size - must succeed before touching the mapping, otherwise access past end of file -> SIGBUS
+    if(ftruncate(aSharedMemFd, SCREENCAST_BUFFER_SIZE) != 0) {
+        logHdd(LOG_ERROR, "ScreencastAcsiCommand::sharedMemoryOpen - ftruncate() failed : %s", strerror(errno));
+        return;                                         // fd stays open, sharedMemoryClose() will close and unlink it
+    }
+
     // map the shared memory
     void* mmapRes = mmap(0, SCREENCAST_BUFFER_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, aSharedMemFd, 0);
 
     if(mmapRes != MAP_FAILED) {                         // on success, use as address
-        ftruncate(aSharedMemFd, SCREENCAST_BUFFER_SIZE);    // resize from 0 to required size
         *aSharedMemPointer = (uint8_t*) mmapRes;                // store pointer
         memset(*aSharedMemPointer, 0, SCREENCAST_BUFFER_SIZE);  // set all to zeros
 
@@ -65,16 +57,16 @@ void ScreencastAcsiCommand::sharedMemoryOpen(int& aSharedMemFd, sem_t** aSharedM
             fread(*aSharedMemPointer + 1, 1, 32032, f);   // fill the initial screencast buffer with logo
             fclose(f);
         } else {
-            logHdd(LOG_WARNING, "ScreenCastAcsiCommand::openSharedMemory - failed to load %s", logoPath.c_str());
+            logHdd(LOG_WARNING, "ScreencastAcsiCommand::sharedMemoryOpen - failed to load %s", logoPath.c_str());
         }
 
-        logHdd(LOG_DEBUG, "ScreenCastAcsiCommand::openSharedMemory - mmap() success");
+        logHdd(LOG_DEBUG, "ScreencastAcsiCommand::sharedMemoryOpen - mmap() success");
     } else {                        // on error, log error
-        logHdd(LOG_ERROR, "ScreenCastAcsiCommand::openSharedMemory - mmap() shared memory failed : %d", errno);
+        logHdd(LOG_ERROR, "ScreencastAcsiCommand::sharedMemoryOpen - mmap() shared memory failed : %d", errno);
     }
 }
 
-void ScreencastAcsiCommand::sharedMemoryClose(int& aSharedMemFd, sem_t** aSharedMemSemaphore, uint8_t** aSharedMemPointer)
+void ScreencastAcsiCommand::sharedMemoryClose(int& aSharedMemFd, uint8_t** aSharedMemPointer)
 {
 	if(*aSharedMemPointer) {                  // got pointer to shared memory?
 	    munmap(*aSharedMemPointer, SCREENCAST_BUFFER_SIZE);
@@ -88,20 +80,11 @@ void ScreencastAcsiCommand::sharedMemoryClose(int& aSharedMemFd, sem_t** aShared
         std::string sharedMemoryName = Utils::dotEnvValue("SCREENCAST_MEMORY_NAME");
 	    shm_unlink(sharedMemoryName.c_str());
 	}
-
-	if(*aSharedMemSemaphore != SEM_FAILED) {  // got semaphore?
-	    sem_close(*aSharedMemSemaphore);
-	    *aSharedMemSemaphore = SEM_FAILED;
-
-        std::string semaphoreName = Utils::dotEnvValue("SCREENCAST_SEMAPHORE_NAME");
-	    sem_unlink(semaphoreName.c_str());
-	}
 }
 
-void ScreencastAcsiCommand::sharedMemorySet(int aSharedMemFd, sem_t* aSharedMemSemaphore, uint8_t* aSharedMemPointer)
+void ScreencastAcsiCommand::sharedMemorySet(int aSharedMemFd, uint8_t* aSharedMemPointer)
 {
     sharedMemFd = aSharedMemFd;
-    sharedMemSemaphore = aSharedMemSemaphore;
     sharedMemPointer = aSharedMemPointer;
 }
 
@@ -122,7 +105,7 @@ void ScreencastAcsiCommand::processCommand(uint8_t *command)
         case TRAN_CMD_SENDSCREENCAST:                    // ST sends screen buffer
             readScreen();
             break;
-        case TRAN_CMD_SCREENCASTPALETTE:                    // ST sends screen buffer
+        case TRAN_CMD_SCREENCASTPALETTE:                    // ST sends palette
             readPalette();
             break;
     }
@@ -133,21 +116,21 @@ void ScreencastAcsiCommand::processCommand(uint8_t *command)
 
 void ScreencastAcsiCommand::readScreen(void)
 {
-    logHdd(LOG_DEBUG, "ScreencastAcsiCommand::processCommand TRAN_CMD_SENDSCREENCAST");
+    logHdd(LOG_DEBUG, "ScreencastAcsiCommand::readScreen TRAN_CMD_SENDSCREENCAST");
     uint8_t iScreenmode = cmd[5];
-    logHdd(LOG_DEBUG, "ScreencastAcsiCommand::processCommand screenmode %d",iScreenmode);
+    logHdd(LOG_DEBUG, "ScreencastAcsiCommand::readScreen screenmode %d",iScreenmode);
 
     uint32_t byteCount = Utils::get24bits(cmd + 6);
-    logHdd(LOG_DEBUG, "ScreencastAcsiCommand::processCommand bytes %d",byteCount);
+    logHdd(LOG_DEBUG, "ScreencastAcsiCommand::readScreen bytes %d",byteCount);
 
     if(iScreenmode<0 || iScreenmode>2) {                       // unknown screenmode?
-        logHdd(LOG_DEBUG, "ScreencastAcsiCommand::processCommand unknown screenmode %d",iScreenmode);
+        logHdd(LOG_DEBUG, "ScreencastAcsiCommand::readScreen unknown screenmode %d",iScreenmode);
         dataTrans->setStatus(E_NOTHANDLED);
         return;
     }
 
-    if(byteCount > (254 * 512)) {                                   // requesting to transfer more than 254 sectors at once? fail!
-        logHdd(LOG_DEBUG, "ScreencastAcsiCommand::processCommand too many sectors %d",byteCount);
+    if(byteCount > (SCREENCAST_BUFFER_SIZE - 16)) {                 // more than fits in dataBuffer (incl. padding to 16)? fail!
+        logHdd(LOG_DEBUG, "ScreencastAcsiCommand::readScreen too many bytes %d, max is %d", byteCount, SCREENCAST_BUFFER_SIZE - 16);
         dataTrans->setStatus(EINTRN);
         return;
     }
@@ -178,21 +161,21 @@ void ScreencastAcsiCommand::readScreen(void)
 
 void ScreencastAcsiCommand::readPalette(void)
 {
-    logHdd(LOG_DEBUG, "ScreencastAcsiCommand::processCommand TRAN_CMD_SENDSCREENCAST");
+    logHdd(LOG_DEBUG, "ScreencastAcsiCommand::readPalette TRAN_CMD_SCREENCASTPALETTE");
     uint8_t iScreenmode = cmd[5];
-    logHdd(LOG_DEBUG, "ScreencastAcsiCommand::processCommand screenmode %d",iScreenmode);
+    logHdd(LOG_DEBUG, "ScreencastAcsiCommand::readPalette screenmode %d",iScreenmode);
 
     uint32_t byteCount = Utils::get24bits(cmd + 6);
-    logHdd(LOG_DEBUG, "ScreencastAcsiCommand::processCommand bytes %d",byteCount);
+    logHdd(LOG_DEBUG, "ScreencastAcsiCommand::readPalette bytes %d",byteCount);
 
     if(iScreenmode<0 || iScreenmode>2) {                       // unknown screenmode?
-        logHdd(LOG_DEBUG, "ScreencastAcsiCommand::processCommand unknown screenmode %d",iScreenmode);
+        logHdd(LOG_DEBUG, "ScreencastAcsiCommand::readPalette unknown screenmode %d",iScreenmode);
         dataTrans->setStatus(E_NOTHANDLED);
         return;
     }
 
-    if(byteCount > (254 * 512)) {                                   // requesting to transfer more than 254 sectors at once? fail!
-        logHdd(LOG_DEBUG, "ScreencastAcsiCommand::processCommand too many sectors %d",byteCount);
+    if(byteCount > (SCREENCAST_BUFFER_SIZE - 16)) {                 // more than fits in dataBuffer (incl. padding to 16)? fail!
+        logHdd(LOG_DEBUG, "ScreencastAcsiCommand::readPalette too many bytes %d, max is %d", byteCount, SCREENCAST_BUFFER_SIZE - 16);
         dataTrans->setStatus(EINTRN);
         return;
     }

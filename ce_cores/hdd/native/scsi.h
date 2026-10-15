@@ -64,6 +64,7 @@ public:
     void findAttachedDisks(void);
     void processCommand(uint8_t *command);
     void updateTranslatedBootMedia(void);
+    void setHddIface(int hddIface);
 
     TDevInfo* getDevInfo(int id) {
         if(id < 0 || id >= 8) return NULL;
@@ -130,8 +131,8 @@ private:
     void SCSI_ReadWrite10(bool readNotWrite);
     void SCSI_Verify(void);
 
-    void showCommand(uint16_t id, uint16_t length, uint16_t errCode);
 
+    bool checkTransferRange(uint32_t startingSector, uint32_t sectorCount);
     void readWriteGeneric(bool readNotWrite, uint32_t startingSector, uint32_t sectorCount);
     void storeSenseAndSendStatus(uint8_t status, uint8_t senseKey, uint8_t additionalSenseCode, uint8_t ascq);
 

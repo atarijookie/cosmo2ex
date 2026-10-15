@@ -12,8 +12,19 @@
 
 RetryModule::RetryModule(void)
 {
-    memset(fullCmd, 0, ACSI_CMD_SIZE);
     buffer = new uint8_t[ACSI_BUFFER_SIZE];
+    clear();
+}
+
+// forget the stored command, data and status (e.g. when a new client connects)
+void RetryModule::clear(void)
+{
+    memset(fullCmd, 0, ACSI_CMD_SIZE);
+    isIcd           = 0;
+    justCmd         = 0;
+    tag1            = 0;
+    tag2            = 0;
+    module          = 0;
 
     dataDirection   = DATA_DIRECTION_UNKNOWN;
     count           = 0;

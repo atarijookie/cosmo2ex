@@ -165,7 +165,7 @@ void TranslatedDisk::onDgetpath(uint8_t *cmd)
         whichDrive--;
     }
 
-    if(!conf[whichDrive].enabled) {
+    if(whichDrive < 0 || whichDrive >= MAX_DRIVES || !conf[whichDrive].enabled) {
         logHdd(LOG_DEBUG, "TranslatedDisk::onDgetpath - which drive: %d - not enabled!", whichDrive);
 
         dataTrans->setStatus(E_NOTHANDLED);         // if we don't have this, not handled
@@ -365,7 +365,7 @@ void TranslatedDisk::onFsnext(uint8_t *cmd)
 
     int dtaRemaining = fs->count - dirIndex;                    // calculate how many we have until the end
 
-    if(dtaRemaining == 0) {                                     // nothing more to transfer?
+    if(dtaRemaining <= 0) {                                     // nothing more to transfer (or dirIndex past the end)?
         logHdd(LOG_DEBUG, "TranslatedDisk::onFsnext(%08x) - no more DTA remaining", dta);
 
         fs->clear();                                            // we can clear this findStorage - you wouldn't get more from it anyway
@@ -412,7 +412,7 @@ void TranslatedDisk::onDfree(uint8_t *cmd)
         whichDrive--;
     }
 
-    if(!conf[whichDrive].enabled) {
+    if(whichDrive < 0 || whichDrive >= MAX_DRIVES || !conf[whichDrive].enabled) {
         dataTrans->setStatus(E_NOTHANDLED);         // if we don't have this, not handled
         return;
     }
@@ -618,7 +618,7 @@ void TranslatedDisk::onFrename(uint8_t *cmd)
     res  = createFullAtariPathAndFullHostPath(oldAtariName, fullAtariPathOld, atariDriveIndexOld, oldHostName, wfm1);
     res2 = createFullAtariPathAndFullHostPath(newAtariName, fullAtariPathNew, atariDriveIndexNew, newHostName, wfm2);
 
-    if(wfm1) {                                                          // if the path will be available in a while, but we're waiting for mount to finish now
+    if(wfm1 || wfm2) {                                                  // if either path will be available in a while, but we're waiting for mount to finish now
         logHdd(LOG_DEBUG, "TranslatedDisk::onFrename -- waiting for mount, call this function again to succeed later.");
 
         dataTrans->setStatus(E_WAITING_FOR_MOUNT);
@@ -1014,13 +1014,6 @@ void TranslatedDisk::onFopen(uint8_t *cmd)
         return;
     }
 
-    if((mode & 0x07) != 0) {      // if it's WRITE mode and read only, quit
-        logHdd(LOG_ERROR, "TranslatedDisk::onFopen - %s - fopen mode is write, but file is read only, fail! ", atariName.c_str());
-
-        dataTrans->setStatus(EACCDN);
-        return;
-    }
-
     int index = findEmptyFileSlot();
 
     if(index == -1) {                                               // no place for new file? No more handles.
@@ -1048,13 +1041,18 @@ void TranslatedDisk::onFopen(uint8_t *cmd)
         default:    fopenMode = mode_S_READ;        justRead = true;    break;
     }
 
-    if(justRead) {                              // if we should just read from the file (not write and thus create if does not exist)
-        if(!hostPathExists(hostName, true)) {   // and the file does not exist
-            logHdd(LOG_ERROR, "TranslatedDisk::onFopen - %s - fopen mode is just read, but the file does not exist, failed!", hostName.c_str());
+    if(!hostPathExists(hostName, true)) {       // Fopen() never creates a file, so it must exist in any mode
+        logHdd(LOG_ERROR, "TranslatedDisk::onFopen - %s - the file does not exist, failed!", hostName.c_str());
 
-            dataTrans->setStatus(EFILNF);       // quit with FILE NOT FOUND
-            return;
-        }
+        dataTrans->setStatus(EFILNF);           // quit with FILE NOT FOUND
+        return;
+    }
+
+    if(!justRead && access(hostName.c_str(), W_OK) != 0) {     // if it's WRITE mode and the file is read only, quit
+        logHdd(LOG_ERROR, "TranslatedDisk::onFopen - %s - fopen mode is write, but file is read only, fail!", hostName.c_str());
+
+        dataTrans->setStatus(EACCDN);
+        return;
     }
 
     // create file and close it
@@ -1159,7 +1157,14 @@ void TranslatedDisk::onFdatime(uint8_t *cmd)
             return;
         }
 
-        tm *time = localtime(&attr.st_mtime);                       // convert time_t to tm structure
+        tm timeStruct;
+        tm *time = localtime_r(&attr.st_mtime, &timeStruct);       // convert time_t to tm structure, NULL on failure
+
+        if(time == NULL) {
+            logHdd(LOG_ERROR, "TranslatedDisk::onFdatime -- localtime_r() failed for %s", files[index].hostPath.c_str());
+            dataTrans->setStatus(EINTRN);
+            return;
+        }
 
         uint16_t atariTime = Utils::fileTimeToAtariTime(time);
         uint16_t atariDate = Utils::fileTimeToAtariDate(time);
@@ -1207,16 +1212,8 @@ void TranslatedDisk::onFread(uint8_t *cmd)
         }
     }
 
-    int mod = byteCount % 16;       // how many we got in the last 1/16th part?
-    int pad = 0;
-
-    if(mod != 0) {
-        pad = 16 - mod;             // how many we need to add to make count % 16 equal to 0?
-    }
-
-    uint32_t transferSizeBytes = byteCount + pad;
-
-    uint32_t cnt = fread (dataBuffer, 1, transferSizeBytes, files[index].hostHandle);
+    // read just what was requested - the padding to multiple of 16 is added to transfer only, not read from file
+    uint32_t cnt = fread (dataBuffer, 1, byteCount, files[index].hostHandle);
     dataTrans->addDataBfr(dataBuffer, cnt, false);  // then store the data
     dataTrans->padDataToMul16();
 
@@ -1308,7 +1305,7 @@ void TranslatedDisk::onRWDataCount(uint8_t *cmd)                   // when Fread
 void TranslatedDisk::onFseek(uint8_t *cmd)
 {
     // get seek params
-    uint32_t   offset      = Utils::getDword(cmd + 5);
+    int32_t    offset      = (int32_t) Utils::getDword(cmd + 5);  // signed - SEEK_CUR / SEEK_END can go backwards
     uint8_t    atariHandle = cmd[9];
     uint8_t    seekMode    = cmd[10];
 
@@ -1397,8 +1394,12 @@ int TranslatedDisk::findEmptyFileSlot(void)
 
 int TranslatedDisk::findFileHandleSlot(int atariHandle)
 {
+    if(atariHandle < 0 || atariHandle >= MAX_FILES) {      // our handles are slot indexes 0 .. MAX_FILES-1, anything else isn't ours
+        return -1;
+    }
+
     for(int i=0; i<MAX_FILES; i++) {
-        if(files[i].atariHandle == atariHandle) {
+        if(files[i].hostHandle != NULL && files[i].atariHandle == atariHandle) {   // only open slots - empty slot's EIHNDL marker must never match
             return i;
         }
     }

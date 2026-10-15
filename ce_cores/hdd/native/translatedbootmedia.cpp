@@ -16,6 +16,7 @@ TranslatedBootMedia::TranslatedBootMedia()
 
     gotImage        = false;                                    // mark that we don't have the image yet
     lastUsedAcsiId  = 0xff;
+    hwHddIfaceCurrent = HDD_IF_ACSI;                            // ACSI until told otherwise by setHddIface()
 
     bool res = loadDataIntoBuffer();                            // try to load the data from disk to buffer
 
@@ -32,8 +33,15 @@ TranslatedBootMedia::~TranslatedBootMedia()
 
 void TranslatedBootMedia::setHddIface(int hddIface)
 {
+    if(hwHddIfaceCurrent == hddIface) {     // no change? nothing to do
+        return;
+    }
+
     hwHddIfaceCurrent = hddIface;
-    loadDataIntoBuffer();               // reload data from disk to virtual config drive image
+
+    if(lastUsedAcsiId < 8) {                // got valid ID already? store it again, now as ACSI or SCSI ID
+        updateBootsectorConfigWithACSIid(lastUsedAcsiId);
+    }
 }
 
 bool TranslatedBootMedia::loadDataIntoBuffer(void)
@@ -56,6 +64,7 @@ bool TranslatedBootMedia::loadDataIntoBuffer(void)
 
     if(bytesRead != 512) {
         logHdd(LOG_ERROR, "TranslatedBootMedia - didn't read 512 bytes from Level 1 bootsector file: %s", PATH_CE_DD_BS_L1.c_str());
+        fclose(f);
         return false;
     }
 
@@ -74,6 +83,7 @@ bool TranslatedBootMedia::loadDataIntoBuffer(void)
 
     if(bytesRead != 512) {
         logHdd(LOG_ERROR, "TranslatedBootMedia - didn't read 512 bytes from Level 2 bootsector file: %s", PATH_CE_DD_BS_L2.c_str());
+        fclose(f);
         return false;
     }
 
@@ -87,24 +97,43 @@ bool TranslatedBootMedia::loadDataIntoBuffer(void)
         return false;
     }
 
+#ifdef SAFEBOOT
+    const size_t chunkSize = 510;                               // last 2 bytes of each sector are the checksum
+#else
+    const size_t chunkSize = 512;
+#endif
+
     bytesRead   = 1024;
     int offset  = 1024;
     while(1) {
-        if(feof(f)) {                                           // end of file? break
+        uint8_t chunk[512];
+        size_t got = fread(chunk, 1, chunkSize, f);             // read next part of driver
+
+        if(got == 0) {                                          // nothing more to read? done
             break;
         }
 
+        if(offset + 512 > TRANSLATEDBOOTMEDIA_SIZE) {           // this part wouldn't fit in the image buffer? fail
+            logHdd(LOG_ERROR, "TranslatedBootMedia - %s is too big, max is %d bytes", PATH_CE_DD_PRG_PATH_AND_FILENAME.c_str(), (int) ((TRANSLATEDBOOTMEDIA_SIZE - 1024) / 512 * chunkSize));
+            fclose(f);
+            return false;
+        }
+
         memset(&imageBuffer[offset], 0, 512);                   // clear buffer
+        memcpy(&imageBuffer[offset], chunk, got);               // store what was read
 
 #ifdef SAFEBOOT
-        fread(&imageBuffer[offset], 1, 510, f);                 // read
         calculateChecksum(&imageBuffer[offset]);                // calculate checksum
-#else
-        fread(&imageBuffer[offset], 1, 512, f);                 // read
 #endif
         offset += 512;                                          // move to next part
 
         bytesRead += 512;                                       // increment bytes read variable
+    }
+
+    if(ferror(f)) {                                             // read failed, not just end of file? fail
+        logHdd(LOG_ERROR, "TranslatedBootMedia - failed to read %s", PATH_CE_DD_PRG_PATH_AND_FILENAME.c_str());
+        fclose(f);
+        return false;
     }
 
     fclose(f);

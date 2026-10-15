@@ -29,6 +29,10 @@ Scsi::Scsi(void)
 
 Scsi::~Scsi()
 {
+    for(int i=0; i<8; i++) {                        // close and free all media we've created
+        clearDevInfo(i, false);
+    }
+
     delete []dataBuffer;
     delete []dataBuffer2;
 }
@@ -63,8 +67,9 @@ void Scsi::findAttachedDisks(void)
 
         logHdd(LOG_DEBUG, "Scsi::findAttachedDisks() - ID %d - isBoot: %d, isFile: %d, isDev: %d", i, isBoot, isFile, isDev);
 
+        clearDevInfo(i, false);                     // close and free media from previous run, if any
+
         if(!isFile && !isDev && !isBoot) {          // not a file, not a dev, not a CE_DD boot?
-            clearDevInfo(i, false);
             continue;
         }
 
@@ -76,8 +81,11 @@ void Scsi::findAttachedDisks(void)
             devInfo[i].accessType = SCSI_ACCESSTYPE_FULL;
 
             ImageFileMedia *media = new ImageFileMedia();       // image access media
-            media->iopen(pathRaw.c_str(), false);               // open it
+            if(!media->iopen(pathRaw.c_str(), false)) {         // open it; on failure keep it - media not init -> ST gets NOT READY
+                logHdd(LOG_ERROR, "Scsi::findAttachedDisks() - ID %d - failed to open %s, will report NOT READY", i, pathRaw.c_str());
+            }
             devInfo[i].dataMedia = media;                       // assign
+            devInfo[i].dataMediaDynamicallyAllocated = true;    // created by new, clearDevInfo() must delete it
 
             logHdd(LOG_DEBUG, "Scsi::findAttachedDisks() - ID %d -> IMAGE", i);
         } else if(isDev) {  // device is device
@@ -85,8 +93,11 @@ void Scsi::findAttachedDisks(void)
             devInfo[i].accessType = SCSI_ACCESSTYPE_FULL;
 
             DeviceMedia *media = new DeviceMedia();             // device access media
-            media->iopen(pathRaw.c_str(), false);               // open it
+            if(!media->iopen(pathRaw.c_str(), false)) {         // open it; on failure keep it - media not init -> ST gets NOT READY
+                logHdd(LOG_ERROR, "Scsi::findAttachedDisks() - ID %d - failed to open %s, will report NOT READY", i, pathRaw.c_str());
+            }
             devInfo[i].dataMedia = media;                       // assign
+            devInfo[i].dataMediaDynamicallyAllocated = true;    // created by new, clearDevInfo() must delete it
 
             logHdd(LOG_DEBUG, "Scsi::findAttachedDisks() - ID %d -> DEVICE", i);
         } else if(isBoot) { // boot media here
@@ -106,7 +117,7 @@ void Scsi::findAttachedDisks(void)
 
 void Scsi::clearDevInfo(int index, bool noDelete)
 {
-    if(index < 0 || index >= MAX_ATTACHED_MEDIA) {
+    if(index < 0 || index >= 8) {           // devInfo[] has 8 items
         return;
     }
 
@@ -116,8 +127,8 @@ void Scsi::clearDevInfo(int index, bool noDelete)
     di.hostSourceType = SOURCETYPE_NONE;
     di.accessType = SCSI_ACCESSTYPE_NO_DATA;
 
-    // if we should delete if something is found and it's not null (but don't delete tranBootMedia)
-    if(!noDelete && di.dataMedia && di.dataMedia != &tranBootMedia) {
+    // if we should delete and the media was created by new (never delete member objects like tranBootMedia)
+    if(!noDelete && di.dataMedia && di.dataMediaDynamicallyAllocated) {
         di.dataMedia->iclose();         // close if it was open
         delete di.dataMedia;            // delete it
     }
@@ -384,7 +395,7 @@ void Scsi::SCSI_ModeSense6(void)
 // return the last error that occured
 void Scsi::SCSI_RequestSense(uint8_t lun)
 {
-    char i,xx;
+    int i, xx;                          // int, not char - allocation length can be 0 .. 255
     unsigned char val;
 
     if(dataMedia->mediaChanged())       // this command clears the unit attention state
@@ -573,6 +584,11 @@ void Scsi::updateTranslatedBootMedia(void)
     }
 
     tranBootMedia.updateBootsectorConfigWithACSIid(idOnBus);
+}
+
+void Scsi::setHddIface(int hddIface)
+{
+    tranBootMedia.setHddIface(hddIface);    // CE_DD bootsector needs to know if it should use ACSI or SCSI ID
 }
 
 AcsiIDinfo* Scsi::getAcsiIDinfo(void)

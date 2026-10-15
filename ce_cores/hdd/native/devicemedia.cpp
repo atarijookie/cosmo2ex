@@ -16,6 +16,7 @@
 
 DeviceMedia::DeviceMedia()
 {
+    fdes            = -1;
     BCapacity       = 0;
     SCapacity       = 0;
     mediaHasChanged = 0;
@@ -28,44 +29,47 @@ DeviceMedia::~DeviceMedia()
 
 bool DeviceMedia::iopen(const char *path, bool createIfNotExists)
 {
-    mediaHasChanged = false;
+    iclose();                                       // close previously opened device, if any
 
-	fdes = open(path, O_RDWR | O_LARGEFILE);	    // open device for Read / Write
+    fdes = open(path, O_RDWR | O_LARGEFILE);        // open device for Read / Write
 
-	if (fdes < 0) {								    // failed to open for R/W?
-		fdes = open(path, O_RDONLY | O_LARGEFILE);  // try to open the device for reading only
+    if(fdes < 0) {                                  // failed to open for R/W?
+        fdes = open(path, O_RDONLY | O_LARGEFILE);  // try to open the device for reading only
 
-		if(fdes < 0) {							    // failed to open as read only? damn...
-			return false;
-		}
-	}
+        if(fdes < 0) {                              // failed to open as read only? damn...
+            logHdd(LOG_ERROR, "DeviceMedia - failed to open %s : %s", path, strerror(errno));
+            return false;
+        }
+    }
 
+    uint64_t sizeBytes = 0;
+    int res = ioctl(fdes, BLKGETSIZE64, &sizeBytes);    // try to get device capacity in bytes
 
-	uint32_t size;
-	int res = ioctl(fdes, BLKGETSIZE, &size);	// try to get device capacity in sectors
+    if(res < 0) {                                   // failed to get capacity?
+        logHdd(LOG_ERROR, "DeviceMedia - failed to get capacity of %s : %s", path, strerror(errno));
+        iclose();                                   // don't leak the fd and don't stay 'init'
+        return false;
+    }
 
-	if(res < 0) {								// failed to get capacity?
-		return false;
-	}
-
-    SCapacity = size;              				    // capacity in sectors
-    BCapacity = ((int64_t) size) * ((int64_t)512);  // capacity in bytes
+    BCapacity = (int64_t) sizeBytes;                // capacity in bytes
+    SCapacity = BCapacity / 512;                    // capacity in sectors
 
     mediaHasChanged = false;
 
     int64_t capacityInMB = BCapacity / ((int64_t) (1024 * 1024));
 
-    logHdd(LOG_DEBUG, "DeviceMedia - open succeeded, capacity: %d MB, sectors: %08x", (int) capacityInMB, SCapacity);
+    logHdd(LOG_DEBUG, "DeviceMedia - open succeeded, capacity: %lld MB, sectors: %lld", (long long) capacityInMB, (long long) SCapacity);
 
     return true;
 }
 
 void DeviceMedia::iclose(void)
 {
-    if(fdes > 0) {
-       	close(fdes);															// close device
+    if(fdes >= 0) {
+        close(fdes);                            // close device
     }
 
+    fdes            = -1;
     BCapacity       = 0;
     SCapacity       = 0;
     mediaHasChanged = 0;
@@ -73,7 +77,7 @@ void DeviceMedia::iclose(void)
 
 bool DeviceMedia::isInit(void)
 {
-    if(fdes > 0) {
+    if(fdes >= 0) {
         return true;
     }
 
@@ -107,7 +111,7 @@ bool DeviceMedia::readSectors(int64_t sectorNo, uint32_t count, uint8_t *bfr)
 	off_t pos = sectorNo * 512;
 	off_t ofs = lseek(fdes, pos, SEEK_SET);
 	if(ofs != pos) {
-		logHdd(LOG_ERROR, "DeviceMedia::readSectors - lseek failed %lld", (long long)ofs, strerror(errno));
+		logHdd(LOG_ERROR, "DeviceMedia::readSectors - lseek failed %lld : %s", (long long)ofs, strerror(errno));
 		return false;
 	}
 #else
@@ -144,7 +148,7 @@ bool DeviceMedia::writeSectors(int64_t sectorNo, uint32_t count, uint8_t *bfr)
 	off_t pos = sectorNo * 512;
 	off_t ofs = lseek(fdes, pos, SEEK_SET);
 	if(ofs != pos) {
-		logHdd(LOG_ERROR, "DeviceMedia::writeSectors - lseek failed %lld", (long long)ofs, strerror(errno));
+		logHdd(LOG_ERROR, "DeviceMedia::writeSectors - lseek failed %lld : %s", (long long)ofs, strerror(errno));
 		return false;
 	}
 #else

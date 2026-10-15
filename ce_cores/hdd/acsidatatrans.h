@@ -84,6 +84,8 @@ protected:
     uint8_t    *recvBuffer;
 
     bool    dumpNextData;
+
+    bool    canFit(uint32_t cnt);
 };
 
 #endif // ACSIDATATRANS_H

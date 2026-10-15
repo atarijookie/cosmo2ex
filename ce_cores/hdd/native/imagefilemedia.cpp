@@ -23,6 +23,8 @@ ImageFileMedia::~ImageFileMedia()
 bool ImageFileMedia::iopen(const char *path, bool createIfNotExists)
 {
     bool imageWasCreated = false;
+
+    iclose();                               // close previously opened image, if any
     mediaHasChanged = false;
 
     // try to open existing file
@@ -44,7 +46,11 @@ bool ImageFileMedia::iopen(const char *path, bool createIfNotExists)
 
         logHdd(LOG_DEBUG, "ImageFileMedia - creating %s, filling with 1MB of 0",path);
         for(int i=0; i<2048; i++) {     // create 1 MB image
-            write(fd, bfr, 512);
+            if(write(fd, bfr, 512) != 512) {
+                logHdd(LOG_ERROR, "ImageFileMedia - failed to fill new image %s : %s", path, strerror(errno));
+                iclose();               // don't leave a half-created image open as valid media
+                return false;
+            }
         }
 
         fsync(fd);
@@ -150,7 +156,7 @@ bool ImageFileMedia::writeSectors(int64_t sectorNo, uint32_t count, uint8_t *bfr
     off_t ofs = lseek(fd, pos, SEEK_SET);       // move to the end of file
 
     if(ofs != pos) {                              // failed to seek?
-        logHdd(LOG_ERROR, "ImageFileMedia - lseek failed %lld %s", ofs, strerror(errno));
+        logHdd(LOG_ERROR, "ImageFileMedia - lseek failed %lld %s", (long long)ofs, strerror(errno));
         return false;
     }
 
