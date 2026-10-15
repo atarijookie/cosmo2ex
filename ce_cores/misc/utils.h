@@ -94,7 +94,12 @@ public:
 
     static void intToFile(int value, const char* filePath);                 // int to text file
     static void intToFileFromEnv(int value, const char* envKeyForFileName); // int to text file specified in .env
-    static void textToFile(const char* text, const char* filePath);         // text to text file
+    static void textToFile(const char* text, const char* filePath);
+
+    // Write whole file so that a crash / power loss / concurrent reader never sees a half-written or empty file:
+    // write to temp file next to it, fsync, then rename over the original. Keeps permissions of existing file,
+    // writes through symlink. Returns false (errno set) on failure - original file is then untouched.
+    static bool writeFileAtomically(const char* path, const uint8_t* data, size_t size);         // text to text file
     static void textToFileFromEnv(const char* text, const char* envKeyForFileName); // text to text file specified in .env
 
     static void textFromFile(char* bfr, uint32_t bfrSize, const char* filePath, bool trimTrailing=true); // get one line from text file

@@ -66,6 +66,7 @@ private:
     std::string settingsDir;            // settings dir including prefix subdir - from settingsDirPath(), updated by setPrefix()
 
     FILE *sOpen(const char *key, bool readNotWrite);
+    bool sWrite(const char *key, const std::string &content);     // atomic write of whole value
     std::string settingsDirPath(void);      // settings dir, including prefix subdir if prefix is set
     void storeDefaultValues(void);
 };

@@ -14,6 +14,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
+#include <errno.h>
 
 #include "chipinterface.h"
 #include "../misc/utils.h"
@@ -596,18 +597,29 @@ uint32_t ChipInterface::recvFromClient(int& fdClient, uint8_t* buf, int maxLen)
     uint32_t dataSize = ci->bufReader.dataSizeRest();          // get how many bytes we can read from the client to get whole data part
     uint32_t readSize = MIN(dataSize, (uint32_t) maxLen);   // read less if supplied buffer is not large enough, or there isn't as much data as requested
 
-    for(int i=0; i<3; i++)
-    {
-        int bytes = recv(fdClient, buf + received, readSize, 0);    // try to receive whole buffer
+    // TCP can deliver the data in any number of pieces (especially over WiFi), so keep receiving until we have it all.
+    // Each recv() waits at most SO_RCVTIMEO (set on accept); the overall deadline stops a sender which trickles data forever.
+    Timeout deadline(RECV_FROM_CLIENT_TIMEOUT_MS);
 
-        if(bytes > 0)      // on data received
-        {
+    while(readSize > 0)
+    {
+        ssize_t bytes = recv(fdClient, buf + received, readSize, 0);    // try to receive the rest
+
+        if(bytes > 0) {                         // on data received
             received += bytes;
             readSize -= bytes;
+        } else if(bytes == 0) {                 // peer closed connection - nothing more will come
+            Debug::out(whichLog, LOG_DEBUG, "recvFromClient() - connection closed by client, got %d bytes, missing %u", received, readSize);
+            break;
+        } else if(errno == EINTR) {             // interrupted by signal before receiving anything? just try again
+            continue;
+        } else {                                // EAGAIN / EWOULDBLOCK = SO_RCVTIMEO expired with no data, or real error
+            Debug::out(whichLog, LOG_WARNING, "recvFromClient() - recv() failed after %d bytes, missing %u: %s", received, readSize, strerror(errno));
+            break;
         }
 
-        if(readSize <= 0)   // nothing to read anymore?
-        {
+        if(readSize > 0 && deadline.expired()) {    // data still missing, but it takes too long? give up
+            Debug::out(whichLog, LOG_WARNING, "recvFromClient() - timeout after %d bytes, missing %u", received, readSize);
             break;
         }
     }

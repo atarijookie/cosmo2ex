@@ -110,19 +110,7 @@ bool Settings::getBool(const char *key, bool defValue)
 
 void Settings::setBool(const char *key, bool value)
 {
-    FILE *file = sOpen(key, false);
-    if(!file) {                                         // failed to open settings?
-        logHdd(LOG_ERROR, "Settings::setBool -- could not write key %s", key);
-        return;
-    }
-
-    if(value) {                 // if true, write 1
-        fputs("1\n", file);
-    } else {                    // if false, write 0
-        fputs("0\n", file);
-    }
-
-    fclose(file);
+    sWrite(key, value ? "1\n" : "0\n");      // true: 1, false: 0
 }
 
 //-------------------------
@@ -148,14 +136,9 @@ int Settings::getInt(const char *key, int defValue)
 
 void Settings::setInt(const char *key, int value)
 {
-    FILE *file = sOpen(key, false);
-    if(!file) {                                         // failed to open settings?
-        logHdd(LOG_ERROR, "Settings::setInt -- could not write key %s", key);
-        return;
-    }
-
-    fprintf(file, "%d\n", value);
-    fclose(file);
+    char bfr[32];
+    snprintf(bfr, sizeof(bfr), "%d\n", value);
+    sWrite(key, bfr);
 }
 //-------------------------
 float Settings::getFloat(const char *key, float defValue)
@@ -179,14 +162,9 @@ float Settings::getFloat(const char *key, float defValue)
 
 void Settings::setFloat(const char *key, float value)
 {
-    FILE *file = sOpen(key, false);
-    if(!file) {                                         // failed to open settings?
-        logHdd(LOG_ERROR, "Settings::setFloat -- could not write key %s", key);
-        return;
-    }
-
-    fprintf(file, "%f\n", value);
-    fclose(file);
+    char bfr[64];
+    snprintf(bfr, sizeof(bfr), "%f\n", value);
+    sWrite(key, bfr);
 }
 //-------------------------
 // returns a copy (std::string) - no shared static buffer, so it's safe to call from multiple threads (FDD + HDD cores)
@@ -223,14 +201,7 @@ std::string Settings::getString(const char *key, const char *defValue)
 
 void Settings::setString(const char *key, const char *value)
 {
-    FILE *file = sOpen(key, false);
-    if(!file) {                                         // failed to open settings?
-        logHdd(LOG_ERROR, "Settings::setString -- could not write key %s", key);
-        return;
-    }
-
-    fputs(value, file);
-    fclose(file);
+    sWrite(key, value);
 }
 
 //-------------------------
@@ -316,14 +287,7 @@ char Settings::getChar(const char *key, char defValue)
 
 void Settings::setChar(const char *key, char value)
 {
-    FILE *file = sOpen(key, false);
-    if(!file) {                                         // failed to open settings?
-        logHdd(LOG_ERROR, "Settings::setChar -- could not write key %s", key);
-        return;
-    }
-
-    fputc(value, file);
-    fclose(file);
+    sWrite(key, std::string(1, value));
 }
 //-------------------------
 void Settings::loadAcsiIDs(AcsiIDinfo *aii, bool useDefaultsIfNoSettings)
@@ -398,13 +362,26 @@ FILE *Settings::sOpen(const char *key, bool readNotWrite)
 {
     std::string path = Utils::mergeHostPaths2(settingsDir, std::string(key));  // add key at the end of settings + prefix path
 
-    FILE *file = fopen(path.c_str(), readNotWrite ? "r" : "w");
+    // only for reading - writes go through sWrite(); dir doesn't exist? just fail (getter returns default value)
+    return fopen(path.c_str(), readNotWrite ? "r" : "w");
+}
 
-    // dir doesn't exist? on read just fail (getter returns default value), on write create dir and try again
-    if(!file && !readNotWrite && errno == ENOENT) {
+// Store setting value atomically (temp file + rename): a reader in another thread or process (webserver) never sees
+// an empty / half written value, and a crash during write can't lose the old value.
+bool Settings::sWrite(const char *key, const std::string &content)
+{
+    std::string path = Utils::mergeHostPaths2(settingsDir, std::string(key));  // add key at the end of settings + prefix path
+
+    bool good = Utils::writeFileAtomically(path.c_str(), (const uint8_t *) content.data(), content.size());
+
+    if(!good && errno == ENOENT) {      // dir doesn't exist? create it and try again
         Utils::mkpath(settingsDir.c_str(), SETTINGS_DIR_MODE);
-        file = fopen(path.c_str(), "w");
+        good = Utils::writeFileAtomically(path.c_str(), (const uint8_t *) content.data(), content.size());
     }
 
-    return file;
+    if(!good) {
+        logHdd(LOG_ERROR, "Settings - could not write key %s : %s", key, strerror(errno));
+    }
+
+    return good;
 }

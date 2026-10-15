@@ -10,6 +10,9 @@
 #include <sys/file.h>
 #include <errno.h>
 #include <limits.h>
+#include <stddef.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include "misc/settings.h"
 #include "misc/global.h"
@@ -33,6 +36,7 @@ InterProcessEvents  events;
 ExternalServices    externalServices;
 bool justShowHelp = false;
 int logLevel = LOG_ERROR;
+int cmdLineLogLevel = -1;       // log level from command line (llX), -1 = not specified; wins over LOG_LEVEL from .env
 
 void discoveryMain(void);
 pthread_t discoveryThreadInfo;
@@ -64,7 +68,9 @@ int main(int argc, char *argv[])
     for(int i=LOGFILE_DISCOVERY; i<=LOGFILE_IKBD; i++) {
         Debug::getCoreLogFileName(true, i);    // call this with force=true to re-create the log file name
     }
-    Debug::logLevelFromDotEnv();        // set log level from .env value of LOG_LEVEL
+    if(cmdLineLogLevel < 0) {           // log level not given on command line? take it from .env value of LOG_LEVEL
+        Debug::logLevelFromDotEnv();
+    }                                   // otherwise the command line one (already set) wins
 
     ldp_setParam(1, (uint64_t) logLevel);                         // libDOSpath - set log level to file
     std::string logDir = Utils::dotEnvValue("LOG_DIR", LOG_DIR_DEFAULT);  // path to logs dir
@@ -91,23 +97,29 @@ int main(int argc, char *argv[])
     }
 
     //------------------------------------
-    // before touching GPIO make sure that no other instance is running
+    // before touching USB devices, disks, ports etc. make sure that no other instance is running
     if(otherInstanceIsRunning()) {
         logHdd(LOG_ERROR, "Other instance of CosmosEx is running, terminate it before starting a new one!");
         printf("\nOther instance of CosmosEx is running, terminate it before starting a new one!\n\n\n");
-        return 0;
+        return 1;                       // failure - so a supervisor (systemd, docker) sees that this start didn't work
     }
 
     logHdd(LOG_INFO, "logLevel: %d", logLevel);
 
     //------------------------------------
-    // register signal handlers
-    if(signal(SIGINT, sigint_handler) == SIG_ERR) {         // register SIGINT handler
-        printf("Cannot register SIGINT handler!\n");
-    }
+    // register signal handlers - SIGINT (Ctrl+C, also used by pthread_kill_join() to wake up threads),
+    // SIGTERM (kill, systemd stop) and SIGHUP all do a clean shutdown (save floppy images, remove pid file, ...)
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = sigint_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;                    // no SA_RESTART - blocking calls should return with EINTR, so the loops see sigintReceived quickly
 
-    if(signal(SIGHUP, sigint_handler) == SIG_ERR) {         // register SIGHUP handler
-        printf("Cannot register SIGHUP handler!\n");
+    int signalsToHandle[] = {SIGINT, SIGTERM, SIGHUP};
+    for(int sig : signalsToHandle) {
+        if(sigaction(sig, &sa, NULL) != 0) {
+            printf("Cannot register handler for signal %d!\n", sig);
+        }
     }
 
     handlePthreadCreate("discovery service", &discoveryThreadInfo, (void*) discoveryMain);
@@ -116,6 +128,8 @@ int main(int argc, char *argv[])
     handlePthreadCreate("ikbd core", &ikbdThreadInfo, (void*) ikbdThreadCode);
 
     int ret = runCoreHdd();
+
+    logHdd(LOG_INFO, "Terminating - stopping threads.");      // logged here, not in signal handler
 
     pthread_kill_join("ikbd core", ikbdThreadInfo);
     pthread_kill_join("floppy core", fddThreadInfo);
@@ -192,6 +206,7 @@ void parseCmdLineArguments(int argc, char *argv[])
             if(ll >= 48 && ll <= 57) {                              // if it's a number between 0 and 9
                 ll = ll - 48;
                 Debug::setLogLevel(ll);                             // store log level
+                cmdLineLogLevel = ll;                               // remember it - applied again after .env is loaded, so it wins over LOG_LEVEL
             }
 
             continue;
@@ -218,52 +233,61 @@ void parseCmdLineArguments(int argc, char *argv[])
 void printfPossibleCmdLineArgs(void)
 {
     printf("\nPossible command line args:\n");
-    printf("llx      - set log level to x: 0 off, 1 errors (default), 2 + warnings, 3 + info, 4 + debug\n");
+    printf("llx      - set log level to x: 0 off, 1 errors (default), 2 + warnings, 3 + info, 4 + debug (overrides LOG_LEVEL from .env)\n");
+    printf("nocap    - don't capture (grab) USB keyboard and mouse\n");
 }
 
 void sigint_handler(int sig)
 {
-    logHdd(LOG_DEBUG, "Some SIGNAL received, terminating.");
+    // only set the flag - nothing else is safe in a signal handler (e.g. logging takes a mutex which the interrupted
+    // thread might hold -> deadlock); the loops see the flag and terminate, main() logs the shutdown
     sigintReceived = 1;
 }
 
+// Only one instance may run - on this host, and also in host-network docker containers.
+// The lock is an abstract UNIX socket: its name lives in the network namespace (shared by all host processes and by
+// containers with network_mode: host), only one process can bind it, and the kernel releases it automatically when
+// the process exits or crashes - no lock file, nothing stale left behind.
+#define INSTANCE_LOCK_NAME  "cosmosex_ce_cores_instance"
+
+static int instanceLockFd = -1;     // kept open (bound) for the whole run - that's what holds the lock
+
 bool otherInstanceIsRunning(void)
 {
-    FILE * f;
-    int other_pid = 0;
-    int self_pid = 0;
-    char proc_path[256];
-    char other_exe[PATH_MAX];
-    char self_exe[PATH_MAX];
+    // CLOEXEC: processes started by system() must not inherit it, otherwise they'd keep the lock after we're gone
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 
-    self_pid = getpid();
-    std::string pidFilePath = pidFileName();
-
-    f = fopen(pidFilePath.c_str(), "r");
-    if(!f) {    // can't open file? other instance probably not running (or is, but can't figure out, so screw it)
-        logHdd(LOG_DEBUG, "otherInstanceIsRunning - couldn't open %s, returning false", pidFilePath.c_str());
-    } else {
-        int r = fscanf(f, "%d", &other_pid);
-        fclose(f);
-        if(r != 1) {
-            logHdd(LOG_ERROR, "otherInstanceIsRunning - can't read pid in %s, returning false", pidFilePath.c_str());
-        } else {
-            logHdd(LOG_DEBUG, "otherInstanceIsRunning - %s pid=%d (own pid=%d)", pidFilePath.c_str(), other_pid, self_pid);
-            snprintf(proc_path, sizeof(proc_path), "/proc/%d/exe", other_pid);
-            if(readlink("/proc/self/exe", self_exe, sizeof(self_exe)) < 0) {
-                logHdd(LOG_ERROR, "otherInstanceIsRunning readlink(%s): %s", "/proc/self/exe", strerror(errno));
-            } else if(readlink(proc_path, other_exe, sizeof(other_exe)) < 0) {
-                logHdd(LOG_ERROR, "otherInstanceIsRunning readlink(%s): %s", proc_path, strerror(errno));
-            } else if(strcmp(other_exe, self_exe) == 0) {
-                // NOTE: is it needed to check the process status to discard zombies ???
-                logHdd(LOG_DEBUG, "otherInstanceIsRunning - found another instance of %s with pid %d", other_exe, other_pid);
-                return true;
-            }
-        }
+    if(fd < 0) {            // can't check - don't block the start, the port binding would still catch 2nd instance
+        logHdd(LOG_ERROR, "otherInstanceIsRunning - socket() failed: %s", strerror(errno));
+        return false;
     }
 
-    Utils::intToFile(self_pid, pidFilePath.c_str());
-    logHdd(LOG_DEBUG, "otherInstanceIsRunning -- pid %d written to %s", self_pid, pidFilePath.c_str());
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    addr.sun_path[0] = 0;   // leading zero byte = abstract socket (no file in filesystem)
+    memcpy(addr.sun_path + 1, INSTANCE_LOCK_NAME, strlen(INSTANCE_LOCK_NAME));
+    socklen_t addrLen = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(INSTANCE_LOCK_NAME);
+
+    if(bind(fd, (struct sockaddr *) &addr, addrLen) != 0) {
+        int err = errno;
+        close(fd);
+
+        if(err == EADDRINUSE) {     // name taken = other instance holds it
+            logHdd(LOG_DEBUG, "otherInstanceIsRunning - instance lock '%s' is held by another process", INSTANCE_LOCK_NAME);
+            return true;
+        }
+
+        logHdd(LOG_ERROR, "otherInstanceIsRunning - bind() failed: %s", strerror(err));
+        return false;
+    }
+
+    instanceLockFd = fd;    // we hold the lock now
+
+    // pid file is just information for humans / scripts now, not the lock
+    std::string pidFilePath = pidFileName();
+    Utils::intToFile(getpid(), pidFilePath.c_str());
+    logHdd(LOG_DEBUG, "otherInstanceIsRunning -- got instance lock, pid %d written to %s", (int) getpid(), pidFilePath.c_str());
 
     return false;
 }

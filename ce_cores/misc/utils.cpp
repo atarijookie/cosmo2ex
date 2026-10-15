@@ -24,6 +24,8 @@
 #include <sys/un.h>
 #include <sys/socket.h>
 #include <fcntl.h>
+#include <limits.h>
+#include <atomic>
 
 //--------
 // following includes are here for the code for getting IP address of interfaces
@@ -1336,4 +1338,70 @@ void pthread_kill_join(const char* threadName, pthread_t& threadInfo)
     printf("Stoping %s thread\n", threadName);
     pthread_kill(threadInfo, SIGINT);           // stop the select()
     pthread_join(threadInfo, NULL);             // wait until thread finishes
+}
+
+bool Utils::writeFileAtomically(const char* path, const uint8_t* data, size_t size)
+{
+    // if the path is a symlink, replace the file it points to, not the symlink itself
+    char realPath[PATH_MAX];
+    if(realpath(path, realPath) == NULL) {          // file doesn't exist (yet)? just use the path as is
+        snprintf(realPath, sizeof(realPath), "%s", path);
+    }
+
+    // unique temp file name in the same dir (rename() is atomic only within one filesystem) - unique per process and call,
+    // so multiple threads / processes can write at the same time
+    static std::atomic<unsigned> tmpCounter(0);
+    char tmpPath[PATH_MAX + 64];
+    snprintf(tmpPath, sizeof(tmpPath), "%s.tmp-%d-%u", realPath, (int) getpid(), tmpCounter++);
+
+    // mode 0666: the kernel applies the umask, like fopen() would (changing umask to read it isn't thread safe)
+    int fd = open(tmpPath, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
+    if(fd < 0) {
+        return false;
+    }
+
+    struct stat st;
+    if(stat(realPath, &st) == 0) {                  // existing file? keep its permissions
+        fchmod(fd, st.st_mode & 07777);
+    }
+
+    bool good = true;
+    size_t done = 0;
+    while(done < size) {                            // write() can write less than asked
+        ssize_t res = write(fd, data + done, size - done);
+        if(res < 0) {
+            if(errno == EINTR) {
+                continue;
+            }
+            good = false;
+            break;
+        }
+        done += res;
+    }
+
+    if(good && fsync(fd) != 0) {                    // make sure the data is on disk before the rename makes it 'the' file
+        good = false;
+    }
+
+    if(close(fd) != 0) {
+        good = false;
+    }
+
+    if(!good || rename(tmpPath, realPath) != 0) {   // failed? original file stays untouched, remove temp file
+        int err = errno;
+        unlink(tmpPath);
+        errno = err;                                // caller logs the real reason
+        return false;
+    }
+
+    // make the rename itself durable - fsync the directory
+    char dirBuf[PATH_MAX];
+    snprintf(dirBuf, sizeof(dirBuf), "%s", realPath);
+    int dirFd = open(dirname(dirBuf), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if(dirFd >= 0) {
+        fsync(dirFd);
+        close(dirFd);
+    }
+
+    return true;
 }

@@ -22,6 +22,8 @@ typedef struct {
     BufferedReader bufReader;
 } ClientInfo;
 
+#define RECV_FROM_CLIENT_TIMEOUT_MS     3000    // max time to receive one block of data from client
+
 class ChipInterface
 {
 public:
@@ -110,7 +112,7 @@ private:
     uint8_t  gotAtnCode;    // which command code chips sends?
 
     bool createListeningSocket(void);
-    uint32_t recvFromClient(int& fdClient, uint8_t* buf, int maxLen);
+    uint32_t recvFromClient(int& fdClient, uint8_t* buf, int maxLen);     // receives all requested data (up to timeout), less only on timeout / disconnect / error
     bool sendAll(int& fdClient, const uint8_t* data, uint32_t len);   // send all bytes or close client
 
     bool waitForAtn(int clientIndex, int atnIdWant, uint8_t atnCodeWant, uint32_t timeoutMs, uint8_t *inBuf);

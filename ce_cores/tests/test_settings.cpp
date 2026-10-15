@@ -8,6 +8,8 @@
 #include <string>
 #include <thread>
 #include <atomic>
+#include <dirent.h>
+#include <sys/stat.h>
 
 #include "doctest.h"
 
@@ -269,4 +271,72 @@ TEST_CASE_FIXTURE(SettingsDir, "getString is safe to call from multiple threads"
     b.join();
 
     CHECK(mismatches.load() == 0);
+}
+
+TEST_CASE_FIXTURE(SettingsDir, "settings: reader never sees an empty or partial value while it is being written")
+{
+    // writes used to truncate the file and then write it - a reader at that moment got the default value
+    Settings s;
+    std::string valueA = "/mnt/disk/images/" + std::string(200, 'a') + ".st";
+    std::string valueB = "/mnt/disk/images/" + std::string(150, 'b') + ".msa";
+    s.setString("FLOPPY_IMAGE", valueA.c_str());
+
+    std::atomic<bool> done(false);
+    std::atomic<int> bad(0), reads(0);
+
+    std::thread reader([&]() {
+        Settings rs;
+        while(!done) {
+            std::string v = rs.getString("FLOPPY_IMAGE", "DEFAULT");
+            if(v != valueA && v != valueB) {
+                bad++;
+            }
+            reads++;
+        }
+    });
+
+    for(int i=0; i<300; i++) {
+        s.setString("FLOPPY_IMAGE", (i & 1) ? valueA.c_str() : valueB.c_str());
+    }
+    done = true;
+    reader.join();
+
+    CHECK(reads.load() > 0);
+    CHECK(bad.load() == 0);
+}
+
+TEST_CASE_FIXTURE(SettingsDir, "settings: atomic write leaves no temp files and keeps permissions")
+{
+    Settings s;
+    s.setInt("SOME_INT", 42);
+    s.setChar("SOME_CHAR", 'X');
+    s.setBool("SOME_BOOL", true);
+    s.setFloat("SOME_FLOAT", 1.5f);
+
+    CHECK(s.getInt("SOME_INT", 0) == 42);
+    CHECK(s.getChar("SOME_CHAR", '?') == 'X');
+    CHECK(s.getBool("SOME_BOOL", false) == true);
+    CHECK(s.getFloat("SOME_FLOAT", 0) == doctest::Approx(1.5));
+
+    mode_t mask = umask(0);
+    umask(mask);
+    struct stat st;
+    REQUIRE(stat((dir + "/SOME_INT").c_str(), &st) == 0);
+    CHECK((st.st_mode & 0777) == (0666 & ~mask));           // new setting: normal permissions, not mkstemp's 0600
+
+    REQUIRE(chmod((dir + "/SOME_INT").c_str(), 0640) == 0);
+    s.setInt("SOME_INT", 43);
+    REQUIRE(stat((dir + "/SOME_INT").c_str(), &st) == 0);
+    CHECK((st.st_mode & 0777) == 0640);                       // existing setting: permissions kept
+
+    int tmpFiles = 0;
+    DIR *d = opendir(dir.c_str());
+    struct dirent *e;
+    while((e = readdir(d)) != NULL) {
+        if(strstr(e->d_name, ".tmp-")) {
+            tmpFiles++;
+        }
+    }
+    closedir(d);
+    CHECK(tmpFiles == 0);
 }
