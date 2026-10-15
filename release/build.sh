@@ -1,13 +1,13 @@
 #!/bin/sh
 # Builds the CosmosEx release tarballs, one per architecture, into release/out/.
 #
-# usage: release/build.sh [arch ...]     arch: amd64 arm64 armhf (default: all of them)
+# usage: release/build.sh [arch ...]     arch: amd64 arm64 armhf i386 (default: all of them)
 #        release/build.sh --native       build only for this machine, with its own toolchains (no docker)
 #
 # Needs:
 #   - m68k-atari-mint-gcc toolchain, for the Atari programs on the config drive (these are
 #     the same for every architecture, so they are built once, on this machine)
-#   - docker (not for --native) - ce_cores and webserver are built in the release/builder image
+#   - docker (not for --native) - ce_cores and webserver are built in the toolchain stage of docker/Dockerfile
 #   - g++, make, go (only for --native)
 #
 # VERSION env var overrides the version used in the tarball names (default: date + git hash).
@@ -26,7 +26,7 @@ ARCHS=""
 for arg in "$@"; do
     case "$arg" in
         --native)               NATIVE=1 ;;
-        amd64|arm64|armhf)      ARCHS="$ARCHS $arg" ;;
+        amd64|arm64|armhf|i386) ARCHS="$ARCHS $arg" ;;
         -h|--help)              sed -n '2,15p' "$0"; exit 0 ;;
         *)                      echo "unknown argument: $arg" >&2; exit 1 ;;
     esac
@@ -35,13 +35,14 @@ done
 if [ "$NATIVE" -eq 1 ]; then
     # name the native build by the architecture of this machine
     case "$(uname -m)" in
-        x86_64)                 ARCHS=amd64 ;;
+        x86_64)                 if [ "$(getconf LONG_BIT)" = 32 ]; then ARCHS=i386; else ARCHS=amd64; fi ;;
+        i?86)                   ARCHS=i386 ;;
         aarch64|arm64)          if [ "$(getconf LONG_BIT)" = 32 ]; then ARCHS=armhf; else ARCHS=arm64; fi ;;
-        armv7l|armv8l)          ARCHS=armhf ;;
+        armv6l|armv7l|armv8l)   ARCHS=armhf ;;
         *)                      ARCHS=$(uname -m) ;;
     esac
 elif [ -z "$ARCHS" ]; then
-    ARCHS="amd64 arm64 armhf"
+    ARCHS="amd64 arm64 armhf i386"
 fi
 
 if [ -z "${VERSION:-}" ]; then
@@ -108,7 +109,7 @@ chmod 755 "$COMMON/ce_run.sh"
 # Linux programs - per architecture
 if [ "$NATIVE" -eq 0 ]; then
     echo "Building the builder image"
-    docker build -t "$BUILDER_IMAGE" "$RELEASE_DIR/builder"
+    docker build -t "$BUILDER_IMAGE" --target toolchain -f "$ROOT/docker/Dockerfile" "$ROOT"
 fi
 
 mkdir -p "$OUT"

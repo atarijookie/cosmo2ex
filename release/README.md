@@ -8,7 +8,7 @@ on the target machine and without building anything there.
 From the repo root:
 
 ```
-release/build.sh                # all architectures: amd64 arm64 armhf
+release/build.sh                # all architectures: amd64 arm64 armhf i386
 release/build.sh arm64          # just some of them
 release/build.sh --native       # only for this machine, using its own toolchains (no docker)
 ```
@@ -19,6 +19,7 @@ Output goes to `release/out/`:
 ce-<version>-amd64.tar.gz
 ce-<version>-arm64.tar.gz
 ce-<version>-armhf.tar.gz
+ce-<version>-i386.tar.gz
 install.sh
 SHA256SUMS
 ```
@@ -28,13 +29,16 @@ The version defaults to `<date>-<git hash>` (with `-dirty` for uncommitted chang
 Needed on the build machine:
 - `m68k-atari-mint-gcc` - the Atari programs on the config drive (`ce_dd.prg`, boot sectors, `ce_tests.tos`)
   are built once, on the build machine, and go into every tarball
-- `docker` - `ce_cores` and `webserver` are built in the `release/builder` image, which cross compiles for all
+- `docker` - `ce_cores` and `webserver` are built in the toolchain stage of `docker/Dockerfile`, which cross compiles for all
   the architectures (no QEMU needed)
 - for `--native` instead of docker: `make`, `g++`, `go`
 
 The builder image is Debian bullseye, so the binaries need glibc 2.28 or newer: Raspberry Pi OS / Debian 10+,
 Ubuntu 20.04+ and most other current distros. `libstdc++` is linked in statically, the webserver is a static Go binary.
-`armhf` is ARMv7 - Raspberry Pi 2 and newer running 32-bit OS, Pi 1 / Zero (ARMv6) are not supported.
+`armhf` is ARMv6+VFP, same as Raspbian - it runs on every Pi with a 32-bit OS, including Pi 1 / Zero.
+The Debian armhf runtime libraries are ARMv7, so the builder image links `armhf` against a Raspbian
+bullseye sysroot instead (same gcc and glibc versions, see `docker/Dockerfile`).
+`i386` is 32-bit x86 (i686, no SSE2 needed), for old PCs and for 32-bit distros on 64-bit machines.
 
 ## Installing
 
@@ -66,7 +70,6 @@ Without systemd the files are installed, but you have to start it yourself: `cd 
 
 - `build.sh` - builds everything and creates the tarballs
 - `install.sh` - installs / upgrades / uninstalls from a tarball
-- `builder/Dockerfile` - build environment (bullseye + cross compilers + Go)
 - `builder/build_linux.sh` - builds `ce_cores` + `webserver` for one architecture
 - `files/ce_run.sh` - runs `ce_cores` + `webserver` in the foreground, used by the service
 - `files/ce.service` - the systemd unit

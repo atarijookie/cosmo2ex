@@ -103,9 +103,10 @@ uninstall() {
 # architecture of this machine, named the same way as the tarballs
 machine_arch() {
     case "$(uname -m)" in
-        x86_64)         echo amd64 ;;
+        x86_64)         if [ "$(getconf LONG_BIT)" = 32 ]; then echo i386; else echo amd64; fi ;;    # 64-bit kernel can run 32-bit userland
+        i?86)           echo i386 ;;
         aarch64|arm64)  if [ "$(getconf LONG_BIT)" = 32 ]; then echo armhf; else echo arm64; fi ;;   # 64-bit kernel can run 32-bit userland
-        armv7l|armv8l)  echo armhf ;;
+        armv6l|armv7l|armv8l)  echo armhf ;;   # armhf is built for ARMv6, so it covers Pi 1 / Zero too
         *)              uname -m ;;
     esac
 }
@@ -113,11 +114,6 @@ machine_arch() {
 install_ce() {
     tarball="$1"
     arch=$(machine_arch)
-
-    if [ "$arch" = armv6l ]; then
-        echo "This machine is ARMv6 (Raspberry Pi 1 / Zero), the release builds need at least ARMv7." >&2
-        exit 1
-    fi
 
     # no tarball specified? find the newest one for this architecture next to this script
     if [ -z "$tarball" ]; then

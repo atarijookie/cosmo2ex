@@ -46,7 +46,8 @@ extension_example_python3
 ffmpeg_build
 flash_stm32
 flash_xilinx
-release
+release/out
+docker/out
 test_ce
 test_sting
 update
