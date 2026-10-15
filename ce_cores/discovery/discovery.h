@@ -19,4 +19,6 @@ typedef struct {
 
 void getMacForIp(uint32_t clientIp, uint8_t* mac);
 
+void *discoveryMain(void *ptr);     // discovery service thread
+
 #endif

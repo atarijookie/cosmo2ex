@@ -100,9 +100,24 @@ uint16_t Utils::fileTimeToAtariDate(struct tm *ptm)
         return 0;
     }
 
-    atariDate |= (ptm->tm_year - 80) << 9;            // year (tm_year is 'years since 1900', we want 'years since 1980', so the difference is -80
-    atariDate |= (ptm->tm_mon  +  1) << 5;            // month
-    atariDate |= (ptm->tm_mday     );                 // day
+    // GEMDOS date can hold only years 1980..2107 (7 bits) - clamp, otherwise e.g. 1970 (common in ZIPs) wraps to 2098
+    int year = ptm->tm_year - 80;                     // tm_year is 'years since 1900', we want 'years since 1980', so the difference is -80
+    int mon  = ptm->tm_mon + 1;
+    int mday = ptm->tm_mday;
+
+    if(year < 0) {                                    // before 1980? use the earliest date: 1980-01-01
+        year = 0;
+        mon  = 1;
+        mday = 1;
+    } else if(year > 127) {                           // after 2107? use the latest date: 2107-12-31
+        year = 127;
+        mon  = 12;
+        mday = 31;
+    }
+
+    atariDate |= year << 9;                           // year
+    atariDate |= mon  << 5;                           // month
+    atariDate |= mday;                                // day
 
     return atariDate;
 }
@@ -578,6 +593,7 @@ void Utils::setTimezoneVariable_inThisContext(void)
     logHdd(LOG_DEBUG, "Utils::setTimezoneVariable_inThisContext() -- setting TZ variable to: %s\n", utcOfsset);
 
     setenv("TZ", utcOfsset, 1);
+    tzset();                    // apply it now (localtime_r() doesn't call tzset() itself)
 }
 
 std::string Utils::getDeviceLabel(const std::string & devicePath)
@@ -1296,9 +1312,9 @@ void Utils::closeFdIfOpen(int& fd)
 static std::vector<pthread_t> createdThreads;
 static pthread_mutex_t createdThreadsMutex = PTHREAD_MUTEX_INITIALIZER;
 
-void handlePthreadCreate(const char* threadName, pthread_t* pThreadInfo, void* threadCode)
+void handlePthreadCreate(const char* threadName, pthread_t* pThreadInfo, ThreadFunc threadCode)
 {
-    int res = pthread_create(pThreadInfo, NULL, (void* (*)(void*)) threadCode, NULL);
+    int res = pthread_create(pThreadInfo, NULL, threadCode, NULL);
 
     if(res != 0) {      // app can't work without any of its threads - terminate whole app with error
         logHdd(LOG_ERROR, "Failed to create %s thread (%s), terminating", threadName, strerror(res));

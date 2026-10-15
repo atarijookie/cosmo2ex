@@ -17,6 +17,7 @@
 #include "misc/settings.h"
 #include "misc/global.h"
 #include "hdd/corehdd.h"
+#include "fdd/corefdd.h"
 #include "misc/debug.h"
 #include "misc/version.h"
 #include "misc/cmdsockthread.h"
@@ -38,10 +39,8 @@ bool justShowHelp = false;
 int logLevel = LOG_ERROR;
 int cmdLineLogLevel = -1;       // log level from command line (llX), -1 = not specified; wins over LOG_LEVEL from .env
 
-void discoveryMain(void);
 pthread_t discoveryThreadInfo;
 
-int fddThreadCode(void);
 pthread_t fddThreadInfo;
 
 pthread_t cmdSockThreadInfo;
@@ -54,7 +53,6 @@ bool noCapture = false;
 
 int main(int argc, char *argv[])
 {
-    printf("\033[H\033[2J\n");
 
     justShowHelp = false;
     Debug::setLogLevel(LOG_ERROR);      // init current log level to LOG_ERROR
@@ -122,10 +120,14 @@ int main(int argc, char *argv[])
         }
     }
 
-    handlePthreadCreate("discovery service", &discoveryThreadInfo, (void*) discoveryMain);
-    handlePthreadCreate("command socket", &cmdSockThreadInfo, (void*) cmdSockThreadCode);
-    handlePthreadCreate("floppy core", &fddThreadInfo, (void*) fddThreadCode);
-    handlePthreadCreate("ikbd core", &ikbdThreadInfo, (void*) ikbdThreadCode);
+    // set TZ once here, before any other thread runs - changing the environment while other threads read it
+    // (getenv(), localtime_r()) is a data race
+    Utils::setTimezoneVariable_inThisContext();
+
+    handlePthreadCreate("discovery service", &discoveryThreadInfo, discoveryMain);
+    handlePthreadCreate("command socket", &cmdSockThreadInfo, cmdSockThreadCode);
+    handlePthreadCreate("floppy core", &fddThreadInfo, fddThreadCode);
+    handlePthreadCreate("ikbd core", &ikbdThreadInfo, ikbdThreadCode);
 
     int ret = runCoreHdd();
 
@@ -164,7 +166,6 @@ int runCoreHdd(void)
     logHdd(LOG_INFO, "CosmosEx cores starting");
     printf("\nCosmosEx cores starting\n");
 
-    Utils::setTimezoneVariable_inThisContext();
 
     //-------------
     coreHdd = new CoreHdd();

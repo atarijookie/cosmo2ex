@@ -11,6 +11,8 @@ class ChipInterface;
 
 #define FDD_BUF_SIZE    16384
 
+void *fddThreadCode(void *ptr);     // floppy core thread
+
 class CoreFdd
 {
 public:

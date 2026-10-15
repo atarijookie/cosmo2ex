@@ -62,7 +62,7 @@ int discoveryServerOpenSocket(void)
     return sockfd;
 }
 
-void discoveryMain(void)
+void *discoveryMain(void *ptr)
 {
     int udpSocket = discoveryServerOpenSocket();        // create main UDP socket
 
@@ -71,7 +71,7 @@ void discoveryMain(void)
         printf("Could not open port %d, terminating\n", SERVER_UDP_PORT);
         fatalErrorOccurred = 1;
         sigintReceived = 1;
-        return;
+        return NULL;
     }
 
     logDiscovery(LOG_INFO, "Starting CosmosEx discovery server");
@@ -124,6 +124,8 @@ void discoveryMain(void)
     close(udpSocket);
 
     logDiscovery(LOG_ERROR, "Terminating CosmosEx network server");
+
+    return NULL;
 }
 
 void getMacForIp(uint32_t clientIp, uint8_t* mac)

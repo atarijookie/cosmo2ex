@@ -117,10 +117,8 @@ private:
     bool    mouseY0atTop;
     int     mouseAbsBtnAct;
 
-    int     joy1st;
-    int     joy2nd;
 
-    bool    firstJoyIs0;                    // if true, joystick keyboard mapping and usb/atari joysticks are swapped
+    bool    firstJoyIs0;                    // if true, port 0 and port 1 are swapped for all joysticks (USB, keyboard, real Atari) - applied when sending
     bool    mouseWheelAsArrowsUpDown;       // if true, mouse wheel up / down will be translated to arrow up / down
     bool    keybJoy0;                       // if true, specific keys will act as joy 0
     bool    keybJoy1;                       // if true, specific keys will act as joy 1
@@ -185,6 +183,8 @@ private:
     void resetInternalIkbdVars(void);
     void sendJoyButtonsInMouseMode(void);
     void sendJoyState(int joyNumber, int dirTotal);
+    int  joyPort(int joyNumber);                // Atari port (0 / 1) on which joystick[joyNumber] is reported now (firstJoyIs0 swaps)
+    void sendAllJoyStates(void);                // report current state of both joysticks (after swapping ports)
     void sendBothJoyReport(void);
     void mouseMoved(int dx, int dy);                    // USB mouse movement, dy > 0 = down
     void sendRelMousePackets(int dx, int dy);           // relative packet(s) with current buttons, split to fit -128..127

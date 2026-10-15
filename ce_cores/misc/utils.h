@@ -140,7 +140,9 @@ private:
     uint32_t durationMs;
 };
 
-void handlePthreadCreate(const char* threadName, pthread_t* pThreadInfo, void* threadCode);
+typedef void* (*ThreadFunc)(void*);         // the only function type pthread_create() may call
+
+void handlePthreadCreate(const char* threadName, pthread_t* pThreadInfo, ThreadFunc threadCode);
 void pthread_kill_join(const char* threadName, pthread_t& threadInfo);
 
 #endif

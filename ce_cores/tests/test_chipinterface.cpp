@@ -112,3 +112,142 @@ TEST_CASE("chipinterface: receiving stops when device closes connection or goes 
         CHECK(Utils::elapsedMs(start) < RECV_FROM_CLIENT_TIMEOUT_MS + 1000);   // gives up on receive timeout, doesn't wait forever
     }
 }
+
+//----------------------------------------------------------------------
+// accepting connections - a reconnecting device's old connections are closed
+
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+void onClientRequest(sockaddr_in *clientAddr, uint8_t *recvData, int len);     // from discovery/discovery.cpp
+
+// listening ChipInterface on a free local port, devices connect from 127.0.0.x addresses
+struct ChipServerHarness {
+    ChipInterface  *ci;
+    uint16_t        port;
+    std::vector<int> deviceSockets;
+
+    ChipServerHarness(int whichLog) {
+        ci = NULL;
+        for(int i=0; i<50 && !ci; i++) {               // find free port
+            port = 40000 + ((getpid() * 7 + i * 131) % 20000);
+            ChipInterface *c = new ChipInterface(whichLog, NET_ATN_HANS_ID, SYNC_TAG_HDD, port);
+            if(c->ciOpen()) {
+                ci = c;
+            } else {
+                delete c;
+            }
+        }
+        REQUIRE(ci != NULL);
+    }
+
+    ~ChipServerHarness() {
+        ci->ciClose();                                  // closes listening socket and all clients
+        delete ci;
+        for(int fd : deviceSockets) {
+            close(fd);
+        }
+    }
+
+    // device with this source IP connects, server accepts it; returns client index
+    int deviceConnects(const char *srcIp, int &deviceFd) {
+        deviceFd = socket(AF_INET, SOCK_STREAM, 0);
+        REQUIRE(deviceFd >= 0);
+        deviceSockets.push_back(deviceFd);
+
+        sockaddr_in src;
+        memset(&src, 0, sizeof(src));
+        src.sin_family = AF_INET;
+        inet_pton(AF_INET, srcIp, &src.sin_addr);
+        REQUIRE(bind(deviceFd, (sockaddr *) &src, sizeof(src)) == 0);
+
+        sockaddr_in dst;
+        memset(&dst, 0, sizeof(dst));
+        dst.sin_family = AF_INET;
+        dst.sin_port = htons(port);
+        inet_pton(AF_INET, "127.0.0.1", &dst.sin_addr);
+        REQUIRE(connect(deviceFd, (sockaddr *) &dst, sizeof(dst)) == 0);
+
+        int idx = FD_EMPTY;
+        for(int i=0; i<100 && idx == FD_EMPTY; i++) {
+            idx = ci->acceptSocketIfNeededAndPossible();
+            if(idx == FD_EMPTY) {
+                usleep(2000);
+            }
+        }
+        REQUIRE(idx != FD_EMPTY);
+        return idx;
+    }
+};
+
+static void registerMac(const char *ip, uint8_t macLastByte)     // like discovery request from device: "CELC" + mac
+{
+    sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    inet_pton(AF_INET, ip, &addr.sin_addr);
+
+    uint8_t req[10] = {'C', 'E', 'L', 'C', 0x02, 0x00, 0x00, 0x00, 0x00, macLastByte};
+    onClientRequest(&addr, req, sizeof(req));
+}
+
+static bool deviceSeesClosed(int deviceFd)      // server closed connection -> device reads EOF
+{
+    char c;
+    struct timeval tv = {1, 0};
+    setsockopt(deviceFd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    return recv(deviceFd, &c, 1, 0) == 0;
+}
+
+TEST_CASE("chipinterface: device reconnecting from the same IP - old connection is closed (HDD / IKBD too)")
+{
+    ChipServerHarness h(LOGFILE_HDD);                       // used to happen only for FDD
+
+    int oldFd, newFd, otherFd;
+    int oldIdx = h.deviceConnects("127.0.0.11", oldFd);
+    int otherIdx = h.deviceConnects("127.0.0.12", otherFd); // another device
+    int newIdx = h.deviceConnects("127.0.0.11", newFd);     // first device reconnects (e.g. after reboot)
+
+    CHECK(newIdx != oldIdx);
+    CHECK(h.ci->clientGetByIndex(oldIdx)->fdClient == FD_EMPTY);     // old connection closed right away
+    CHECK(h.ci->clientGetByIndex(newIdx)->fdClient != FD_EMPTY);
+    CHECK(h.ci->clientGetByIndex(otherIdx)->fdClient != FD_EMPTY);   // other device untouched
+    CHECK(deviceSeesClosed(oldFd));
+}
+
+TEST_CASE("chipinterface: device reconnecting with a different IP but same MAC - old connection is closed")
+{
+    registerMac("127.0.0.21", 0x21);                    // device got IP .21 ...
+    registerMac("127.0.0.22", 0x21);                    // ... then (DHCP) .22 - same MAC
+    registerMac("127.0.0.23", 0x23);                    // other device
+
+    ChipServerHarness h(LOGFILE_IKBD);
+
+    int oldFd, newFd, otherFd;
+    int oldIdx = h.deviceConnects("127.0.0.21", oldFd);
+    int otherIdx = h.deviceConnects("127.0.0.23", otherFd);
+    int newIdx = h.deviceConnects("127.0.0.22", newFd);
+
+    CHECK(h.ci->clientGetByIndex(oldIdx)->fdClient == FD_EMPTY);
+    CHECK(h.ci->clientGetByIndex(newIdx)->fdClient != FD_EMPTY);
+    CHECK(h.ci->clientGetByIndex(otherIdx)->fdClient != FD_EMPTY);
+    CHECK(h.ci->clientGetByIndex(newIdx)->mac[5] == 0x21);          // mac known right after accept
+    CHECK(deviceSeesClosed(oldFd));
+}
+
+TEST_CASE("chipinterface: reconnecting floppy device keeps its floppy slot, other device gets another one")
+{
+    ChipServerHarness h(LOGFILE_FDD);
+
+    int fdA, fdB, fdA2;
+    int idxA = h.deviceConnects("127.0.0.31", fdA);
+    int slotA = h.ci->clientGetByIndex(idxA)->floppySlotIndex;
+    int idxB = h.deviceConnects("127.0.0.32", fdB);
+    int slotB = h.ci->clientGetByIndex(idxB)->floppySlotIndex;
+    CHECK(slotA != slotB);
+
+    int idxA2 = h.deviceConnects("127.0.0.31", fdA2);   // device A reconnects
+    CHECK(h.ci->clientGetByIndex(idxA)->fdClient == FD_EMPTY);
+    CHECK(h.ci->clientGetByIndex(idxA2)->floppySlotIndex == slotA);
+    CHECK(h.ci->clientGetByIndex(idxB)->floppySlotIndex == slotB);
+}

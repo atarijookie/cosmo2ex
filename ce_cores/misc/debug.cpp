@@ -239,10 +239,9 @@ void Debug::outBfr(int whichLog, uint8_t *bfr, int count)
         logPrintf(whichLog, f, "| ");
 
         for(j=0; j<16; j++) {
-            char v = bfr[ofs + j];
-            v = (v >= 32 && v <= 126) ? v : '.';
-
-            if((ofs + j) < count) {
+            if((ofs + j) < count) {                 // read only inside the buffer (last row can be shorter)
+                char v = bfr[ofs + j];
+                v = (v >= 32 && v <= 126) ? v : '.';
                 logPrintf(whichLog, f, "%c", v);
             } else {
                 logPrintf(whichLog, f, " ");

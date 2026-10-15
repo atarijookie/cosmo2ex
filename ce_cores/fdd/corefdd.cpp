@@ -25,7 +25,7 @@ extern DebugVars    dbgVars;
 
 extern volatile uint8_t slotSendToDevice[SLOT_COUNT];
 
-int fddThreadCode(void)
+void *fddThreadCode(void *ptr)
 {
     CoreFdd *coreFdd;
     pthread_t floppyEncThreadInfo;
@@ -34,12 +34,11 @@ int fddThreadCode(void)
     printf("\nCosmosEx FDD core starting at port %d\n", SERVER_TCP_PORT_FDD);
     printf("\nlog file: %s\n", Debug::getCoreLogFileName(false, LOGFILE_FDD));
 
-    Utils::setTimezoneVariable_inThisContext();
 
     //-------------
     coreFdd = new CoreFdd();
 
-    handlePthreadCreate("floppy encoder", &floppyEncThreadInfo, (void*) floppyEncodeThreadCode);
+    handlePthreadCreate("floppy encoder", &floppyEncThreadInfo, floppyEncodeThreadCode);
 
     coreFdd->run();                // run the fdd code
     delete coreFdd;
@@ -49,7 +48,7 @@ int fddThreadCode(void)
 
     logFdd(LOG_INFO, "CosmosEx terminated.");
     printf("Terminated\n");
-    return 0;
+    return NULL;
 }
 
 CoreFdd::CoreFdd()

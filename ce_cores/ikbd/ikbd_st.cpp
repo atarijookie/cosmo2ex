@@ -639,14 +639,12 @@ void Ikbd::processKeyboardData(bool skipKeyboardTranslation)
                 }
 
                 // then USB joysticks override the port they are reported on (same ports as their JOY0 / JOY1 events)
-                if(gotUsbJoy1()) {								// got joy 1?
-                    uint8_t joy0state = joystick[0].lastDir | joystick[0].lastBtn;	// get state
-					bfr[1] = joy0state;
+                if(gotUsbJoy1()) {								// got USB stick in joystick[0]?
+					bfr[1 + joyPort(0)] = joystick[0].lastDir | joystick[0].lastBtn;
 				}
 
-				if(gotUsbJoy2()) {								// got joy 2?
-					uint8_t joy1state = joystick[1].lastDir | joystick[1].lastBtn;	// get state
-					bfr[2] = joy1state;
+				if(gotUsbJoy2()) {								// got USB stick in joystick[1]?
+					bfr[1 + joyPort(1)] = joystick[1].lastDir | joystick[1].lastBtn;
 				}
 
 				break;
@@ -686,10 +684,26 @@ void Ikbd::sendBothJoyReport(void)
 
 	bfr[0] = KEYBDATA_JOY_BOTH;
 
-    bfr[1] = !firstJoyIs0 ? joy0state : joy1state;
-    bfr[2] = !firstJoyIs0 ? joy1state : joy0state;
+    bfr[1 + joyPort(0)] = joy0state;    // each joystick on the port it's on now - same as its events
+    bfr[1 + joyPort(1)] = joy1state;
 
 	sendToSt(bfr, 3);
+}
+
+int Ikbd::joyPort(int joyNumber)
+{
+    return firstJoyIs0 ? (1 - joyNumber) : joyNumber;      // swapped: joystick[0] on port 1, joystick[1] on port 0
+}
+
+void Ikbd::sendAllJoyStates(void)
+{
+    if(joystickState != Enabled || joystickMode != JOYMODE_EVENT) {    // only event reporting sends joystick packets on its own
+        return;
+    }
+
+    for(int j=0; j<2; j++) {
+        sendJoyState(j, joystick[j].lastDir | joystick[j].lastBtn);
+    }
 }
 
 // the following works when joystick event reporting is enabled
@@ -697,10 +711,10 @@ void Ikbd::sendJoyState(int joyNumber, int dirTotal)
 {
     uint8_t bfr[2];
 
-    // first set the joystick 0 / 1 tag
-    if(joyNumber == 0) {        // joy 0
+    // first set the joystick 0 / 1 tag - by the port this joystick is on now
+    if(joyPort(joyNumber) == 0) {   // port 0
         bfr[0] = KEYBDATA_JOY0;
-    } else {                    // joy 1
+    } else {                        // port 1
         bfr[0] = KEYBDATA_JOY1;
     }
 
@@ -716,11 +730,10 @@ uint8_t Ikbd::mouseButtonsWithJoy(void)
     uint8_t buttons = mouseBtnNow & 0x03;
 
     if(joystickState == EnabledInMouseMode) {
-        if(joystick[0].lastBtn) {
-            buttons |= 0x02;    // left mouse  button, joy0 button
-        }
-        if(joystick[1].lastBtn) {
-            buttons |= 0x01;    // right mouse button, joy1 button
+        for(int j=0; j<2; j++) {
+            if(joystick[j].lastBtn) {
+                buttons |= (joyPort(j) == 0) ? 0x02 : 0x01;     // port 0 fire = left mouse button, port 1 fire = right mouse button
+            }
         }
     }
 

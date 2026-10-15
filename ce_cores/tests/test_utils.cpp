@@ -2,10 +2,17 @@
     Tests of small helpers from misc/utils.cpp
 */
 #include <string>
+#include <map>
+#include <string.h>
+#include <stdlib.h>
+#include <time.h>
 
 #include "doctest.h"
 
 #include "misc/utils.h"
+#include "misc/settings.h"
+
+extern std::map<std::string, std::string> dotEnv;   // the loaded .env values, defined in utils.cpp
 
 static std::string tz(float utcOffset)
 {
@@ -68,4 +75,63 @@ TEST_CASE("decodeHexEscapes doesn't decode chars produced by decoding")
 {
     // \x5c is '\' - the result "\x41" must stay, not be decoded again to "A"
     CHECK(Utils::decodeHexEscapes("\\x5cx41") == "\\x41");
+}
+
+static uint16_t atariDate(int year, int month, int day)
+{
+    struct tm t;
+    memset(&t, 0, sizeof(t));
+    t.tm_year = year - 1900;
+    t.tm_mon  = month - 1;
+    t.tm_mday = day;
+    return Utils::fileTimeToAtariDate(&t);
+}
+
+static uint16_t atariDateOf(int year, int month, int day)     // expected value: GEMDOS date bits
+{
+    return ((year - 1980) << 9) | (month << 5) | day;
+}
+
+TEST_CASE("fileTimeToAtariDate - dates within GEMDOS range are converted")
+{
+    CHECK(atariDate(1980, 1, 1)   == atariDateOf(1980, 1, 1));
+    CHECK(atariDate(2024, 6, 15)  == atariDateOf(2024, 6, 15));
+    CHECK(atariDate(2107, 12, 31) == atariDateOf(2107, 12, 31));
+}
+
+TEST_CASE("fileTimeToAtariDate - dates outside GEMDOS range are clamped")
+{
+    CHECK(atariDate(1970, 1, 1)  == atariDateOf(1980, 1, 1));       // used to become year 2098
+    CHECK(atariDate(1979, 12, 31) == atariDateOf(1980, 1, 1));
+    CHECK(atariDate(2108, 1, 1)  == atariDateOf(2107, 12, 31));     // used to wrap to 1980
+    CHECK(atariDate(2200, 5, 5)  == atariDateOf(2107, 12, 31));
+}
+
+TEST_CASE("setTimezoneVariable_inThisContext - UTC offset from settings applies to localtime right away")
+{
+    char tmpl[] = "/tmp/ce_test_tz_XXXXXX";
+    REQUIRE(mkdtemp(tmpl) != NULL);
+    dotEnv["SETTINGS_DIR"] = tmpl;
+
+    const char *oldTz = getenv("TZ");
+    std::string oldTzCopy = oldTz ? oldTz : "";
+
+    Settings s;
+    s.setFloat("TIME_UTC_OFFSET", 2.0f);
+    Utils::setTimezoneVariable_inThisContext();
+
+    time_t t = 0;                       // 1970-01-01 00:00 UTC
+    struct tm lt;
+    localtime_r(&t, &lt);
+    CHECK(lt.tm_hour == 2);             // UTC+2
+
+    if(oldTz) {                         // restore
+        setenv("TZ", oldTzCopy.c_str(), 1);
+    } else {
+        unsetenv("TZ");
+    }
+    tzset();
+    dotEnv.erase("SETTINGS_DIR");
+    std::string cmd = std::string("rm -rf '") + tmpl + "'";
+    system(cmd.c_str());
 }

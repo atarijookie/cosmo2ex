@@ -575,3 +575,62 @@ TEST_CASE("ikbd: keyboard joystick - releasing one of two opposite keys keeps th
     h.usbEvent(EV_KEY, KEY_RIGHT, 0, true);             // RIGHT released, LEFT still held - back to LEFT
     CHECK(h.sentToSt() == Bytes({KEYBDATA_JOY1, JOYDIR_LEFT, KEYBDATA_JOY1, JOYDIR_RIGHT, KEYBDATA_JOY1, JOYDIR_LEFT}));
 }
+
+TEST_CASE("ikbd: joystick events and query report the same port, swapped with JOY_FIRST_IS_0")
+{
+    for(int swapped = 0; swapped <= 1; swapped++) {
+        CAPTURE(swapped);
+        IkbdHarness h(swapped == 1);
+        uint8_t port = swapped ? 0 : 1;                 // 1st USB stick (joystick[1]): port 1 normally, port 0 when swapped
+
+        h.stSends({STCMD_SET_JOYSTICK_EVENT_REPORTING});
+        h.sentToSt();
+        h.joystickAxis(1, 0, -20000);                   // 1st stick left
+        CHECK(h.sentToSt() == Bytes({(uint8_t) (port == 0 ? KEYBDATA_JOY0 : KEYBDATA_JOY1), JOYDIR_LEFT}));
+
+        h.stSends({STCMD_SET_JOYSTICK_INTERROG_MODE});
+        h.sentToSt();
+        h.stSends({STCMD_JOYSTICK_INTERROGATION});      // query must report it on the same port (used to be the other one when swapped)
+        Bytes reply = h.sentToSt();
+        REQUIRE(reply.size() == 3);
+        CHECK(reply[1 + port] == JOYDIR_LEFT);
+        CHECK(reply[2 - port] == 0);
+    }
+}
+
+TEST_CASE("ikbd: swap hotkey applies right away to already connected joysticks")
+{
+    IkbdHarness h(false);
+    h.stSends({STCMD_SET_JOYSTICK_EVENT_REPORTING});
+    h.joystickAxis(1, 1, -20000);                       // stick held up - on port 1
+    h.sentToSt();
+
+    h.usbEvent(EV_KEY, KEY_LEFTCTRL, 1, true);          // CTRL + SHIFT + F11 = swap joysticks
+    h.usbEvent(EV_KEY, KEY_LEFTSHIFT, 1, true);
+    h.usbEvent(EV_KEY, KEY_F11, 1, true);
+    Bytes out = h.sentToSt();
+
+    // current state of both ports sent again: port 1 now empty, the held stick now on port 0
+    bool gotPort0Up = false, gotPort1Center = false;
+    for(size_t i=0; i+1 < out.size(); i++) {
+        if(out[i] == KEYBDATA_JOY0 && out[i+1] == JOYDIR_UP) gotPort0Up = true;
+        if(out[i] == KEYBDATA_JOY1 && out[i+1] == 0)         gotPort1Center = true;
+    }
+    CHECK(gotPort0Up);
+    CHECK(gotPort1Center);
+
+    h.joystickAxis(1, 1, 20000);                        // same stick moves down - reported on port 0 now (used to stay on port 1 until re-plugged)
+    CHECK(h.sentToSt() == Bytes({KEYBDATA_JOY0, JOYDIR_DOWN}));
+}
+
+TEST_CASE("ikbd: joystick fire as mouse button follows the port swap")
+{
+    for(int swapped = 0; swapped <= 1; swapped++) {
+        CAPTURE(swapped);
+        IkbdHarness h(swapped == 1);                    // after reset: mouse mode, joystick fire = mouse buttons
+        h.sentToSt();
+
+        h.joystickButton(1, 1);                         // 1st USB stick fire: port 1 = right button, swapped: port 0 = left button
+        CHECK(h.sentToSt() == Bytes({(uint8_t) (swapped ? 0xfa : 0xf9), 0, 0}));
+    }
+}

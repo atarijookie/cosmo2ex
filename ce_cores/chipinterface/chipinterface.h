@@ -122,8 +122,9 @@ private:
     void clientsClearAll(void);                 // clear data structure of all clients
     void clientsCloseOne(ClientInfo* info);     // closes socket if open, then does clientsClearOne()
     int  clientsGetEmptyIndex(void);
-    int  clientsGetFloppySlotIndexForIp(uint32_t ipAddr);
-    void clientsStoreOne(ClientInfo* info, int newSock, uint32_t ipAddr, bool isFdd);
+    int  clientsCloseOlderOfDevice(ClientInfo* newInfo, uint32_t ipAddr, uint8_t* mac);    // returns floppy slot of closed client, or FD_EMPTY
+    int  clientsGetFreeFloppySlot(void);
+    void clientsStoreOne(ClientInfo* info, int newSock, uint32_t ipAddr, uint8_t* mac, bool isFdd);
 
     void storeDeviceFeatures(uint8_t* mac, uint8_t featureBits);
 };

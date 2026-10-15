@@ -54,15 +54,7 @@ Ikbd::Ikbd(ChipInterface* ciIkbd)
 void Ikbd::loadSettings(void)
 {
     Settings s;
-    firstJoyIs0 = s.getBool("JOY_FIRST_IS_0", false);
-
-    if(firstJoyIs0) {
-        joy1st = INTYPE_JOYSTICK1;
-        joy2nd = INTYPE_JOYSTICK2;
-    } else {
-        joy1st = INTYPE_JOYSTICK2;
-        joy2nd = INTYPE_JOYSTICK1;
-    }
+    firstJoyIs0 = s.getBool("JOY_FIRST_IS_0", false);  // applied when sending joystick data, see joyPort()
 
     // get enabled flags for mouse wheel as keys
     mouseWheelAsArrowsUpDown = s.getBool("MOUSE_WHEEL_AS_KEYS", true);

@@ -138,9 +138,11 @@ int ChipInterface::acceptSocketIfNeededAndPossible(void)
     inet_ntop(AF_INET, &addressClient.sin_addr, clientIp, sizeof(clientIp));
     uint32_t clientIpInt = ntohl(addressClient.sin_addr.s_addr);
 
-    // got the new client socket now
-    clientsStoreOne(clientInfo, newSock, clientIpInt, whichLog == LOGFILE_FDD);
-    getMacForIp(addressClient.sin_addr.s_addr, clientInfo->mac);
+    uint8_t mac[6];
+    getMacForIp(addressClient.sin_addr.s_addr, mac);    // mac from discovery request (device always does discovery before connecting)
+
+    // got the new client socket now - this also closes older connections of the same device
+    clientsStoreOne(clientInfo, newSock, clientIpInt, mac, whichLog == LOGFILE_FDD);
 
     Debug::out(whichLog, LOG_INFO, "acceptSocketIfNeededAndPossible() - client #%d connected from %s", idx, clientIp);
 
@@ -688,46 +690,81 @@ int ChipInterface::clientsGetEmptyIndex(void)
     return FD_EMPTY;        // nothing is empty
 }
 
-int ChipInterface::clientsGetFloppySlotIndexForIp(uint32_t ipAddr)
+// Close all other clients of the same device - same IP, or same (known) MAC, e.g. after IP change by DHCP.
+// When a device reconnects (e.g. after reboot / power loss), its old connections stay half-open on our side - the device
+// didn't close them. It never keeps 2 connections to the same core, so the old ones are dead and can be closed right away
+// (instead of waiting for the inactivity timeout). Returns floppy slot of the closed client (FD_EMPTY if none / not FDD).
+int ChipInterface::clientsCloseOlderOfDevice(ClientInfo* newInfo, uint32_t ipAddr, uint8_t* mac)
+{
+    static const uint8_t zeroMac[6] = {0};
+    bool macKnown = (memcmp(mac, zeroMac, 6) != 0);
+    int  oldFloppySlot = FD_EMPTY;
+
+    for(int i=0; i<MAX_CLIENTS; i++) {
+        ClientInfo* ci = &clients[i];
+
+        if(ci == newInfo || ci->fdClient == FD_EMPTY) {        // the new client itself, or empty slot? skip
+            continue;
+        }
+
+        bool sameIp  = (ci->ipAddr == ipAddr);
+        bool sameMac = macKnown && (memcmp(ci->mac, mac, 6) == 0);
+
+        if(!sameIp && !sameMac) {                               // other device? keep it
+            continue;
+        }
+
+        Debug::out(whichLog, LOG_INFO, "clientsCloseOlderOfDevice - device reconnected (same %s), closing its old client #%d (floppy slot %d)",
+                   sameIp ? "IP" : "MAC", i, ci->floppySlotIndex);
+
+        if(oldFloppySlot == FD_EMPTY) {
+            oldFloppySlot = ci->floppySlotIndex;                // reconnected device keeps its floppy slot
+        }
+
+        clientsCloseOne(ci);
+    }
+
+    return oldFloppySlot;
+}
+
+// find floppy slot which is not used by any client
+int ChipInterface::clientsGetFreeFloppySlot(void)
 {
     uint32_t usedSlots = 0;
 
-    // check if this ip is already using some slot and build usedSlots bits
     for(int i=0; i<MAX_CLIENTS; i++) {
-        if(clients[i].ipAddr == ipAddr) {   // if this slot is already using this ipAddress, return the floppy slot
-            // same device reconnected before its old connection timed out - close the old one, so only 1 client uses this floppy slot
-            int floppySlotIndex = clients[i].floppySlotIndex;
-            Debug::out(whichLog, LOG_INFO, "clientsGetFloppySlotIndexForIp - found IP in table, closing old client #%d, will reuse floppySlotIndex: %d", i, floppySlotIndex);
-            clientsCloseOne(&clients[i]);
-            return floppySlotIndex;
-        }
-
-        if(clients[i].floppySlotIndex != FD_EMPTY) {        // this client has a floppy slot, add its bit to usedSlots
+        if(clients[i].fdClient != FD_EMPTY && clients[i].floppySlotIndex != FD_EMPTY) {    // this client has a floppy slot, add its bit to usedSlots
             usedSlots |= (1 << clients[i].floppySlotIndex);
         }
     }
 
-    // find a floppy slot that is not used
     for(int i=0; i<MAX_CLIENTS; i++) {
         if((usedSlots & (1 << i)) == 0) {       // floppy slot i not used, return it
-            Debug::out(whichLog, LOG_INFO, "clientsGetFloppySlotIndexForIp - IP not found in table, start using floppySlotIndex: %d", i);
             return i;
         }
     }
 
-    // no empty floppy slot found
-    Debug::out(whichLog, LOG_ERROR, "clientsGetFloppySlotIndexForIp - no empty slot found, will return: %d", FD_EMPTY);
+    Debug::out(whichLog, LOG_ERROR, "clientsGetFreeFloppySlot - no free floppy slot found");
     return FD_EMPTY;
 }
 
-void ChipInterface::clientsStoreOne(ClientInfo* info, int newSock, uint32_t ipAddr, bool isFdd)
+void ChipInterface::clientsStoreOne(ClientInfo* info, int newSock, uint32_t ipAddr, uint8_t* mac, bool isFdd)
 {
     Debug::out(whichLog, LOG_DEBUG, "clientsStoreOne - client %d - storing fdClient: %d, ipAddr: %08x, isFdd: %d", info->index, newSock, ipAddr, isFdd);
 
+    // for every core (HDD / FDD / IKBD): old connections of this device are dead now - close them
+    int oldFloppySlot = clientsCloseOlderOfDevice(info, ipAddr, mac);
+
     info->fdClient = newSock;
     info->lastMs = Utils::getCurrentMs();
-    info->floppySlotIndex = isFdd ? clientsGetFloppySlotIndexForIp(ipAddr) : 0;     // for floppy get slot index, for hdd or ikbd just use 0 here
-    info->ipAddr = ipAddr;  // store ip after calling clientsGetFloppySlotIndexForIp() so it won't match this same client for the 1st time
+    info->ipAddr = ipAddr;
+    memcpy(info->mac, mac, 6);
+
+    if(isFdd) {         // floppy: reconnected device keeps its slot, new device gets a free one
+        info->floppySlotIndex = (oldFloppySlot != FD_EMPTY) ? oldFloppySlot : clientsGetFreeFloppySlot();
+    } else {            // hdd or ikbd: just use 0 here
+        info->floppySlotIndex = 0;
+    }
 }
 
 void ChipInterface::clientsDisconnectInactive(void)

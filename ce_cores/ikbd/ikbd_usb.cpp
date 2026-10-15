@@ -228,6 +228,11 @@ void Ikbd::processFoundDev(const char *linkName, const char *fullPath)
             return;
         }
     } else if(strstr(linkName, "joystick") != NULL) {                  // it's a joystick?
+        // fixed slots: 1st stick -> joystick[1] (port 1 by default), 2nd stick -> joystick[0] (port 0 by default);
+        // swapping ports (firstJoyIs0) is done when sending, see joyPort(), so it also applies to already connected sticks
+        const int joy1st = INTYPE_JOYSTICK2;
+        const int joy2nd = INTYPE_JOYSTICK1;
+
         if(ikbdDevs[joy1st].fd == -1) {                                       // don't have joystick 1?
             if(strcmp(fullPath, ikbdDevs[joy2nd].devPath) == 0) {             // if this device is already connected as joystick 2, skip it
                 logIkbd(LOG_INFO, "%s: already connected as joystick 2", fullPath);
@@ -765,13 +770,7 @@ bool Ikbd::handleHotkeys(int pcKey, bool pressed, bool skipKeyboardTranslation)
         if (f11sPressed > 0) {
             firstJoyIs0 = !firstJoyIs0;
             s.setBool("JOY_FIRST_IS_0", firstJoyIs0);
-            if(firstJoyIs0) {
-                joy1st = INTYPE_JOYSTICK1;
-                joy2nd = INTYPE_JOYSTICK2;
-            } else {
-                joy1st = INTYPE_JOYSTICK2;
-                joy2nd = INTYPE_JOYSTICK1;
-            }
+            sendAllJoyStates();             // ports swapped - tell ST the current state of both ports, so no direction stays stuck on the old port
             logIkbd(LOG_DEBUG, "Ikbd::handleHotkeys - joy0 <-> joy1 [before: %s, now: %s]",
                      firstJoyIs0 ? "OFF" : "ON", firstJoyIs0 ? "ON" : "OFF");
         } else if (f12sPressed > 0) {
