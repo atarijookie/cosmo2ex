@@ -1,0 +1,73 @@
+# Tests and build checks - on every push to main and every pull request.
+# Also called by release.yml, so a release is only made from a commit that passes all of this.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.22'                    # same as the toolchain stage in docker/Dockerfile
+          cache-dependency-path: webserver/go.sum
+
+      - name: libdospath tests
+        run: make -C libdospath test
+
+      - name: ce_cores tests
+        run: make -C ce_cores -j"$(nproc)" test
+
+      - name: webserver vet + tests
+        working-directory: webserver
+        run: |
+          go vet ./...
+          go test ./...
+
+  atari:
+    # drivers, boot sectors and ce_tests.tos
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install m68k-atari-mint toolchain
+        run: |
+          sudo add-apt-repository -y ppa:vriviere/ppa
+          sudo apt-get install -y --no-install-recommends cross-mint-essential
+
+      - name: Build Atari programs
+        run: |
+          docker/build_drivers.sh
+          make -C test_ce
+
+  cross-build:
+    # ce_cores + webserver cross compiled for every architecture, by the same Dockerfile stage the
+    # release uses (arm/v6 and arm/v7 get the same binaries, so arm/v6 covers both).
+    # The layer cache is shared with release.yml, so releases get the toolchain stage from here.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Cross compile
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: build
+          platforms: linux/amd64,linux/arm64,linux/arm/v6,linux/386
+          push: false
+          cache-from: type=gha,scope=ce
+          cache-to: type=gha,scope=ce,mode=max

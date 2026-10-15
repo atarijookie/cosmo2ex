@@ -29,12 +29,7 @@ fi
 
 # config drive drivers - build them fresh if the Atari toolchain is here
 if command -v m68k-atari-mint-gcc >/dev/null; then
-    echo "Building Atari drivers"
-    make -C "$ROOT/libacsiscsi"
-    make -C "$ROOT/ce_dd_bootsectors" all       # builds also ce_dd_prg
-    mkdir -p "$ROOT/ce_cores/configdrive/drivers"
-    cp "$ROOT/ce_dd_bootsectors/ce_dd.bs" "$ROOT/ce_dd_bootsectors/ce_dd_l2.bs" "$ROOT/ce_dd_prg/ce_dd.prg" \
-        "$ROOT/ce_cores/configdrive/drivers/"
+    "$ROOT/docker/build_drivers.sh"
 else
     echo "m68k-atari-mint-gcc not found, using the drivers already in ce_cores/configdrive/drivers/"
 fi
