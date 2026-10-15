@@ -43,7 +43,7 @@ public:
     float getFloat(const char *key, float defValue);
     void  setFloat(const char *key, float value);
 
-    char *getString(const char *key, const char *defValue);
+    std::string getString(const char *key, const char *defValue);     // returns a copy - thread safe
     void  setString(const char *key, const char *value);
 
     char *getBinaryString(const char *key, int len);

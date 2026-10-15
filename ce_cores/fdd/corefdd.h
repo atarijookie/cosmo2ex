@@ -45,7 +45,7 @@ private:
     void loadLastImageIntoSlot(ClientInfo* ci);
 
 
-    void parseMac(const std::string& macStr, uint8_t* mac);
+    bool parseMac(const std::string& macStr, uint8_t* mac);     // false if macStr isn't 12 hex chars
     void handleFddAction(int fddAction, const std::string& fddMac);
 
     //----------------------------------

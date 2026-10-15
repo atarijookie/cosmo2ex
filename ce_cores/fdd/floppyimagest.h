@@ -9,6 +9,8 @@
 class FloppyImageSt: public FloppyImage
 {
 public:
+    virtual ~FloppyImageSt();                   // saves unsaved changes - must be done here, not in base destructor
+
     virtual bool open(const char *fileName);
     virtual bool save(void);
 private:

@@ -189,9 +189,10 @@ void Settings::setFloat(const char *key, float value)
     fclose(file);
 }
 //-------------------------
-char *Settings::getString(const char *key, const char *defValue)
+// returns a copy (std::string) - no shared static buffer, so it's safe to call from multiple threads (FDD + HDD cores)
+std::string Settings::getString(const char *key, const char *defValue)
 {
-    static char buffer[256];
+    char buffer[256];
     memset(buffer, 0, 256);
 
     FILE *file = sOpen(key, true);
@@ -235,7 +236,7 @@ void Settings::setString(const char *key, const char *value)
 //-------------------------
 char *Settings::getBinaryString(const char *key, int len)
 {
-    static char buffer[256];
+    static thread_local char buffer[256];           // one buffer per thread - valid until next call from the same thread
     memset(buffer, 0, 256);
 
     if(len < 0) {                                   // invalid length? return empty buffer
@@ -246,7 +247,8 @@ char *Settings::getBinaryString(const char *key, int len)
         len = sizeof(buffer);
     }
 
-    char *hexString = getString(key, "INVALID");
+    std::string hexValue = getString(key, "INVALID");
+    const char *hexString = hexValue.c_str();
 
     bool good = (strcmp(hexString, "INVALID") != 0);    // if retrieved is something other than the default value, probably valid
 

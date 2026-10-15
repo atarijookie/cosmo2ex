@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -18,10 +19,7 @@
 #include "imagesilo.h"
 #include "floppyencoder.h"
 
-#define DEV_CHECK_TIME_MS       3000
-#define UPDATE_CHECK_TIME       1000
-#define INET_IFACE_CHECK_TIME   1000
-#define UPDATE_SCRIPTS_TIME     10000
+#define BFR_SIZE                32      // buffer size for the small requests from device (send track, send whole image)
 
 extern DebugVars    dbgVars;
 
@@ -184,7 +182,6 @@ bool CoreFdd::handleOneClient(ClientInfo* ci)
 bool CoreFdd::handleFdd(ClientInfo* ci, uint8_t* inBuff)
 {
     bool isFddCommand = false;
-    #define BFR_SIZE    32
     uint8_t inBuf[BFR_SIZE];
 
     switch(inBuff[3]) {
@@ -230,8 +227,7 @@ void CoreFdd::loadSettings(void)
 void CoreFdd::loadLastImageIntoSlot(ClientInfo* ci)
 {
     Settings s(ci->mac);
-    const char *pPathAndFile = s.getString("FLOPPY_IMAGE", "");  // try to read the value
-    std::string pathAndFile = pPathAndFile;
+    std::string pathAndFile = s.getString("FLOPPY_IMAGE", "");   // try to read the value
 
     if(!pathAndFile.empty()) {      // this specific device has file? store it also to slot #
         logFdd(LOG_DEBUG, "CoreFdd::loadLastImageIntoSlot - have stored image for this specific device, saving to slot %d -> %s", ci->floppySlotIndex, pathAndFile.c_str());
@@ -262,7 +258,6 @@ void CoreFdd::handleFwVersion_franz(ClientInfo* ci)
 
 void CoreFdd::handleSendTrack(ClientInfo* ci)
 {
-    #define BFR_SIZE    32
     uint8_t inBuf[BFR_SIZE];
 
     int readCnt = ciFdd->readRestOfData(ci, inBuf, BFR_SIZE);
@@ -279,7 +274,7 @@ void CoreFdd::handleSendTrack(ClientInfo* ci)
     imageSilo->getParams(ci->floppySlotIndex, tr, si, spt);      // read the floppy image params
 
     uint8_t *encodedTrack;
-    int countInTrack;
+    int countInTrack = 0;
 
     if(side < 0 || side > 1 || track < 0 || track >= tr) {      // side / track out of range? use empty track
         logFdd(LOG_ERROR, "handleSendTrack() -- side / track out of range, returning empty track. Franz wants: [track %d, side %d], but current image has %d tracks, %d sides, %d sectors/track", track, side, tr, si, spt);
@@ -299,12 +294,13 @@ void CoreFdd::handleSendTrack(ClientInfo* ci)
 void CoreFdd::handleSendImageToClient(ClientInfo* client)
 {
     std::string fileName = imageSilo->getFileName(client->floppySlotIndex);   // get the filename
+    uint32_t imageGen = imageSilo->getImageGen(client->floppySlotIndex);       // which image generation we're sending
 
     int imgTracks, imgSides, imgSectorsPerTrack;
     imageSilo->getParams(client->floppySlotIndex, imgTracks, imgSides, imgSectorsPerTrack);      // read the floppy image params
 
     uint8_t *encodedTrack;
-    int countInTrack;
+    int countInTrack = 0;
 
     // sending started, send imagTracks, imgSides, spt
     ciFdd->fdd_sendImageParamsToChip(client->fdClient, false, imgTracks, imgSides, imgSectorsPerTrack, fileName);
@@ -321,6 +317,9 @@ void CoreFdd::handleSendImageToClient(ClientInfo* client)
 
     // sending finished, send imagTracks, imgSides, spt, this will also do the disk change
     ciFdd->fdd_sendImageParamsToChip(client->fdClient, true, imgTracks, imgSides, imgSectorsPerTrack, fileName);
+
+    // device switches to the sent image now - sectors it writes from now on belong to this image, the previous one can be released
+    imageSilo->setDeviceGen(client->floppySlotIndex, imageGen);
 }
 
 void CoreFdd::handleSectorWritten(ClientInfo* ci)
@@ -339,28 +338,39 @@ void CoreFdd::handleSectorWritten(ClientInfo* ci)
     floppyEncoder_decodeMfmWrittenSector(ci->floppySlotIndex, track, side, sector, writtenSector, byteCount); // let floppy encoder handle decoding, reencoding, saving
 }
 
-void CoreFdd::parseMac(const std::string& macStr, uint8_t* mac)
+bool CoreFdd::parseMac(const std::string& macStr, uint8_t* mac)
 {
     if (macStr.size() != 12)
     {
-        logFdd(LOG_WARNING, "MAC must be 12 hex characters");
-        return;
+        logFdd(LOG_WARNING, "MAC must be 12 hex characters, got: '%s'", macStr.c_str());
+        return false;
+    }
+
+    for(size_t i = 0; i < 12; i++)
+    {
+        if(!isxdigit((unsigned char) macStr[i])) {      // not a hex digit? whole MAC invalid (don't leave zeros that could match some client)
+            logFdd(LOG_WARNING, "MAC must be 12 hex characters, got: '%s'", macStr.c_str());
+            return false;
+        }
     }
 
     for(size_t i = 0; i < 6; i++)
     {
         char hex[3] = {macStr[2 * i], macStr[2 * i + 1], 0};
-        int val;
-        sscanf(hex, "%X", &val);
-        mac[i] = val;
+        mac[i] = (uint8_t) strtoul(hex, NULL, 16);
     }
+
+    return true;
 }
 
 void CoreFdd::handleFddAction(int fddAction, const std::string& fddMac)
 {
     uint8_t mac[6];
     memset(mac, 0, 6);
-    parseMac(fddMac, mac);
+    if(!parseMac(fddMac, mac)) {        // invalid MAC? don't look up a client by all-zero MAC
+        logFdd(LOG_WARNING, "Failed to handle fdd action, invalid mac '%s'", fddMac.c_str());
+        return;
+    }
 
     ClientInfo* client = ciFdd->clientsGetOneByMac(mac);
 
@@ -377,9 +387,8 @@ void CoreFdd::handleFddAction(int fddAction, const std::string& fddMac)
 
     if(fddAction == FDD_ACTION_INSERT) {
         Settings s(client->mac);
-        const char *pPathAndFile = s.getString("FLOPPY_IMAGE", ""); // try to read the value
-        std::string pathAndFile = pPathAndFile;
-        logFdd(LOG_DEBUG, "inserting %s into slot %d", pPathAndFile, client->floppySlotIndex);
+        std::string pathAndFile = s.getString("FLOPPY_IMAGE", ""); // try to read the value
+        logFdd(LOG_DEBUG, "inserting %s into slot %d", pathAndFile.c_str(), client->floppySlotIndex);
         imageSilo->loadImageToSlot(client->floppySlotIndex, pathAndFile.c_str());
         return;
     }

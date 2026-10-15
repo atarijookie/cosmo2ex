@@ -30,6 +30,9 @@ ImageSilo::ImageSilo(ChipInterface *chipInterface)
     emptyTrack = new uint8_t[MFM_STREAM_SIZE];
     memset(emptyTrack, 0, MFM_STREAM_SIZE);
 
+    trackCopy = new uint8_t[MFM_STREAM_SIZE];  // encoded track is copied here before sending, see getEncodedTrack()
+    memset(trackCopy, 0, MFM_STREAM_SIZE);
+
     uint8_t *p = emptyTrack;
     for(int i=0; i<(MFM_STREAM_SIZE/3); i++) {        // fill the empty track with 0x4e sync bytes
         *p++ = 0xa9;
@@ -49,41 +52,7 @@ ImageSilo::ImageSilo(ChipInterface *chipInterface)
 ImageSilo::~ImageSilo()
 {
     delete []emptyTrack;
-}
-
-bool ImageSilo::createNewImage(std::string pathAndFile)
-{
-    // open the file
-    FILE *f = fopen((char *) pathAndFile.c_str(), "wb");
-
-    if(!f) {                                            // failed to open file?
-        logFdd(LOG_ERROR, "FloppySetup::newImage - failed to open file %s", (char *) pathAndFile.c_str());
-        return false;
-    }
-
-    // create default boot sector (copied from blank .st image created in Steem)
-    uint8_t sect0start[]   = {0xeb, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc8, 0x82, 0x75, 0x00, 0x02, 0x02, 0x01, 0x00, 0x02, 0x70, 0x00, 0xa0, 0x05, 0xf9, 0x05, 0x00, 0x09, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
-    uint8_t sect0end[]     = {0x00, 0x97, 0xc7};
-
-    uint8_t bfr[512];
-    memset(bfr, 0, 512);
-
-    memcpy(bfr, sect0start, sizeof(sect0start));                        // copy the start of default boot sector to start of buffer
-    memcpy(bfr + 512 - sizeof(sect0end), sect0end, sizeof(sect0end));   // copy the end of default boot sector to end of buffer
-
-    fwrite(bfr, 1, 512, f);
-
-    // create the empty rest of the file
-    memset(bfr, 0, 512);
-
-    int totalSectorCount = (9*80*2) - 1;                                // calculate the count of sectors on a floppy - 2 sides, 80 tracks, 9 spt, minus the already written boot sector
-
-    for(int i=0; i<totalSectorCount; i++) {
-        fwrite(bfr, 1, 512, f);
-    }
-
-    fclose(f);
-    return true;
+    delete []trackCopy;
 }
 
 uint8_t *ImageSilo::getEmptyTrack(void)
@@ -99,17 +68,12 @@ void ImageSilo::loadSettings(void)
     }
 }
 
-void ImageSilo::saveSettings(void)
-{
-
-}
-
 std::string ImageSilo::getImageFilePathFromSlotNo(int slotNo)
 {
     std::string res;
 
     if(slotNo < 0 || slotNo >= SLOT_COUNT) {
-        logFdd(LOG_WARNING, "ImageSilo::saveImageFilepathToSlot -- slotNo: %d invalid", slotNo);
+        logFdd(LOG_WARNING, "ImageSilo::getImageFilePathFromSlotNo -- slotNo: %d invalid", slotNo);
         return res;
     }
 
@@ -141,7 +105,7 @@ void ImageSilo::saveImageFilepathToSlot(int slotNo, const char* pathAndFile)
 void ImageSilo::saveImageFilepathToClient(int slotNo, const char* pathAndFile)
 {
     if(slotNo < 0 || slotNo >= SLOT_COUNT) {
-        logFdd(LOG_WARNING, "ImageSilo::saveImageFilepathToSlot -- slotNo: %d invalid", slotNo);
+        logFdd(LOG_WARNING, "ImageSilo::saveImageFilepathToClient -- slotNo: %d invalid", slotNo);
         return;
     }
 
@@ -168,14 +132,14 @@ void ImageSilo::loadImageToSlot(int slotNo, const char* pPathAndFile)
     std::string pathAndFile = pPathAndFile;
 
     if(pathAndFile.empty()) {                   // nothing stored? skip it
-        logFdd(LOG_DEBUG, "ImageSilo::loadSettings -- slotNo: %d, pathAndFile: %s - empty!", slotNo, pathAndFile.c_str());
+        logFdd(LOG_DEBUG, "ImageSilo::loadImageToSlot -- slotNo: %d, pathAndFile: %s - empty!", slotNo, pathAndFile.c_str());
         // TODO: add() empty image
         return;
     }
 
     std::string path, file;
     Utils::splitFilenameFromPath(pathAndFile, path, file);
-    logFdd(LOG_DEBUG, "ImageSilo::loadSettings -- slotNo: %d, pathAndFile: %s, file: %s", slotNo, pathAndFile.c_str(), file.c_str());
+    logFdd(LOG_DEBUG, "ImageSilo::loadImageToSlot -- slotNo: %d, pathAndFile: %s, file: %s", slotNo, pathAndFile.c_str(), file.c_str());
     add(slotNo, file, pathAndFile);        // add this image
 }
 
@@ -203,21 +167,17 @@ void ImageSilo::remove(int index)                   // remove image at specified
         return;
     }
 
-    if(slots[index].imageFile.empty()) {            // no image in this slot? skip the rest
-        return;
-    }
+    logFdd(LOG_DEBUG, "ImageSilo::remove() -- ejecting slot %d (%s)", index, slots[index].imageFile.c_str());
 
     clearSlot(index);
-    saveSettings();                     // save it to settings
-}
 
-void ImageSilo::dumpStringsToBuffer(uint8_t *bfr)      // copy the strings to buffer
-{
-    memset(bfr, 0, 512);
+    // forget the image in settings - for the device in this slot and for the slot itself, so it won't come back on reconnect
+    saveImageFilepathToClient(index, "");
+    saveImageFilepathToSlot(index, "");
 
-    for(int i=0; i<3; i++) {
-        strncpy((char *) &bfr[(i * 160)     ], slots[i].imageFile.c_str(), 79);
-    }
+    // unload the image in encoder thread (saves unsaved changes first), it will then send empty slot to device;
+    // this also clears the remembered file name, so inserting the same image again works
+    floppyEncoder_addEncodeWholeImageRequest(index, "");
 }
 
 void ImageSilo::clearSlot(int index)
@@ -226,43 +186,65 @@ void ImageSilo::clearSlot(int index)
     slots[index].hostPath.clear();
 }
 
+uint32_t ImageSilo::getImageGen(int slotNo)
+{
+    if(slotNo < 0 || slotNo >= SLOT_COUNT) {
+        return 0;
+    }
+
+    pthread_mutex_lock(&floppyEncoderMutex);
+    uint32_t gen = slots[slotNo].imageGen;
+    pthread_mutex_unlock(&floppyEncoderMutex);
+
+    return gen;
+}
+
+void ImageSilo::setDeviceGen(int slotNo, uint32_t gen)
+{
+    if(slotNo < 0 || slotNo >= SLOT_COUNT) {
+        return;
+    }
+
+    pthread_mutex_lock(&floppyEncoderMutex);
+    slots[slotNo].deviceGen = gen;          // from now on, sectors written by device belong to this image generation
+    pthread_mutex_unlock(&floppyEncoderMutex);
+
+    logFdd(LOG_DEBUG, "ImageSilo::setDeviceGen -- slot %d: device now has image generation %u", slotNo, gen);
+}
+
 uint8_t *ImageSilo::getEncodedTrack(int floppySlotIndex, int track, int side, int &bytesInBuffer)
 {
-    uint8_t *pTrack;
+    // Returns a COPY of the encoded track (in trackCopy, valid until next call), never a pointer into the encoder's cache -
+    // the encoder thread could start re-encoding (memset + rewrite) that track while we're still sending it.
+    // All callers run in the single FDD thread and send the data right away, so one copy buffer is enough.
+
+    bytesInBuffer = MFM_STREAM_SIZE;        // count for emptyTrack, used on every early return below
 
     if(floppySlotIndex < 0 || floppySlotIndex >= SLOT_COUNT) {
         return emptyTrack;
     }
 
-    //logFdd(LOG_DEBUG, "ImageSilo::getEncodedTrack - track: %d, side: %d, currentSlot: %d, isReady: %d", track, side, currentSlot, slots[currentSlot].encImage.encodedTrackIsReady(track, side));
-    //uint32_t start = Utils::getCurrentMs();
+    MfmCachedImage *encImage = &slots[floppySlotIndex].encImage;
 
-    if(!slots[floppySlotIndex].encImage.encodedTrackIsReady(track, side)) {     // track not ready?
-        floppyEncoder_addReencodeTrackRequest(floppySlotIndex, track, side);    // ask for reencoding
-
-        // wait short while to see if the image gets encoded
-        Timeout timeout(500);
-        bool isReady = false;
-
-        while(!timeout.expired()) {                 // still should wait?
-            isReady = slots[floppySlotIndex].encImage.encodedTrackIsReady(track, side); // check if it's ready
-
-            if(isReady) {   // ready? quit loop
-                break;
-            }
-        }
-
-        if(!isReady) {      // not ready? return empty track
-            //logFdd(LOG_DEBUG, "ImageSilo::getEncodedTrack - finishing with isReady: %d after %d ms", isReady, Utils::getCurrentMs() - start);
-            return emptyTrack;
-        }
+    if(encImage->copyEncodedTrackIfReady(track, side, trackCopy, bytesInBuffer)) {   // ready? got the copy
+        return trackCopy;
     }
 
-    //logFdd(LOG_DEBUG, "ImageSilo::getEncodedTrack - finishing with isReady: %d after %d ms", true, Utils::getCurrentMs() - start);
+    floppyEncoder_addReencodeTrackRequest(floppySlotIndex, track, side);    // not ready - ask for (re)encoding
 
-    // is ready? return that track
-    pTrack = slots[floppySlotIndex].encImage.getEncodedTrack(track, side, bytesInBuffer);   // get data from current slot
-    return pTrack;
+    // wait short while to see if the track gets encoded
+    Timeout timeout(500);
+
+    while(!timeout.expired()) {                 // still should wait?
+        if(encImage->copyEncodedTrackIfReady(track, side, trackCopy, bytesInBuffer)) {   // ready now? got the copy
+            return trackCopy;
+        }
+
+        Utils::sleepMs(1);  // don't spin - give the CPU to the encoder thread, which is the one making the track ready
+    }
+
+    bytesInBuffer = MFM_STREAM_SIZE;            // not ready in time - return empty track
+    return emptyTrack;
 }
 
 bool ImageSilo::getParams(int floppySlotIndex, int &tracks, int &sides, int &sectorsPerTrack)

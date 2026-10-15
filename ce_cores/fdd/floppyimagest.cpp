@@ -3,6 +3,11 @@
 #include "floppyimagest.h"
 #include "../misc/debug.h"
 
+FloppyImageSt::~FloppyImageSt()
+{
+    clear();                            // save if needed (save() still dispatches to this class here), free memory
+}
+
 bool FloppyImageSt::open(const char *fileName)
 {
     loadedFlag = false;
@@ -18,7 +23,11 @@ bool FloppyImageSt::open(const char *fileName)
         return false;
     }
 
-    calcParams();                       // calculate the params of this floppy
+    if(!calcParams()) {                 // couldn't figure out tracks / sides / sectors from image size? fail, don't use garbage geometry
+        logFdd(LOG_ERROR, "ST Image %s has unsupported size %d bytes, not loading", fileName, image.size);
+        clear();
+        return false;
+    }
 
     loadedFlag = true;
 
@@ -78,14 +87,6 @@ bool FloppyImageSt::save(void)
         return false;
     }
 
-    FILE *f = fopen(currentFileName.c_str(), "wb");    // open
-
-    if(!f) {                            // failed?
-        return false;
-    }
-
-    int res = fwrite(image.data, 1, image.size, f); // write
-
-    fclose(f);                          // close
-    return (res == image.size);         // success if written as much as should
+    // write to temp file and rename it over the original - a crash during save can't destroy the image
+    return saveFileAtomically(currentFileName.c_str(), image.data, image.size);
 }

@@ -7,11 +7,20 @@
 // maximum 2 sides, 85 tracks per side
 #define MAX_TRACKS      (2 * 85)
 
+// Stream table at the start of each encoded track (after track + side bytes): 16-bit words,
+// [0] = stream size, [1..spt] = offset of each sector in the stream. Must match the device (STREAM_TABLE_ITEMS in ce_pico_fdd).
+#define STREAM_TABLE_ITEMS      20
+#define STREAM_TABLE_SIZE       (2 * STREAM_TABLE_ITEMS)
+#define STREAM_START_OFFSET     STREAM_TABLE_SIZE
+
+// max sectors per track that fit in the stream table - images with more can't be encoded
+#define MAX_SECTORS_PER_TRACK_IN_STREAM     (STREAM_TABLE_ITEMS - 1)
+
 typedef struct {
     volatile bool isReady;    // set to false if this track can't be streamed yet (e.g. not encoded yet or encoding at that moment)
 
-    volatile uint32_t  encodeRequestTime;  // timestamp when other thread requested encoding of this track
-    volatile uint32_t  encodeActionTime;   // timestamp when encoder did start to encode the track. If at the end of encoding requestTime > actionTime, another request was placed and encode needs to repeat
+    uint32_t encodeRequestSeq;      // incremented (under mutex) on every (re)encode request of this track - counter, not time, so 2 requests in the same ms aren't mixed up
+    uint32_t encodeActionSeq;       // encodeRequestSeq value when encoder started encoding the track. If they differ at the end, another request was placed and encode needs to repeat
 
     int     track;
     int     side;
@@ -38,6 +47,7 @@ public:
 
     bool encodedTrackIsReady(int track, int side);
     uint8_t *getEncodedTrack(int track, int side, int &bytesInBuffer);
+    bool copyEncodedTrackIfReady(int track, int side, uint8_t *dest, int &bytesInBuffer);  // copy whole track (MFM_STREAM_SIZE) to dest under mutex, if ready
     bool getParams(int &tracks, int &sides, int &sectorsPerTrack);
 
     bool decodeMfmBuffer(uint8_t *inBfr, int inCnt, uint8_t *outBfr);     // decode single MFM encoded sector

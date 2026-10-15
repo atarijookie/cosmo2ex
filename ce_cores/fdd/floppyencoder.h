@@ -7,7 +7,6 @@
 #include <string>
 #include <queue>
 
-#include "mfmdecoder.h"
 #include "mfmcachedimage.h"
 
 #define WRITTENMFMSECTOR_COUNT  128
@@ -21,6 +20,8 @@ typedef struct {
     int track;
     int side;
     int sector;
+
+    uint32_t imageGen;      // generation of the image the device had when this sector was written (see SiloSlot)
 
     uint8_t *data;
     uint32_t size;

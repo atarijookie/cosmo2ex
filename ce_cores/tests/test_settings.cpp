@@ -6,6 +6,8 @@
 #include <string.h>
 #include <map>
 #include <string>
+#include <thread>
+#include <atomic>
 
 #include "doctest.h"
 
@@ -241,4 +243,30 @@ TEST_CASE_FIXTURE(SettingsDir, "settings dir is created on write, not on read")
     s.setInt("SOME_KEY", 456);                          // write creates the dir and stores the value
     CHECK(Utils::dirExists(devDir));
     CHECK(s.getInt("SOME_KEY", 123) == 456);
+}
+
+TEST_CASE_FIXTURE(SettingsDir, "getString is safe to call from multiple threads")
+{
+    // FDD and HDD cores run in different threads and both read settings - each call must return its own value
+    Settings s;
+    s.setString("THREAD_A", "/path/for/thread/a");
+    s.setString("THREAD_B", "/another/longer/path/for/thread/b");
+
+    std::atomic<int> mismatches(0);
+
+    auto reader = [&mismatches](const char *key, const char *expected) {
+        Settings ts;
+        for(int i=0; i<2000; i++) {
+            if(std::string(ts.getString(key, "def")) != expected) {
+                mismatches++;
+            }
+        }
+    };
+
+    std::thread a(reader, "THREAD_A", "/path/for/thread/a");
+    std::thread b(reader, "THREAD_B", "/another/longer/path/for/thread/b");
+    a.join();
+    b.join();
+
+    CHECK(mismatches.load() == 0);
 }

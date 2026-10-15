@@ -30,6 +30,10 @@ public:
     virtual bool writeSector(int track, int side, int sectorNo, uint8_t *buffer);
     virtual bool readNotWriteSector(bool readNotWrite, int track, int side, int sectorNo, uint8_t *buffer);
 
+    // write whole file so that a crash / power loss during save never leaves a half-written image:
+    // write to temp file next to it, fsync, then rename over the original
+    static bool saveFileAtomically(const char *path, const uint8_t *data, size_t size);
+
 protected:
     virtual bool loadImageIntoMemory(void);
 

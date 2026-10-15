@@ -101,7 +101,10 @@ void KeybJoyKeys::loadKeys(int joyNumber)
 
     // get the settings
     Settings s;
-    char *keys = s.getString(settingsName, defaultKeys);
+    std::string keys = s.getString(settingsName, defaultKeys);
+    if(keys.size() < 5) {               // old format below reads keys[0..4] - pad with zeros (the old 256 B buffer was zero-filled too)
+        keys.resize(5, '\0');
+    }
 
     // store the human readable keys directly to struct
     std::vector<std::string> keyElems;

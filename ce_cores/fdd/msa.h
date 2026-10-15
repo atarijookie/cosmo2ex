@@ -11,9 +11,7 @@
 #define Uint16  uint16_t
 
 extern bool MSA_FileNameIsMSA(const char *pszFileName, bool bAllowGZ);
-extern Uint8 *MSA_UnCompress(Uint8 *pMSAFile, long *pImageSize);
+extern Uint8 *MSA_UnCompress(Uint8 *pMSAFile, long nFileSize, long *pImageSize);   // nFileSize: bytes in pMSAFile, never read beyond
 extern Uint8 *MSA_ReadDisk(const char *pszFileName, long *pImageSize);
-extern bool MSA_WriteDisk(const char *pszFileName, Uint8 *pBuffer, int ImageSize);
+extern bool MSA_WriteDisk(const char *pszFileName, Uint8 *pBuffer, int ImageSize, int nTracks, int nSides, int nSectorsPerTrack, int nStartTrack = 0);  // geometry = what image was loaded with; pBuffer holds tracks 0..nTracks-1, file gets nStartTrack..nTracks-1
 bool File_Save(const char *pszFileName, const Uint8 *pAddress, int Size);
-void Floppy_FindDiskDetails(const Uint8 *pBuffer, int nImageBytes, Uint16 *pnSectorsPerTrack, Uint16 *pnSides);
-void Floppy_DoubleCheckFormat(long nDiskSize, long nSectorsPerDisk, Uint16 *pnSides, Uint16 *pnSectorsPerTrack);

@@ -94,6 +94,13 @@ void MfmCachedImage::clearWholeCachedImage(void)    // go and memset() all the c
     gotImage = false;
     maxTotalSymbolsTime = 0;
 
+    // forget previous image completely - if the new one fails to load, nothing must still look valid / waiting for encoding
+    params.tracks       = 0;
+    params.sides        = 0;
+    params.spt          = 0;
+    tracksToBeEncoded   = 0;
+    newContent          = false;
+
     for(int i=0; i<MAX_TRACKS; i++) {
         tracks[i].isReady = false;      // not ready yet
         tracks[i].bytesInStream = 0;
@@ -129,6 +136,10 @@ void MfmCachedImage::storeImageParams(FloppyImage *img, int slotNo)
 
 void MfmCachedImage::askToReencodeTrack(int track, int side)
 {
+    if(!gotImage) {                 // no image loaded? nothing to encode from
+        return;
+    }
+
     int index;
     trackAndSideToIndex(track, side, index);    // try to get index from track and side
 
@@ -136,7 +147,7 @@ void MfmCachedImage::askToReencodeTrack(int track, int side)
         return;
     }
 
-    tracks[index].encodeRequestTime = Utils::getCurrentMs();    // mark time when this request was placed
+    tracks[index].encodeRequestSeq++;   // one more request for this track (called with floppyEncoderMutex locked)
     tracks[index].isReady = false;  // the reencoding didn't happen yet
     nextIndex = index;              // store this as next index that needs reencoding
     tracksToBeEncoded++;            // increment count of tracks that need reencoding
@@ -183,7 +194,8 @@ bool MfmCachedImage::findNotReadyTrackAndEncodeIt(FloppyImage *img, int &track, 
     track = -1;                         // nothing encoded
     side = -1;
 
-    if(!img->isLoaded()) {              // image file not open? quit
+    if(!img || !img->isLoaded()) {      // no image object (failed load) or image file not open? nothing to encode, stop asking
+        tracksToBeEncoded = 0;
         return false;
     }
 
@@ -208,9 +220,9 @@ bool MfmCachedImage::findNotReadyTrackAndEncodeIt(FloppyImage *img, int &track, 
     side = s;
 
     //-----
-    pthread_mutex_lock(&floppyEncoderMutex);      // unlock the mutex
+    pthread_mutex_lock(&floppyEncoderMutex);        // lock the mutex
 
-    tracks[index].encodeActionTime = Utils::getCurrentMs(); // mark time when we started to process this track
+    tracks[index].encodeActionSeq = tracks[index].encodeRequestSeq;    // encoding now covers all requests up to this one
     tracks[index].isReady = false;      // track not ready to be streamed - will be encoded
 
     pthread_mutex_unlock(&floppyEncoderMutex);      // unlock the mutex
@@ -223,16 +235,13 @@ bool MfmCachedImage::findNotReadyTrackAndEncodeIt(FloppyImage *img, int &track, 
 
     currentStreamStart = tracks[index].mfmStream + 2;       // where the stream starts
 
-    #define STREAM_TABLE_ITEMS      20
-    #define STREAM_TABLE_SIZE       (2 * STREAM_TABLE_ITEMS)
-
-    #define STREAM_START_OFFSET     STREAM_TABLE_SIZE
-
     bfr = currentStreamStart + STREAM_TABLE_SIZE;   // where the MFM data will start (after initial table)
     bytesInBfr = STREAM_TABLE_SIZE;             // no bytes in stream yet
 
+    int spt = MIN(params.spt, MAX_SECTORS_PER_TRACK_IN_STREAM);    // never more sectors than the stream table can hold
+
     for(int i=0; i<STREAM_TABLE_ITEMS; i++) {   // present sector offset will be init to start of stream, non-existent sector offsets to zero
-        setRawWordAtIndex(i, (i <= params.spt) ? STREAM_START_OFFSET : 0);
+        setRawWordAtIndex(i, (i <= spt) ? STREAM_START_OFFSET : 0);
     }
 
     // init encoder counters of symbols
@@ -243,7 +252,7 @@ bool MfmCachedImage::findNotReadyTrackAndEncodeIt(FloppyImage *img, int &track, 
     tracks[index].symbolsInStream = 0;
     tracks[index].totalSymbolsTime = 0;
 
-    encodeSingleTrack(img, s, t, params.spt);   // encode single track
+    encodeSingleTrack(img, s, t, spt);          // encode single track
 
     // copy the counters from encoder to this track @ index
     tracks[index].symbolsInStream = encoder.symbolsInStream;
@@ -268,7 +277,7 @@ bool MfmCachedImage::findNotReadyTrackAndEncodeIt(FloppyImage *img, int &track, 
     //-----
     pthread_mutex_lock(&floppyEncoderMutex);      // lock the mutex
 
-    if(tracks[index].encodeRequestTime <= tracks[index].encodeActionTime) {  // if there wasn't any request since we started to encode this track, it's ready (otherwise needs reencoding)
+    if(tracks[index].encodeRequestSeq == tracks[index].encodeActionSeq) {    // if there wasn't any request since we started to encode this track, it's ready (otherwise needs reencoding)
         tracks[index].isReady = true;               // track is now ready to be streamed
     }
 
@@ -282,7 +291,7 @@ void MfmCachedImage::trackAndSideToIndex(const int track, const int side, int &i
 {
     index = track * 2 + side;       // calculate index from track and side
 
-    if(index >= MAX_TRACKS) {       // index out of bounds?
+    if(track < 0 || side < 0 || side > 1 || index >= MAX_TRACKS) {  // index out of bounds?
         index = -1;
     }
 }
@@ -399,6 +408,33 @@ uint8_t *MfmCachedImage::getEncodedTrack(int track, int side, int &bytesInBuffer
 
     bytesInBuffer = tracks[index].bytesInStream;                // return that track
     return tracks[index].mfmStream;
+}
+
+// Copy the encoded track out while holding the mutex, so the encoder can't start re-encoding (memset + rewrite) it during the copy.
+// The encoder sets isReady = false under this mutex before it touches mfmStream, and holds the mutex only for short moments,
+// so this never waits for an encode to finish. Returns false (dest untouched) if the track isn't ready.
+bool MfmCachedImage::copyEncodedTrackIfReady(int track, int side, uint8_t *dest, int &bytesInBuffer)
+{
+    int index;
+    trackAndSideToIndex(track, side, index);
+
+    if(index == -1) {                                           // index out of bounds?
+        return false;
+    }
+
+    bool copied = false;
+
+    pthread_mutex_lock(&floppyEncoderMutex);
+
+    if(gotImage && tracks[index].isReady) {                     // got image and this track is encoded? copy it
+        memcpy(dest, tracks[index].mfmStream, MFM_STREAM_SIZE);
+        bytesInBuffer = tracks[index].bytesInStream;
+        copied = true;
+    }
+
+    pthread_mutex_unlock(&floppyEncoderMutex);
+
+    return copied;
 }
 
 bool MfmCachedImage::encodeSingleSector(FloppyImage *img, int side, int track, int sector)
