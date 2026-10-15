@@ -105,6 +105,7 @@ test:	$(TEST_BIN)
 lib/libdospath.a:
 	@echo "-> Entering libdospath and making libdospath"
 	cd ../libdospath && $(MAKE) all
+	mkdir -p lib
 	cp ../libdospath/libdospath.a lib/
 	@echo "<- Leaving libdospath"
 
