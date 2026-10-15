@@ -9,6 +9,7 @@
 
 #include "ikbd_defs.h"
 #include "cyclicbuff.h"
+#include "../chipinterface/chipinterfacedefs.h"     // MAX_CLIENTS
 #include "keybjoys.h"
 #include "keytranslator.h"
 
@@ -18,9 +19,14 @@
 #define HOSTPATH_SEPAR_STRING   "/"
 #define PATH_BUFF_SIZE            1024
 
+#define INPUT_EVENT_MAX_SIZE    32          // >= sizeof(input_event) and sizeof(js_event)
+
 typedef struct {
     char    devPath[256];
     int     fd;
+
+    uint8_t partial[INPUT_EVENT_MAX_SIZE];  // part of event received so far - a read can return less than whole event (e.g. from FIFO)
+    int     partialLen;
 } TInputDevice;
 
 #define JOYAXIS             8
@@ -46,6 +52,26 @@ typedef struct {
 void *ikbdThreadCode(void *ptr);
 class ChipInterface;
 
+// state which belongs to one connected device (one ST) - its data stream and its link to the ST
+struct IkbdClientState {
+    CyclicBuff  receivedData;           // raw tagged data from device
+    CyclicBuff  stCommands;             // ST -> IKBD command bytes
+    CyclicBuff  keyboardData;           // original keyboard -> ST bytes
+    CyclicBuff  pausedOutput;           // data for ST queued while ST paused the output
+
+    int         ceIkbdMode;             // SOLO, or INJECT when this ST has its own (original) keyboard sending data
+    bool        outputEnabled;          // false after ST sent PAUSE OUTPUT, until any other command
+
+    void reset(void) {
+        receivedData.init();
+        stCommands.init();
+        keyboardData.init();
+        pausedOutput.init();
+        ceIkbdMode      = CE_IKBDMODE_SOLO;
+        outputEnabled   = true;
+    }
+};
+
 extern TInputDevice ikbdDevs[INTYPE_COUNT];
 
 class Ikbd
@@ -67,7 +93,9 @@ public:
     void processJoystick(js_event *jse, int joyNumber);
     void markVirtualMouseEvenTime(void);
 
-    int processReceivedCommands(bool skipKeyboardTranslation, int fdUartRead);
+    int processReceivedCommands(bool skipKeyboardTranslation, int fdUartRead);     // returns bytes read, 0 = nothing now, -1 = connection closed / broken
+
+    void clientConnected(int clientIndex);      // new device in this client slot - start with clean state
 
 private:
     ChipInterface* ciIkbd;
@@ -78,9 +106,10 @@ private:
         Enabled // joy1 and joy0 are treated as joysticks
     };
 
-    int     ceIkbdMode;
-
-    bool    outputEnabled;
+    IkbdClientState clientState[MAX_CLIENTS];  // per device (ST) state
+    IkbdClientState noClientState;              // used when not processing data of any client
+    IkbdClientState *cur;                       // state of the client whose data is being processed now
+    int             curClientIndex;             // index of that client, -1 = none (output then goes to all clients)
 
     int     mouseBtnNow;
     int     mouseMode;
@@ -110,18 +139,21 @@ private:
 
     struct {
         int        threshX, threshY;
+        int        accX, accY;          // movement not reported yet (below threshold)
     } relMouse;
 
     struct {
         int        x,y;
         int        maxX, maxY;
         int        scaleX, scaleY;
+        int        fracX, fracY;        // movement not turned into position yet (below scale)
         uint8_t    buttons;
     } absMouse;
 
     struct {
         uint8_t deltaX;
         uint8_t deltaY;
+        int     accX, accY;             // movement not turned into cursor keys yet
     } keycodeMouse;
 
     uint32_t           lastVDevMouseEventTime;
@@ -130,15 +162,16 @@ private:
     TJoystickState  joystick[2];
     JoystickState   joystickState;
 
-    CyclicBuff cbReceivedData;
-    CyclicBuff cbStCommands;
-    CyclicBuff cbKeyboardData;
 
     uint8_t            specialCodeLen[10];
     uint8_t            stCommandLen[256];
 
     std::bitset<KBD_KEY_COUNT> pressedKeys;
-    bool            keyboardExclusiveAccess;
+    bool            keyboardExclusiveAccess;    // true when keyboard / mouse are grabbed (other programs don't get their events)
+
+    // keys of keyboard joysticks which are held now: [joy][KJ_UP .. KJ_BUTTON]
+    enum { KJ_UP, KJ_DOWN, KJ_LEFT, KJ_RIGHT, KJ_BUTTON, KJ_COUNT };
+    bool            keybJoyHeld[2][KJ_COUNT];
 
     void initDevs(void);
     void initJoystickState(TJoystickState *joy);
@@ -153,7 +186,10 @@ private:
     void sendJoyButtonsInMouseMode(void);
     void sendJoyState(int joyNumber, int dirTotal);
     void sendBothJoyReport(void);
-    void sendMousePosRelative(uint8_t buttons, uint8_t xRel, uint8_t yRel);
+    void mouseMoved(int dx, int dy);                    // USB mouse movement, dy > 0 = down
+    void sendRelMousePackets(int dx, int dy);           // relative packet(s) with current buttons, split to fit -128..127
+    uint8_t mouseButtonsWithJoy(void);                  // mouse buttons + joystick fire buttons acting as mouse buttons
+    void sendKeyPress(uint8_t stKey);                   // make + break code
     void sendMousePosAbsolute(uint8_t absButtons);
     void fixAbsMousePos(void);
 
@@ -172,12 +208,16 @@ private:
     bool handleHotkeys(int pcKey, bool pressed, bool skipKeyboardTranslation);
 
     void toggleKeyboardExclusiveAccess(void);
-    void grabExclusiveAccess(int fd);
+    bool grabExclusiveAccess(int fd);       // true if grabbed
     void releaseExclusiveAccess(int fd);
 
     void dumpBuffer(bool fromStNotKeyboard);
 
-    void ikbdUartWriteToAll(uint8_t* bfr, int len);
+    void resetHotkeyState(void);
+
+    // all data for ST goes through here: to the client being processed, otherwise (USB input) to all clients
+    void sendToSt(const uint8_t* bfr, int len);
+    void sendToClient(int clientIndex, const uint8_t* bfr, int len);
 };
 
 #endif

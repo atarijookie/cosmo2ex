@@ -35,14 +35,15 @@ Ikbd::Ikbd(ChipInterface* ciIkbd)
     keyJoyKeys.setKeyTranslator(&keyTranslator);        // first set the translator
     keyJoyKeys.loadKeys();                              // load the keys used for keyb joys
 
-    ceIkbdMode = CE_IKBDMODE_SOLO;
-
     mouseBtnNow = 0;
 
-    // init uart RX cyclic buffers
-    cbStCommands.init();
-    cbKeyboardData.init();
-    cbReceivedData.init();
+    // init per client state (buffers, modes)
+    for(int i=0; i<MAX_CLIENTS; i++) {
+        clientState[i].reset();
+    }
+    noClientState.reset();
+    cur             = &noClientState;
+    curClientIndex  = -1;
 
     fillSpecialCodeLengthTable();
     fillStCommandsLengthTable();
@@ -76,7 +77,7 @@ void Ikbd::loadSettings(void)
 
 void Ikbd::resetInternalIkbdVars(void)
 {
-    outputEnabled   = true;
+    cur->outputEnabled = true;                  // IKBD reset from this ST resumes its output
 
     mouseMode       = MOUSEMODE_REL;
     mouseEnabled    = true;
@@ -90,37 +91,73 @@ void Ikbd::resetInternalIkbdVars(void)
     absMouse.buttons    = 0;
     absMouse.scaleX        = 1;
     absMouse.scaleY        = 1;
+    absMouse.fracX         = 0;
+    absMouse.fracY         = 0;
 
     relMouse.threshX    = 1;
     relMouse.threshY    = 1;
+    relMouse.accX       = 0;
+    relMouse.accY       = 0;
 
-    keycodeMouse.deltaX    = 0;
-    keycodeMouse.deltaY    = 0;
+    keycodeMouse.deltaX    = 1;
+    keycodeMouse.deltaY    = 1;
+    keycodeMouse.accX      = 0;
+    keycodeMouse.accY      = 0;
 
     joystickMode    = JOYMODE_EVENT;
     joystickState   = EnabledInMouseMode;
 
+    resetHotkeyState();
+}
+
+void Ikbd::resetHotkeyState(void)
+{
     leftShiftsPressed  = 0;
     rightShiftsPressed = 0;
     ctrlsPressed       = 0;
     f11sPressed        = 0;
     f12sPressed        = 0;
     waitingForHotkeyRelease = false;
+    pressedKeys.reset();
 }
 
-void Ikbd::ikbdUartWriteToAll(uint8_t* bfr, int len)
+void Ikbd::clientConnected(int clientIndex)
 {
-    for(int i=0; i<MAX_CLIENTS; i++) {
-        ClientInfo* ci = ciIkbd->clientGetByIndex(i);
-
-        if(ci->fdClient == FD_EMPTY) {           // no client here? skip it
-            continue;
-        }
-
-        int res = send(ci->fdClient, bfr, len, MSG_NOSIGNAL);    // send it
-
-        if(res < 0 && errno == EPIPE) {     // client closed connection?
-            ciIkbd->closeClientByFd(ci->fdClient);
-        }
+    if(clientIndex < 0 || clientIndex >= MAX_CLIENTS) {
+        return;
     }
+
+    clientState[clientIndex].reset();       // don't inherit half-received data / pause state of previous device in this slot
+}
+
+void Ikbd::sendToSt(const uint8_t* bfr, int len)
+{
+    if(curClientIndex >= 0) {               // processing data from one device? replies, its keyboard data etc. go only to that ST
+        sendToClient(curClientIndex, bfr, len);
+        return;
+    }
+
+    for(int i=0; i<MAX_CLIENTS; i++) {      // otherwise (USB keyboard / mouse / joystick) it goes to all connected STs
+        sendToClient(i, bfr, len);
+    }
+}
+
+void Ikbd::sendToClient(int clientIndex, const uint8_t* bfr, int len)
+{
+    ClientInfo* ci = ciIkbd->clientGetByIndex(clientIndex);
+
+    if(!ci || ci->fdClient == FD_EMPTY) {   // no client here? skip it
+        return;
+    }
+
+    IkbdClientState &st = clientState[clientIndex];
+
+    if(!st.outputEnabled) {                 // ST paused the output? queue it, it's sent when ST resumes (any other command)
+        for(int i=0; i<len; i++) {
+            st.pausedOutput.add(bfr[i]);    // drops data when queue is full, like real IKBD with its small buffer
+        }
+        return;
+    }
+
+    ciIkbd->sendDataToChip(ci->fdClient, (uint8_t *) bfr, len);    // closes client on failure
 }

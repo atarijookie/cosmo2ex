@@ -17,6 +17,8 @@
 #include "../chipinterface/chipinterface.h"
 #include "ikbd.h"
 
+static_assert(sizeof(input_event) <= INPUT_EVENT_MAX_SIZE && sizeof(js_event) <= INPUT_EVENT_MAX_SIZE, "TInputDevice.partial too small");
+
 extern TInputDevice ikbdDevs[INTYPE_COUNT];
 extern bool noCapture;
 
@@ -26,7 +28,10 @@ void Ikbd::initDevs(void)
 
     lastVDevMouseEventTime = 0;
 
-    for(i=0; i<6; i++) {
+    keyboardExclusiveAccess = !noCapture;   // capture mode: grab keyboard & mouse when found (toggled by LCTRL+RCTRL+LALT+RALT)
+    memset(keybJoyHeld, 0, sizeof(keybJoyHeld));
+
+    for(i=0; i<INTYPE_COUNT; i++) {
         ikbdDevs[i].fd = -1;
 
         deinitDev(i);
@@ -35,7 +40,7 @@ void Ikbd::initDevs(void)
 
 void Ikbd::deinitDev(int index)
 {
-    if(index < 0 || index > 5) {            // out of index?
+    if(index < 0 || index >= INTYPE_COUNT) {    // out of index?
         return;
     }
 
@@ -45,6 +50,11 @@ void Ikbd::deinitDev(int index)
 
     ikbdDevs[index].fd            = -1;       // set vars to default init values
     ikbdDevs[index].devPath[0]    = 0;
+    ikbdDevs[index].partialLen    = 0;
+
+    if(index == INTYPE_KEYBOARD || index == INTYPE_MOUSE || index == INTYPE_VDEVKEYBOARD) {   // key source gone? releases of held keys won't come anymore
+        resetHotkeyState();
+    }
 
     if(index == INTYPE_JOYSTICK1) {         // for joy1 - init it
         initJoystickState(&joystick[0]);
@@ -71,9 +81,7 @@ void Ikbd::initJoystickState(TJoystickState *joy)
 
 void Ikbd::closeDevs(void)
 {
-    int i;
-
-    for(i=0; i<6; i++) {
+    for(int i=0; i<INTYPE_COUNT; i++) {
         if(ikbdDevs[i].fd != -1) {        // if device is open
             close(ikbdDevs[i].fd);        // close it
             ikbdDevs[i].fd = -1;          // mark it as closed
@@ -245,6 +253,11 @@ void Ikbd::processFoundDev(const char *linkName, const char *fullPath)
         return;
     }
 
+    if(strlen(fullPath) >= sizeof(in->devPath)) {      // path wouldn't fit to devPath (virtual device path can be long)
+        logIkbd(LOG_ERROR, "Input device path too long (max %d chars): %s", (int) sizeof(in->devPath) - 1, fullPath);
+        return;
+    }
+
     int fd = open(fullPath, O_RDONLY | O_NONBLOCK);
 
     if(fd < 0) {
@@ -255,12 +268,14 @@ void Ikbd::processFoundDev(const char *linkName, const char *fullPath)
     // need to EVIOCSREP ?
 
     in->fd = fd;
-    strcpy(in->devPath, fullPath);
+    in->partialLen = 0;
+    snprintf(in->devPath, sizeof(in->devPath), "%s", fullPath);
     logIkbd(LOG_INFO, "Got device (%s): %s", what, fullPath);
 
-    if(!virtualDevice) {
+    // grab only real keyboard / mouse (evdev) - joysticks are /dev/input/js* where EVIOCGRAB doesn't work, virtual devices are FIFOs
+    bool isKeybOrMouse = (in == &ikbdDevs[INTYPE_KEYBOARD] || in == &ikbdDevs[INTYPE_MOUSE]);
+    if(!virtualDevice && isKeybOrMouse && keyboardExclusiveAccess) {
         grabExclusiveAccess(fd);
-        keyboardExclusiveAccess = true;
     }
 }
 
@@ -274,9 +289,7 @@ void Ikbd::processMouse(input_event *ev)
         // but the EV_KEY events are still sent - through that single mouse device.
         if(ev->code != BTN_LEFT && ev->code != BTN_RIGHT) {
             // TODO: fix this later
-            //bool clientConnected = ((Utils::getCurrentMs() - shared.configStream.acsi->getLastCmdTimestamp()) <= 2000);
-            bool clientConnected = false;
-            processKeyboard(ev, clientConnected);
+            processKeyboard(ev, false);     // false: don't skip keyboard translation
             return;
         }
 
@@ -314,14 +327,15 @@ void Ikbd::processMouse(input_event *ev)
 
         mouseBtnNow = btnNew;                                    // store new button states
 
-        if(mouseAbsBtnAct & MOUSEBTN_REPORT_ACTLIKEKEYS) {      // if should report mouse clicks as keys
+        // in keycode mouse mode (or when asked to) buttons are reported as keys 0x74 (left) / 0x75 (right)
+        if(mouseMode == MOUSEMODE_KEYCODE || (mouseAbsBtnAct & MOUSEBTN_REPORT_ACTLIKEKEYS)) {
             uint8_t bfr;
 
             switch(absButtons) {
-                case MOUSEABS_BTN_LEFT_DOWN:    bfr = 0x74; ciIkbd->ikbdUartWriteToAll(&bfr, 1); break;
-                case MOUSEABS_BTN_LEFT_UP:      bfr = 0xf4; ciIkbd->ikbdUartWriteToAll(&bfr, 1); break;
-                case MOUSEABS_BTN_RIGHT_DOWN:   bfr = 0x75; ciIkbd->ikbdUartWriteToAll(&bfr, 1); break;
-                case MOUSEABS_BTN_RIGHT_UP:     bfr = 0xf5; ciIkbd->ikbdUartWriteToAll(&bfr, 1); break;
+                case MOUSEABS_BTN_LEFT_DOWN:    bfr = 0x74; sendToSt(&bfr, 1); break;
+                case MOUSEABS_BTN_LEFT_UP:      bfr = 0xf4; sendToSt(&bfr, 1); break;
+                case MOUSEABS_BTN_RIGHT_DOWN:   bfr = 0x75; sendToSt(&bfr, 1); break;
+                case MOUSEABS_BTN_RIGHT_UP:     bfr = 0xf5; sendToSt(&bfr, 1); break;
             }
         }
 
@@ -334,31 +348,21 @@ void Ikbd::processMouse(input_event *ev)
             if((wasUp && reportUp) || (wasDown && reportDown) ) {    // if button pressed / released and we should report that
                 sendMousePosAbsolute(absButtons);
             }
-        } else {                                                // for relative mouse mode
-            sendMousePosRelative(mouseBtnNow, 0, 0);    // send them to ST
+        } else if(mouseMode == MOUSEMODE_REL) {                 // for relative mouse mode
+            sendRelMousePackets(relMouse.accX, relMouse.accY);  // button change, together with not yet reported movement
+            relMouse.accX = 0;
+            relMouse.accY = 0;
         }
         return;
     }
 
     if(ev->type == EV_REL) {
         if(ev->code == REL_X) {
-            // update absolute position
-            absMouse.x += ev->value;
-            fixAbsMousePos();
-
-            sendMousePosRelative(mouseBtnNow, ev->value, 0);    // send movement to ST
+            mouseMoved(ev->value, 0);       // update absolute position, report movement as current mouse mode needs
         }
 
         if(ev->code == REL_Y) {
-            // update absolute position
-            if(mouseY0atTop) {              // Y=0 at top - add value
-                absMouse.y += ev->value;
-            } else {                        // Y=0 at bottom - subtract value
-                absMouse.y -= ev->value;
-            }
-            fixAbsMousePos();
-
-            sendMousePosRelative(mouseBtnNow, 0, ev->value);    // send movement to ST
+            mouseMoved(0, ev->value);
         }
 
         //--------------------------
@@ -382,7 +386,7 @@ void Ikbd::processMouse(input_event *ev)
             bfr[0] = stKey;                     // key down
             bfr[1] = stKey | 0x80;              // key up
 
-            ciIkbd->ikbdUartWriteToAll(bfr, 2);
+            sendToSt(bfr, 2);
         }
     }
 }
@@ -440,7 +444,7 @@ void Ikbd::processKeyboard(input_event *ev, bool skipKeyboardTranslation)
         uint8_t bfr;
         bfr = stKey;
 
-        ciIkbd->ikbdUartWriteToAll(&bfr, 1);
+        sendToSt(&bfr, 1);
         break;
     case EV_MSC:
         //logIkbd("Ikbd::processKeyboard() EV_MSC code=%d value=0x%08x\n", ev->code, ev->value);
@@ -510,14 +514,24 @@ void Ikbd::processJoystick(js_event *jse, int joyNumber)
     bool btnChanged = (button != js->lastBtn);              // btn changed flag
 
     if(dirChanged || btnChanged) {                          // direction or button changed?
-        js->lastDir = dirTotal;
+        js->lastDir = dirTotal;                             // always keep the state - interrogation reports it later
         js->lastBtn = button;
+
+        if(joystickState == Disabled) {                     // ST disabled joysticks? don't report anything
+            return;
+        }
 
         if(joystickState == EnabledInMouseMode && btnChanged) {  // if button state changed, send it as mouse packet
             sendJoyButtonsInMouseMode();
-        } else {
-            sendJoyState(joyNumber, button | dirTotal);                        // report current direction and buttons
+            return;
         }
+
+        if(joystickMode == JOYMODE_EVENT) {                 // only in event reporting mode the IKBD sends packets on its own
+            sendJoyState(joyNumber, button | dirTotal);     // report current direction and buttons
+        }
+
+        // JOYMODE_INTERROGATION: ST asks, answered from lastDir / lastBtn (sendBothJoyReport)
+        // JOYMODE_MONITORING, _FIRE_MONITORING, _KEYCODE: not supported - sending event packets would be wrong there
     }
 }
 
@@ -589,28 +603,46 @@ void Ikbd::handlePcKeyAsKeybJoy(int joyNumber, int pcKey, int eventValue)
 
 void Ikbd::handleKeyAsKeybJoy(bool pcNotSt, int joyNumber, int pcKey, bool keyDown)
 {
-    js_event jse;
+    if(joyNumber < 0 || joyNumber > 1) {
+        return;
+    }
 
-    if(keyJoyKeys.isKeyUp(pcNotSt, joyNumber, pcKey)) {
+    bool *held = keybJoyHeld[joyNumber];
+    js_event jse;
+    memset(&jse, 0, sizeof(jse));
+
+    // For each axis: the key just pressed sets the direction. On release, if the opposite key is still held,
+    // the axis goes to that direction (not to center) - e.g. release UP while DOWN is held = DOWN.
+    if(keyJoyKeys.isKeyUp(pcNotSt, joyNumber, pcKey) || keyJoyKeys.isKeyDown(pcNotSt, joyNumber, pcKey)) {
+        bool up = keyJoyKeys.isKeyUp(pcNotSt, joyNumber, pcKey);
+        held[up ? KJ_UP : KJ_DOWN] = keyDown;
+
         jse.type    = JS_EVENT_AXIS;        // axis movement
         jse.number  = 1;                    // it's Y axis
-        jse.value   = keyDown ? -20000 : 0; // keyboard key down? Joy to direction, otherwise to center (on up)
-    } else if(keyJoyKeys.isKeyDown(pcNotSt, joyNumber, pcKey)) {
-        jse.type    = JS_EVENT_AXIS;        // axis movement
-        jse.number  = 1;                    // it's Y axis
-        jse.value   = keyDown ? 20000 : 0;  // keyboard key down? Joy to direction, otherwise to center (on up)
-    } else if(keyJoyKeys.isKeyLeft(pcNotSt, joyNumber, pcKey)) {
+        if(keyDown) {
+            jse.value = up ? -20000 : 20000;
+        } else {
+            jse.value = held[KJ_UP] ? -20000 : (held[KJ_DOWN] ? 20000 : 0);
+        }
+    } else if(keyJoyKeys.isKeyLeft(pcNotSt, joyNumber, pcKey) || keyJoyKeys.isKeyRight(pcNotSt, joyNumber, pcKey)) {
+        bool left = keyJoyKeys.isKeyLeft(pcNotSt, joyNumber, pcKey);
+        held[left ? KJ_LEFT : KJ_RIGHT] = keyDown;
+
         jse.type    = JS_EVENT_AXIS;        // axis movement
         jse.number  = 0;                    // it's X axis
-        jse.value   = keyDown ? -20000 : 0; // keyboard key down? Joy to direction, otherwise to center (on up)
-    } else if(keyJoyKeys.isKeyRight(pcNotSt, joyNumber, pcKey)) {
-        jse.type    = JS_EVENT_AXIS;        // axis movement
-        jse.number  = 0;                    // it's X axis
-        jse.value   = keyDown ? 20000 : 0;  // keyboard key down? Joy to direction, otherwise to center (on up)
+        if(keyDown) {
+            jse.value = left ? -20000 : 20000;
+        } else {
+            jse.value = held[KJ_LEFT] ? -20000 : (held[KJ_RIGHT] ? 20000 : 0);
+        }
     } else if(keyJoyKeys.isKeyButton(pcNotSt, joyNumber, pcKey)) {
+        held[KJ_BUTTON] = keyDown;
+
         jse.type    = JS_EVENT_BUTTON;      // button press
-        jse.number  = 0;                    // it's Y axis
+        jse.number  = 0;                    // it's button 0 (fire)
         jse.value   = keyDown ? 1 : 0;      // keyboard key down? 1 means down, 0 means up
+    } else {
+        return;                             // not a key of this keyboard joystick
     }
 
     processJoystick(&jse, joyNumber);
@@ -625,35 +657,43 @@ void Ikbd::toggleKeyboardExclusiveAccess(void)
 
     logIkbd(LOG_DEBUG, "Ikbd::toggleKeyboardExclusiveAccess() fdKeyb=%d, fdMouse=%d, keyboardExclusiveAccess=%d\n", fdKeyb, fdMouse, keyboardExclusiveAccess);
 
+    if(noCapture) {                         // capturing disabled from command line - nothing to toggle
+        logIkbd(LOG_DEBUG, "Ikbd::toggleKeyboardExclusiveAccess() - capture disabled (noCapture), not grabbing");
+        return;
+    }
+
+    keyboardExclusiveAccess = !keyboardExclusiveAccess;     // capture mode - also applies to keyboard / mouse found later
+
     if(keyboardExclusiveAccess) {
-        releaseExclusiveAccess(fdKeyb);
-        releaseExclusiveAccess(fdMouse);
-    } else {
         grabExclusiveAccess(fdKeyb);
         grabExclusiveAccess(fdMouse);
+    } else {
+        releaseExclusiveAccess(fdKeyb);
+        releaseExclusiveAccess(fdMouse);
     }
-
-    keyboardExclusiveAccess = !keyboardExclusiveAccess;
 }
 
-void Ikbd::grabExclusiveAccess(int fd)
+bool Ikbd::grabExclusiveAccess(int fd)
 {
     if(noCapture) {       // if shouldn't do USB keyboard and mouse capture, just quit
-        return;
+        return false;
     }
 
-    if(fd <= 0) {
-        return;
+    if(fd < 0) {          // not open (0 is a valid fd)
+        return false;
     }
 
     if(ioctl(fd, EVIOCGRAB, (void*)1) < 0) { // grab exclusive
         logIkbd(LOG_ERROR, "Ikbd::grabExclusiveAccess() ioctl failed : %s", strerror(errno));
+        return false;
     }
+
+    return true;
 }
 
 void Ikbd::releaseExclusiveAccess(int fd)
 {
-    if(fd <= 0) {
+    if(fd < 0) {          // not open (0 is a valid fd)
         return;
     }
 
@@ -668,7 +708,9 @@ bool Ikbd::handleHotkeys(int pcKey, bool pressed, bool skipKeyboardTranslation)
 
     if (pcKey == KEY_LEFTCTRL || pcKey == KEY_RIGHTCTRL) {
         if (!pressed) {
-            ctrlsPressed--;
+            if (ctrlsPressed > 0) {     // never below 0 - a release without seen press (e.g. key held before device was found) must not break hotkeys
+                ctrlsPressed--;
+            }
         } else {
             ctrlsPressed++;
         }
@@ -676,7 +718,9 @@ bool Ikbd::handleHotkeys(int pcKey, bool pressed, bool skipKeyboardTranslation)
 
     if (pcKey == KEY_LEFTSHIFT) {
         if (!pressed) {
-            leftShiftsPressed--;
+            if (leftShiftsPressed > 0) {     // never below 0 - a release without seen press (e.g. key held before device was found) must not break hotkeys
+                leftShiftsPressed--;
+            }
         } else {
             leftShiftsPressed++;
         }
@@ -684,7 +728,9 @@ bool Ikbd::handleHotkeys(int pcKey, bool pressed, bool skipKeyboardTranslation)
 
     if (pcKey == KEY_RIGHTSHIFT) {
         if (!pressed) {
-            rightShiftsPressed--;
+            if (rightShiftsPressed > 0) {     // never below 0 - a release without seen press (e.g. key held before device was found) must not break hotkeys
+                rightShiftsPressed--;
+            }
         } else {
             rightShiftsPressed++;
         }
@@ -692,7 +738,9 @@ bool Ikbd::handleHotkeys(int pcKey, bool pressed, bool skipKeyboardTranslation)
 
     if (pcKey == KEY_F11) {
         if (!pressed) {
-            f11sPressed--;
+            if (f11sPressed > 0) {     // never below 0 - a release without seen press (e.g. key held before device was found) must not break hotkeys
+                f11sPressed--;
+            }
         } else {
             f11sPressed++;
         }
@@ -700,7 +748,9 @@ bool Ikbd::handleHotkeys(int pcKey, bool pressed, bool skipKeyboardTranslation)
 
     if (pcKey == KEY_F12) {
         if (!pressed) {
-            f12sPressed--;
+            if (f12sPressed > 0) {     // never below 0 - a release without seen press (e.g. key held before device was found) must not break hotkeys
+                f12sPressed--;
+            }
         } else {
             f12sPressed++;
         }

@@ -59,11 +59,6 @@ void findDevicesFromInotify(int inotifyFd, Ikbd& ikbd, int wd1, int wd2, int wd3
 
 void processInputFromAttachedDevices(Ikbd& ikbd, fd_set* pReadfds)
 {
-    struct input_event ev;
-    struct js_event js;
-    ssize_t res;
-    bool clientConnected = false;
-
     for(int i = 0; i < INTYPE_COUNT; i++) {         // go through the input devices
         int fd = ikbd.getFdByIndex(i);
 
@@ -71,20 +66,19 @@ void processInputFromAttachedDevices(Ikbd& ikbd, fd_set* pReadfds)
             continue;
         }
 
-        switch(i) {
-            case INTYPE_MOUSE:
-            case INTYPE_KEYBOARD: // for keyboard and mouse
-            case INTYPE_VDEVMOUSE:
-            case INTYPE_VDEVKEYBOARD: // for virtual mouse and keyboard
-                res = read(ikbd.getFdByIndex(i), &ev, sizeof(input_event));
-                break;
-            case INTYPE_JOYSTICK1:
-            case INTYPE_JOYSTICK2: // for joysticks
-                res = read(ikbd.getFdByIndex(i), &js, sizeof(js_event));
-                break;
-        }
+        bool isJoystick = (i == INTYPE_JOYSTICK1 || i == INTYPE_JOYSTICK2);
+        bool isVirtual  = (i == INTYPE_VDEVMOUSE || i == INTYPE_VDEVKEYBOARD);
+        int  eventSize  = isJoystick ? (int) sizeof(js_event) : (int) sizeof(input_event);
+
+        // read the (rest of the) event - a read can return less than a whole event (e.g. from FIFO), then the rest comes later
+        TInputDevice *dev = &ikbdDevs[i];
+        ssize_t res = read(fd, dev->partial + dev->partialLen, eventSize - dev->partialLen);
 
         if(res < 0) {                                           // on error, skip the rest
+            if(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {     // nothing to read now
+                continue;
+            }
+
             if(errno == ENODEV) {                               // if device was removed, deinit it
                 ikbd.deinitDev(i);
             } else {
@@ -93,25 +87,48 @@ void processInputFromAttachedDevices(Ikbd& ikbd, fd_set* pReadfds)
             continue;
         }
 
-        if(res == 0) {                                           // on error, skip the rest
-            logIkbd(LOG_ERROR, "ikbdThreadCode() read(%d) returned 0 (EOF) closing %d", fd, i);
-            ikbd.deinitDev(i);
+        if(res == 0) {                                          // EOF
+            if(isVirtual) {
+                // writer closed the virtual device FIFO - reopen it, so the next writer can connect again
+                // (only IN_CREATE is watched in the virtual devices dir, so an existing FIFO would never be reopened)
+                logIkbd(LOG_DEBUG, "ikbdThreadCode() virtual device %d - writer closed, reopening", i);
+                ikbd.deinitDev(i);
+                ikbd.findVirtualDevices();
+            } else {
+                logIkbd(LOG_ERROR, "ikbdThreadCode() read(%d) returned 0 (EOF) closing %d", fd, i);
+                ikbd.deinitDev(i);
+            }
             continue;
         }
+
+        dev->partialLen += res;
+
+        if(dev->partialLen < eventSize) {                       // not whole event yet? wait for the rest
+            continue;
+        }
+
+        dev->partialLen = 0;                                    // got whole event, next read starts a new one
+
+        if(isJoystick) {
+            js_event js;
+            memcpy(&js, dev->partial, sizeof(js));
+            ikbd.processJoystick(&js, i - INTYPE_JOYSTICK1);
+            continue;
+        }
+
+        input_event ev;
+        memcpy(&ev, dev->partial, sizeof(ev));
 
         switch(i) {
             case INTYPE_VDEVMOUSE:
                 ikbd.markVirtualMouseEvenTime();                // first mark the event time
+                // fall through
             case INTYPE_MOUSE:
                 ikbd.processMouse(&ev);                         // then process the event
                 break;
             case INTYPE_KEYBOARD:
             case INTYPE_VDEVKEYBOARD:
-                ikbd.processKeyboard(&ev, clientConnected);
-                break;
-            case INTYPE_JOYSTICK1:
-            case INTYPE_JOYSTICK2:
-                ikbd.processJoystick(&js, i - INTYPE_JOYSTICK1);
+                ikbd.processKeyboard(&ev, false);               // false: don't skip keyboard translation
                 break;
         }
     }
@@ -119,8 +136,6 @@ void processInputFromAttachedDevices(Ikbd& ikbd, fd_set* pReadfds)
 
 void handleClients(Ikbd& ikbd, fd_set* pReadfds, ChipInterface* ciIkbd)
 {
-    bool clientConnected = false;
-
     for(int i=0; i<MAX_CLIENTS; i++) {
         ClientInfo* ci = ciIkbd->clientGetByIndex(i);
 
@@ -130,7 +145,13 @@ void handleClients(Ikbd& ikbd, fd_set* pReadfds, ChipInterface* ciIkbd)
 
         if(FD_ISSET(ci->fdClient, pReadfds)) {           // this fd read for read?
             // process the incoming data from original keyboard and from ST
-            int bytesRead = ikbd.processReceivedCommands(clientConnected, ci->fdClient);
+            int bytesRead = ikbd.processReceivedCommands(false, ci->fdClient);    // false: don't skip keyboard translation
+
+            if(bytesRead < 0) {     // client closed the connection (or it broke)? close it now, otherwise select() reports it readable in every loop
+                logIkbd(LOG_INFO, "handleClients - client #%d closed connection", i);
+                ciIkbd->closeClientByFd(ci->fdClient);
+                continue;
+            }
 
             if(bytesRead > 0) {     // something was read, mark client as active
                 ci->lastMs = Utils::getCurrentMs();
@@ -234,7 +255,9 @@ void *ikbdThreadCode(void *ptr)
         if(FD_ISSET(fdListen, &readfds)) {
             int idx = ciIkbd->acceptSocketIfNeededAndPossible();
 
-            // TODO: use idx and mac to differentiate between connected devices
+            if(idx != FD_EMPTY) {               // new device in this slot - its own buffers / modes, nothing left from the previous one
+                ikbd.clientConnected(idx);
+            }
         }
 
         // process the incoming data from original keyboard and from ST
