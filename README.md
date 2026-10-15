@@ -1,4 +1,4 @@
-# Cosmos2ex
+# Cosmo2ex
 This is a continuation / evolution of CosmosEx device. It is an ACSI/SCSI hard drive emulator, floppy emulator, IKBD emulator for Atari 16/32 Bit range of computers
 
 # What's what
