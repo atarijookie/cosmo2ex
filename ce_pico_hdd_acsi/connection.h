@@ -1,7 +1,7 @@
 #ifndef __CONNECTION_H__
 #define __CONNECTION_H__
 
-#include <arduino.h>
+#include <Arduino.h>
 
 #define SOCK_HDD    0
 #define SOCK_FDD    1

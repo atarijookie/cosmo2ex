@@ -1,7 +1,7 @@
 #ifndef DEFS_H_
 #define DEFS_H_
 
-#include <arduino.h>
+#include <Arduino.h>
 
 #define LOG_MORE    1
 #define LOG_LED     1

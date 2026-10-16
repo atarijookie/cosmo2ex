@@ -1,4 +1,4 @@
-#include <arduino.h>
+#include <Arduino.h>
 #include "ipc.h"
 
 IPCbuffer buffersForCore0[IPC_BUFFER_COUNT];

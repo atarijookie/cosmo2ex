@@ -1,7 +1,7 @@
 #ifndef __COMMAND_HANDLING_H__
 #define __COMMAND_HANDLING_H__
 
-#include <arduino.h>
+#include <Arduino.h>
 
 uint8_t idIsEnabled(uint8_t id);
 

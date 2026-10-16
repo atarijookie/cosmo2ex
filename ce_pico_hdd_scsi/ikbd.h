@@ -1,7 +1,7 @@
 #ifndef __IKBD_H__
 #define __IKBD_H__
 
-#include <arduino.h>
+#include <Arduino.h>
 
 #define IKBD_BAUD_RATE  7812
 

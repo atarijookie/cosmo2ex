@@ -71,3 +71,34 @@ jobs:
           push: false
           cache-from: type=gha,scope=ce
           cache-to: type=gha,scope=ce,mode=max
+
+  firmware:
+    # Pico firmwares - in the ce-pico-builder image from ghcr.io when release.yml already pushed the one
+    # for the current firmware/Dockerfile, otherwise the image is built here (e.g. when the Dockerfile changed)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/login-action@v4
+        continue-on-error: true                 # not possible e.g. for PRs from forks - then the image is built here
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Pico firmwares
+        run: |
+          image="ghcr.io/$(echo "${{ github.repository_owner }}" | tr 'A-Z' 'a-z')/ce-pico-builder:$(sha256sum firmware/Dockerfile | cut -c1-12)"
+          if docker pull "$image"; then
+            export PICO_BUILDER_IMAGE="$image"
+          fi
+          firmware/build.sh
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware-ci                     # not "firmware" - release.yml runs this in the same run
+          path: firmware/out/*.uf2
+          retention-days: 14

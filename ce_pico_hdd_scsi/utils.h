@@ -1,7 +1,7 @@
 #ifndef __UTILS_H__
 #define __UTILS_H__
 
-#include <arduino.h>
+#include <Arduino.h>
 #include "defs.h"
 
 uint16_t getWord(uint8_t *bfr);

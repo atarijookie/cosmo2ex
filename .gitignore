@@ -27,3 +27,4 @@ __pycache__/
 **/.vscode/
 release/out/
 docker/out/
+firmware/out/

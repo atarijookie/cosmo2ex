@@ -4,7 +4,9 @@
 # Runs CI first, then builds in parallel:
 #   - the release tarballs (release/build.sh) + install.sh + SHA256SUMS
 #   - the docker image for all platforms, pushed to ghcr.io/<owner>/ce-atari as :1.2.3 and :latest
-# and finally creates the GitHub release with the tarballs attached.
+#   - the Pico firmwares (firmware/build.sh), in the ghcr.io/<owner>/ce-pico-builder image - that one is
+#     tagged with the hash of firmware/Dockerfile, and built + pushed only when that file changed
+# and finally creates the GitHub release with the tarballs and firmwares attached.
 #
 # A tag with a suffix (v1.2.3-rc1) makes a pre-release, and doesn't move the :latest image tag.
 # The image package on ghcr.io is private after the first push - make it public once, in the
@@ -22,6 +24,9 @@ permissions:
 jobs:
   ci:
     uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      packages: read                            # CI pulls the ce-pico-builder image
 
   tarballs:
     needs: ci
@@ -88,8 +93,86 @@ jobs:
           cache-from: type=gha,scope=ce
           cache-to: type=gha,scope=ce,mode=max
 
+  pico-builder:
+    # pushes ghcr.io/<owner>/ce-pico-builder:<hash of firmware/Dockerfile> (+ :latest), unless it's there already
+    needs: ci
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: tag
+        run: |
+          repo="ghcr.io/$(echo "${{ github.repository_owner }}" | tr 'A-Z' 'a-z')/ce-pico-builder"
+          echo "repo=$repo" >> "$GITHUB_OUTPUT"
+          echo "image=$repo:$(sha256sum firmware/Dockerfile | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: check
+        env:
+          IMAGE: ${{ steps.tag.outputs.image }}
+        run: |
+          if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+            echo "$IMAGE already exists, not rebuilding it"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.exists != 'true'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push
+        if: steps.check.outputs.exists != 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: firmware
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.tag.outputs.image }}
+            ${{ steps.tag.outputs.repo }}:latest
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+  firmware:
+    needs: pico-builder
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Pico firmwares
+        env:
+          PICO_BUILDER_IMAGE: ${{ needs.pico-builder.outputs.image }}
+        run: |
+          docker pull "$PICO_BUILDER_IMAGE"
+          firmware/build.sh
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware
+          path: firmware/out/*.uf2
+          if-no-files-found: error
+
   github-release:
-    needs: [tarballs, images]
+    needs: [tarballs, images, firmware]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -97,6 +180,11 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: release
+          path: out
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: firmware
           path: out
 
       - name: Create release
@@ -107,6 +195,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           prerelease=""
           case "$version" in *-*) prerelease="--prerelease" ;; esac
+          (cd out && sha256sum ce-*.tar.gz install.sh *.uf2 > SHA256SUMS)
           gh release create "$GITHUB_REF_NAME" out/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \

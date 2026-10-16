@@ -2,6 +2,11 @@
 
 - based on W6100-EVB-Pico (to simplify soldering)
 
+## Compiling under Linux
+
+- from the repo root: `make firmware` (or `firmware/build.sh ce_pico_hdd_scsi`), needs just docker - see firmware/README.md
+- the result is firmware/out/ce_pico_hdd_scsi.uf2
+
 ## Compiling under Windows and Arduino env
 
 - install https://github.com/earlephilhower/arduino-pico into Arduino boards via:
@@ -9,11 +14,13 @@
 
 (The firmware was developed using Raspberry Pi Pico Arduino core version 5.4.2)
 
-- symlink Ethernet library found inside this project into Arduino libraries dir:
+- symlink the (patched) Ethernet library from third_party/Ethernet into Arduino libraries dir:
 
-> mklink /D "C:\Users\jookie\Documents\Arduino\libraries\Ethernet" "C:\!miro\hobby\github\ce-atari\ce_pico_hdd_scsi\libraries\Ethernet"
+> mklink /D "C:\Users\jookie\Documents\Arduino\libraries\Ethernet" "C:\!miro\hobby\github\ce-atari\third_party\Ethernet"
 
 ## Arduino env settings
+
+(the Linux build uses the same settings, keep them in sync with FQBN in firmware/compile.sh)
 
 - board: Raspberry Pi Pico
 - debug level: None
