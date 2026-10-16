@@ -9,7 +9,7 @@ mkdir -p ce_cores/configdrive/drivers
 cp ce_dd_bootsectors/ce_dd.bs ce_dd_bootsectors/ce_dd_l2.bs ce_dd_prg/ce_dd.prg ce_cores/configdrive/drivers/
 
 To build docker image (from the repo root):
-docker build -f docker/Dockerfile -t ce-atari .
+docker build -f docker/Dockerfile -t cosmo2ex .
 
 To build the image for all platforms on one machine (also builds the drivers
 above when m68k-atari-mint-gcc is installed):
@@ -17,10 +17,10 @@ docker/build_all.sh                             # all platforms
 docker/build_all.sh linux/arm/v6 linux/arm64    # just some of them
 Platforms: linux/amd64, linux/386 (32-bit PC), linux/arm64 (Pi 3/4/5/Zero 2 W
 with 64-bit OS), linux/arm/v7 (Pi 2+ with 32-bit OS), linux/arm/v6 (Pi 1 /
-Zero / Zero W). All of them end up under the one ce-atari tag, and one image
+Zero / Zero W). All of them end up under the one cosmo2ex tag, and one image
 tarball per platform is saved to docker/out/. Copy it to the target and load
 it there:
-docker load -i ce-atari-arm-v6.tar.gz
+docker load -i cosmo2ex-arm-v6.tar.gz
 Nothing is emulated: ce_cores and the webserver are cross compiled on the build
 machine, and the platform images only get files copied in. Debian has no
 ARMv6 base image, so linux/arm/v6 is a minimal Raspbian userland (just what
@@ -44,7 +44,7 @@ docker run --rm --network host \
   -v /dev:/dev \
   --device-cgroup-rule='c 13:* rwm' \
   --device-cgroup-rule='b 8:* rwm' \
-  ce-atari
+  cosmo2ex
 
 Settings live on the host at /opt/ce/settings (same as SETTINGS_DIR in .env).
 Override the host path with CE_SETTINGS_HOST=/your/path.

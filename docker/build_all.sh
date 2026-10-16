@@ -1,7 +1,7 @@
 #!/bin/sh
-# Builds the ce-atari image for several platforms on this machine, and saves one image tarball
+# Builds the cosmo2ex image for several platforms on this machine, and saves one image tarball
 # per platform into docker/out/ - copy it to the target and load it there with:
-#   docker load -i ce-atari-<platform>.tar.gz
+#   docker load -i cosmo2ex-<platform>.tar.gz
 #
 # usage: docker/build_all.sh [platform ...]
 #   platform: linux/amd64 linux/arm64 linux/arm/v7 linux/arm/v6 linux/386 (default: all of them)
@@ -11,7 +11,7 @@
 #
 # Nothing runs emulated: the programs are cross compiled on this machine, the platform images only
 # get files copied in (see docker/Dockerfile). Needs docker with the containerd image store (the
-# default since Docker 29), which keeps all the platforms under the one ce-atari tag.
+# default since Docker 29), which keeps all the platforms under the one cosmo2ex tag.
 #
 # Needs m68k-atari-mint-gcc for the config drive drivers, unless they are already in
 # ce_cores/configdrive/drivers/ (see docker/README.md).
@@ -20,7 +20,7 @@ set -eu
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT="$ROOT/docker/out"
-IMAGE=ce-atari
+IMAGE=cosmo2ex
 
 PLATFORMS="$*"
 if [ -z "$PLATFORMS" ]; then

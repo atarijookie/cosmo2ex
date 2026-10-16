@@ -3,7 +3,7 @@
 #
 # Runs CI first, then builds in parallel:
 #   - the release tarballs (release/build.sh) + install.sh + SHA256SUMS
-#   - the docker image for all platforms, pushed to ghcr.io/<owner>/ce-atari as :1.2.3 and :latest
+#   - the docker image for all platforms, pushed to ghcr.io/<owner>/cosmo2ex as :1.2.3 and :latest
 #   - the Pico firmwares (firmware/build.sh), in the ghcr.io/<owner>/ce-pico-builder image - that one is
 #     tagged with the hash of firmware/Dockerfile, and built + pushed only when that file changed
 # and finally creates the GitHub release with the tarballs and firmwares attached.
@@ -78,7 +78,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository_owner }}/ce-atari
+          images: ghcr.io/${{ github.repository_owner }}/cosmo2ex
           tags: type=semver,pattern={{version}}
 
       - name: Build and push
@@ -190,7 +190,7 @@ jobs:
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
-          IMAGE: ghcr.io/${{ github.repository_owner }}/ce-atari
+          IMAGE: ghcr.io/${{ github.repository_owner }}/cosmo2ex
         run: |
           version="${GITHUB_REF_NAME#v}"
           prerelease=""

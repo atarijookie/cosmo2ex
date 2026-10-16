@@ -16,7 +16,7 @@
 
 - symlink the (patched) Ethernet library from third_party/Ethernet into Arduino libraries dir:
 
-> mklink /D "C:\Users\jookie\Documents\Arduino\libraries\Ethernet" "C:\!miro\hobby\github\ce-atari\third_party\Ethernet"
+> mklink /D "C:\Users\jookie\Documents\Arduino\libraries\Ethernet" "C:\!miro\hobby\github\cosmo2ex\third_party\Ethernet"
 
 ## Arduino env settings
 

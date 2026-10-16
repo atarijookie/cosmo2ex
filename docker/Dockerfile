@@ -3,7 +3,7 @@
 # CosmosEx Linux apps: ce_cores (C++) + webserver (Go) in one image.
 #
 # Build from the repository root, for this machine:
-#   docker build -f docker/Dockerfile -t ce-atari .
+#   docker build -f docker/Dockerfile -t cosmo2ex .
 #
 # For all platforms at once (amd64, arm64, arm/v7, arm/v6 = Pi 1 / Zero, 386), see docker/build_all.sh.
 # The programs are always cross compiled on the build machine (no QEMU), the target platform
@@ -22,7 +22,7 @@
 #     -v /dev:/dev \
 #     --device-cgroup-rule='c 13:* rwm' \
 #     --device-cgroup-rule='b 8:* rwm' \
-#     ce-atari
+#     cosmo2ex
 #
 # Layout matches the defaults in /.env:
 #   BIN_DIR=/opt/ce/bin   SETTINGS_DIR=/opt/ce/settings

@@ -35,7 +35,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: ce-atari
+    image: cosmo2ex
     network_mode: host
     environment:
       # ce_cores log level (LOG_LEVEL in .env): 0 off, 1 errors, 2 + warnings, 3 + info, 4 + debug
