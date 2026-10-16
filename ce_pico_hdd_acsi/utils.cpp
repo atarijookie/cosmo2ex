@@ -2,6 +2,7 @@
 #include "pico/time.h"
 #include "pico/multicore.h"
 #include "pico/sync.h"
+#include "pico/unique_id.h"
 
 #include <EEPROM.h>
 
@@ -21,6 +22,7 @@ queue_t fifoDebug;
 volatile bool hasTimedOut = false;
 volatile uint8_t timerRunning = false;
 alarm_id_t timer_id = 0;    // Will hold the alarm handle
+volatile uint32_t timerGeneration = 0;  // changed on each timeout start / clear, so a late callback of an old alarm can be recognized
 
 mutex_t debugMutex;
 
@@ -93,6 +95,10 @@ void store24bits(uint8_t *bfr, uint32_t val)
 }
 
 int64_t timer_callback(alarm_id_t id, void *user_data) {
+    if((uint32_t)(uintptr_t) user_data != timerGeneration) {    // callback of an alarm which was cancelled meanwhile (it runs on the other core), ignore
+        return 0;
+    }
+
     hasTimedOut = true;
     timerRunning = false;
     return 0;   // 0 = do NOT reschedule (one-shot)
@@ -104,16 +110,21 @@ void timeoutStart(uint32_t durationMs)
 //     debug("timeoutStart %d at %d", durationMs, millis());
 // #endif
 
-    // If already running, cancel old one
-    if (timerRunning) {
+    timeoutClear();             // if already running, cancel old one
+
+    // set the flags before adding the alarm - if this core gets stalled (e.g. by flash lockout), the alarm might fire before add_alarm_in_ms() returns
+    hasTimedOut = false;
+    timerRunning = true;
+
+    alarm_id_t id = add_alarm_in_ms(durationMs, timer_callback, (void *)(uintptr_t) timerGeneration, false);
+
+    if(id <= 0) {               // no free alarm slot (< 0) or the time has already passed (0) - time out now instead of waiting forever
+        hasTimedOut = true;
         timerRunning = false;
-        cancel_alarm(timer_id);
+        return;
     }
 
-    timer_id = add_alarm_in_ms(durationMs, timer_callback, NULL, false);
-
-    hasTimedOut = false; // reset flag
-    timerRunning = true;
+    timer_id = id;
 }
 
 void timeoutClear(void)
@@ -121,6 +132,8 @@ void timeoutClear(void)
 // #ifdef LOG_MORE
 //  debug("timeoutClear\n");
 // #endif
+
+    timerGeneration++;          // if the alarm callback is just running on the other core, it will be ignored
 
     if (timerRunning) {
         timerRunning = false;
@@ -170,6 +183,21 @@ void saveSettings(void)
     multicore_lockout_end_blocking();
 }
 
+// Create MAC address from the flash unique ID - different for each board, but the same after EEPROM gets erased.
+// (random() can't be used, it's not seeded and would give all the devices the same MAC.)
+void makeMacFromBoardId(uint8_t *mac)
+{
+    pico_unique_board_id_t id;
+    pico_get_unique_board_id(&id);  // cached at boot, so safe to call from any core without flash access
+
+    memset(mac, 0, 6);
+    for(int i=0; i<PICO_UNIQUE_BOARD_ID_SIZE_BYTES; i++) {     // fold 8 bytes of ID into 6 bytes of MAC
+        mac[i % 6] ^= id.id[i];
+    }
+
+    mac[0] = (mac[0] & 0xFC) | 0x02;    // locally administered + unicast
+}
+
 void loadSettings(void)
 {
     EEPROM.begin(512);
@@ -185,10 +213,7 @@ void loadSettings(void)
         settings.magic = SETTINGS_MAGIC;
         settings.enabledIDs = 1;
 
-        for(int i=0; i<6; i++) {
-            settings.mac[i] = random(255);
-        }
-        settings.mac[0] = (settings.mac[0] & 0xFE) | 0x02;   // LAA + unicast
+        makeMacFromBoardId(settings.mac);
 
         saveSettings();
     }
@@ -228,17 +253,33 @@ void debugFromQueue(void)
 
 void debug(const char *fmt, ...)
 {
+    // Not from IRQ handlers - if the interrupted code on this core holds debugMutex, we would wait for it forever.
+    if(__get_current_exception() != 0) {
+        return;
+    }
+
     mutex_enter_blocking(&debugMutex);
 
-    char buf[1024];
+    // static - too big for the core stacks (core 1 has just 2 kB), and debugMutex makes sure only one caller uses them
+    static char buf[1024];
+    static char buf2[2 * sizeof(buf)];      // each char might get extra \r
+
     va_list args;
     va_start(args, fmt);
     int len = vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
 
+    if(len < 0) {                           // encoding error, nothing to show
+        mutex_exit(&debugMutex);
+        return;
+    }
+
+    if(len >= (int) sizeof(buf)) {          // output was truncated, vsnprintf returns the length it wanted to write
+        len = sizeof(buf) - 1;
+    }
+
     // replace \n with \n\r
     int j=0;
-    char buf2[2048];
     for(int i=0; i<len; i++) {
         buf2[j++] = buf[i];
 

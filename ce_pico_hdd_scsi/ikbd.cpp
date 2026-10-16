@@ -31,6 +31,8 @@ static queue_t fifoUartKeybTx;
 
 static int8_t pioIrqUartRx;
 
+static volatile uint32_t fifoFullCount = 0;    // incremented in IRQ (no debug() there), reported in ikbdProcessing()
+
 void onIkdbDisabled(void)
 {
     uint8_t data;
@@ -153,6 +155,13 @@ void ikbdProcessing(void)
     if((now - lastStatus) >= 1000) {    // once per second
         lastStatus = now;
 
+        static uint32_t fifoFullReported = 0;
+        uint32_t fifoFull = fifoFullCount;
+        if(fifoFull != fifoFullReported) {  // some bytes from uart got dropped since last time?
+            debug("ikbd fifo full, dropped %u bytes\n", fifoFull - fifoFullReported);
+            fifoFullReported = fifoFull;
+        }
+
         if(ikbdConnected) {             // if connected, send ALIVE mark and value every second
             uint8_t data[2] = {UARTMARK_ALIVE, UARTMARK_ALIVE};
             clientIkbd.write(data, 2);
@@ -176,7 +185,7 @@ static void pio_irq_func(void)
     while(!pio_sm_is_rx_fifo_empty(pioUartKeybRx, smUartKeybRx)) {
         char c = uart_rx_program_getc(pioUartKeybRx, smUartKeybRx);
         if (!queue_try_add(&fifoUartKeybRx, &c)) {
-            debug("fifo full\n");
+            fifoFullCount++;
         }
     }
 
@@ -184,7 +193,7 @@ static void pio_irq_func(void)
     while(!pio_sm_is_rx_fifo_empty(pioUartKeybTxOrig, smUartKeybTxOrig)) {
         char c = uart_rx_program_getc(pioUartKeybTxOrig, smUartKeybTxOrig);
         if (!queue_try_add(&fifoUartKeybTxOrig, &c)) {
-            debug("fifo full\n");
+            fifoFullCount++;
         }
     }
 }

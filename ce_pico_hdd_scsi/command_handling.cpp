@@ -17,7 +17,7 @@ void getCmdLengthFromCmdBytesScsi(uint8_t cmd);
 extern uint8_t atnSendACSIcommand[ATN_SENDACSICOMMAND_LEN_TX];
 
 //----------
-uint8_t cmd[16];   // received command bytes, should point beyond the header in atnSendACSIcommand
+uint8_t cmd[17];   // received command bytes - up to 16 B CDB + 1 B ICD marker
 uint8_t cmdLen; // length of received command
 uint8_t brStat; // status from bridge
 
@@ -103,7 +103,7 @@ uint8_t onGetCommandScsi(void)
     // now fix the command if the length is more than 6 bytes
     if (cmdLen > 6)
     {
-        for (int i = 13; i > 0; i--)
+        for (int i = cmdLen; i > 0; i--)
         { // move the cmd one byte further (to make cmd[0] unused)
             cmd[i] = cmd[i - 1];
         }
@@ -111,6 +111,10 @@ uint8_t onGetCommandScsi(void)
 
         cmdLen++; // now the command is one byte longer
     }
+
+    // host receives just 14 command bytes (see ATN_SENDACSICOMMAND_LEN_TX), so 16 B CDBs (17 B in ICD form) get truncated -
+    // the whole CDB was still read from the bus, and the host answers to these unsupported commands with CHECK CONDITION
+    cmdLen = MIN(cmdLen, ATN_SENDACSICOMMAND_LEN_TX - TX_HEADER_SIZE);
 
     // for all commands add fake ACSI ID on top of the 0th byte
     cmd[0] = cmd[0] | (id << 5); // add ID on the top 3 bits
@@ -165,6 +169,10 @@ bool onDataWrite(uint32_t dataCnt)
         return false;
     }
 
+    if(dataCnt == 0) {              // nothing to transfer (host still waits for the header above), don't start the DMA - PIO would take 0 - 1 as the count
+        return true;
+    }
+
     pioConfig(MODE_DMA_WRITE);
 
     DMA_write_startWithCount(dataCnt);      // let PIO program know the count of bytes we want to transfer
@@ -181,7 +189,6 @@ bool onDataWrite(uint32_t dataCnt)
             debug("onDataWrite - ipcGetFreeBuffer failed\n");
             return false;
         }
-        bfr->free = false;
 
         for(int i = 0; i < cntNow; i++)
         {
@@ -192,6 +199,7 @@ bool onDataWrite(uint32_t dataCnt)
 #ifdef LOG_MORE
     debug("onDataWrite timeout on DMA_write");
 #endif
+                ipcReleaseBuffer(bfr);          // buffer not sent to core 0, return it to the pool
                 return false; // transfer failed, don't send status, just get next command
             }
         }

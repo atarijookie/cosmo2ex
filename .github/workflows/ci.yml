@@ -29,6 +29,9 @@ jobs:
       - name: ce_cores tests
         run: make -C ce_cores -j"$(nproc)" test
 
+      - name: Pico firmware tests (on host)
+        run: make -C ce_pico_tests -j"$(nproc)" test
+
       - name: webserver vet + tests
         working-directory: webserver
         run: |

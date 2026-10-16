@@ -54,18 +54,29 @@ void ethernetInit(void)
     debug("ethernetInit start\n");
 
     Ethernet.init(17);              // WIZnet W6100-EVB-Pico
-    Ethernet.begin(settings.mac);   // set mac, get IP via hdcp
 
-    if(Ethernet.hardwareStatus() == EthernetNoHardware) {
-        debug("No ethernet. HALT!\n");
+    while(true) {
+        int gotIp = Ethernet.begin(settings.mac, 10000);    // set mac, get IP via DHCP, wait at most 10 s
 
-        while(1) {
-            blinkOnce(1900, 100);
+        if(Ethernet.hardwareStatus() == EthernetNoHardware) {
+            debug("No ethernet. HALT!\n");
+
+            while(1) {
+                blinkOnce(1900, 100);
+            }
         }
-    }
 
-    while(Ethernet.linkStatus() == LinkOFF) {
-        debug("cable not connected\n");
+        if(gotIp) {                 // got IP from DHCP, can continue
+            break;
+        }
+
+        // without IP there's nothing to do, keep trying
+        if(Ethernet.linkStatus() == LinkOFF) {
+            debug("cable not connected\n");
+        } else {
+            debug("no IP from DHCP, retrying\n");
+        }
+
         blinkOnce(400, 100);
     }
 
@@ -197,7 +208,7 @@ void loop(void)
                     break;
             }
 
-            bfr->free = true;
+            ipcReleaseBuffer(bfr);
         }
 
         ikbdProcessing();

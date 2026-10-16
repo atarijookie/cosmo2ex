@@ -8,7 +8,7 @@
 struct __attribute__((packed)) IPCbuffer
 {
     uint8_t index;
-    bool free;
+    volatile bool free;     // taken by one core, released by the other - use ipcGetFreeBuffer() / ipcReleaseBuffer(), not directly
     uint8_t command;
     uint32_t length;
     uint8_t statusByte;
@@ -17,6 +17,7 @@ struct __attribute__((packed)) IPCbuffer
 
 void ipcInit(void);
 IPCbuffer* ipcGetFreeBuffer(int coreNo, uint32_t maxWaitMs);
+void ipcReleaseBuffer(IPCbuffer* bfr);
 IPCbuffer* ipcGetBufferFromFifo(int coreNo);
 void ipcPutBufferToFifo(int coreNo, uint8_t bfrIndex);
 void ipcSetBufferAndPutToFifo(IPCbuffer* bfr, int coreNo, uint8_t command, uint32_t lengthToStore, uint8_t* data, uint32_t lengthOfData);

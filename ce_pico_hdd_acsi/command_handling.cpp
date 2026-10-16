@@ -205,6 +205,10 @@ bool onDataWrite(uint32_t dataCnt)
         return false;
     }
 
+    if(dataCnt == 0) {              // nothing to transfer (host still waits for the header above), don't start the DMA - PIO would take 0 - 1 as the count
+        return true;
+    }
+
     pioConfig(MODE_DMA_WRITE);
 
     DMA_write_startWithCount(dataCnt);      // let PIO program know the count of bytes we want to transfer
@@ -221,7 +225,6 @@ bool onDataWrite(uint32_t dataCnt)
             debug("onDataWrite - ipcGetFreeBuffer failed\n");
             return false;
         }
-        bfr->free = false;
 
         for(int i = 0; i < cntNow; i++)
         {
@@ -232,6 +235,7 @@ bool onDataWrite(uint32_t dataCnt)
 #ifdef LOG_MORE
     debug("onDataWrite timeout on DMA_write");
 #endif
+                ipcReleaseBuffer(bfr);          // buffer not sent to core 0, return it to the pool
                 return false; // transfer failed, don't send status, just get next command
             }
         }

@@ -8,8 +8,8 @@
 
 extern String hostIpString;
 extern uint16_t hostPortIkbd;
-extern bool connected;              // true if connected
-extern bool ikbdConnected;
+extern volatile bool connected;     // true if connected
+extern volatile bool ikbdConnected;
 
 extern EthernetClient clientIkbd;
 
@@ -20,6 +20,8 @@ static PIO pioUart;
 static uint smUart;
 static int8_t pioIrqUart;
 static queue_t fifoUart;
+
+static volatile uint32_t fifoFullCount = 0;    // incremented in IRQ (no debug() there), reported in ikbdProcessing()
 
 void onIkdbDisabled(void)
 {
@@ -112,6 +114,13 @@ void ikbdProcessing(void)
     if((now - lastStatus) >= 1000) {    // once per second
         lastStatus = now;
 
+        static uint32_t fifoFullReported = 0;
+        uint32_t fifoFull = fifoFullCount;
+        if(fifoFull != fifoFullReported) {  // some bytes from uart got dropped since last time?
+            debug("ikbd fifo full, dropped %u bytes\n", fifoFull - fifoFullReported);
+            fifoFullReported = fifoFull;
+        }
+
         if(ikbdConnected) {             // if connected, send ALIVE mark and value every second
             uint8_t data[2] = {UARTMARK_ALIVE, UARTMARK_ALIVE};
             clientIkbd.write(data, 2);
@@ -133,7 +142,7 @@ static void pio_irq_func(void) {
     while(!pio_sm_is_rx_fifo_empty(pioUart, smUart)) {
         char c = uart_rx_program_getc(pioUart, smUart);
         if (!queue_try_add(&fifoUart, &c)) {
-            debug("fifo full\n");
+            fifoFullCount++;
         }
     }
 }

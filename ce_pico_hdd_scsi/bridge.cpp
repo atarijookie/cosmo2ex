@@ -221,6 +221,12 @@ int pioConfig(int newMode, bool force)
             whichPio = pioScsiRead;
             whichSm = smScsiRead;
             break;
+
+        default:            // unknown mode - leave both state machines halted and release the bus, as in selection
+            debug("pioConfig - unknown mode %d\n", newMode);
+            setScsiPhase(MODE_SCSI_SELECTION, true);
+            setDataDirection(DIR_RECV, NULL, 0);
+            return oldMode;
     }
 
     // data direction RECV for CMD and WRITE, data direction SEND for READ and STATUS
@@ -400,6 +406,10 @@ void DMA_read(uint8_t val)
 
 void DMA_write_startWithCount(uint32_t transfersCount)
 {
+    if(transfersCount == 0) {   // PIO program would get 0xffffffff and wait for 4 G bytes with DRQ / REQ active
+        return;
+    }
+
     pio_sm_put(pioScsiWrite, smScsiWrite, transfersCount - 1);        // write N-1 count of bytes to write here
 }
 

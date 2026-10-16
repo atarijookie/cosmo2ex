@@ -9,7 +9,7 @@
 #include "display.h"
 #include "ipc.h"
 
-extern uint8_t cmd[16];  // received command bytes
+extern uint8_t cmd[17];  // received command bytes
 
 volatile bool core1running = false;
 extern volatile bool connected;
@@ -137,7 +137,7 @@ void core1_main_loop(void)
                 }
             }
 
-            bfr->free = true;
+            ipcReleaseBuffer(bfr);
         }
 
         // if the data from host doesn't come within timeout, quit

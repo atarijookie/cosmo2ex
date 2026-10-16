@@ -143,7 +143,7 @@ void core1_main_loop(void)
                 }
             }
 
-            bfr->free = true;
+            ipcReleaseBuffer(bfr);
         }
 
         // if the data from host doesn't come within timeout, quit

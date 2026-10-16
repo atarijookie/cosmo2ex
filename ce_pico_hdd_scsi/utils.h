@@ -31,6 +31,7 @@ struct __attribute__((packed)) TSettings
 
 extern TSettings settings;
 void loadSettings(void);
+void makeMacFromBoardId(uint8_t *mac);
 void saveSettings(void);
 
 void i2c1init(void);

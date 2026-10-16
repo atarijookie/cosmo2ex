@@ -1,4 +1,5 @@
 #include <Ethernet.h>
+#include <Dhcp.h>        // DHCP_CHECK_* results of Ethernet.maintain()
 
 #include "defs.h"
 #include "connection.h"
@@ -31,6 +32,14 @@ struct {
 } c0;
 
 THeader hddHeader;      // keep the header global to preserve syncTag between calls
+bool hddHeaderPending;  // hddHeader received, waiting for its payload to arrive
+uint32_t hddHeaderTime; // when hddHeader was received
+
+#define PAYLOAD_WAIT_MS             1000    // drop the received header if its payload doesn't arrive within this time
+#define PAYLOAD_MAX_WAIT_SIZE       64      // wait for at most this many payload bytes - all the commands except CMD_DATA_MARKER are smaller
+
+uint8_t connectFailCount;                   // count of failed connection attempts in a row
+#define CONNECT_FAILS_BEFORE_REDISCOVERY 3  // after this many failed connects forget the host and discover it again (it might have new IP / port)
 
 // Send broadcast to find any CE server on the network.
 void ceDiscoverySend(void)
@@ -179,6 +188,23 @@ void connectToCEhost(void)
 
     debug("connectToCEhost - connected: %d\n", connected);
 
+    if(connected)
+    {
+        connectFailCount = 0;
+
+        hddHeader.syncTag = 0;          // new stream - don't use anything left from the previous connection
+        hddHeaderPending = false;
+    }
+    else if(++connectFailCount >= CONNECT_FAILS_BEFORE_REDISCOVERY)
+    {
+        debug("connectToCEhost - %d failed attempts, discovering host again\n", connectFailCount);
+        connectFailCount = 0;
+
+        memset(hostIp, 0, sizeof(hostIp));
+        hostIpString = "";
+        hostPortHdd = hostPortFdd = hostPortIkbd = 0;
+    }
+
     // clientHdd.setNoDelay(true);
 
     // ikbdConnected = clientIkbd.connect(hostIpString.c_str(), hostPortIkbd);
@@ -204,9 +230,49 @@ void udpSocketClose(void)
     }
 }
 
+// Renew DHCP lease when needed. If renewal brings a new IP address, the connection to host is dead, so close it.
+void dhcpMaintain(void)
+{
+    static uint32_t lastCheck = 0;
+
+    uint32_t now = millis();
+    if((now - lastCheck) < 1000) {      // check once per second, more is not needed
+        return;
+    }
+    lastCheck = now;
+
+    IPAddress ipBefore = Ethernet.localIP();
+    int res = Ethernet.maintain();      // might block for a while when the DHCP server doesn't respond
+
+    switch(res)
+    {
+        case DHCP_CHECK_RENEW_OK:
+        case DHCP_CHECK_REBIND_OK:
+        {
+            IPAddress ipNow = Ethernet.localIP();
+            if(ipNow == ipBefore) {
+                break;
+            }
+
+            debug("dhcpMaintain - ip changed from %s to %s, reconnecting\n", ipBefore.toString().c_str(), ipNow.toString().c_str());
+
+            clientHdd.stop();
+            connected = false;
+            break;
+        }
+
+        case DHCP_CHECK_RENEW_FAIL:
+        case DHCP_CHECK_REBIND_FAIL:
+            debug("dhcpMaintain - DHCP lease renewal failed (%d), will retry\n", res);
+            break;
+    }
+}
+
 void connectToHost(void)
 {
     static bool prevConnected = false;
+
+    dhcpMaintain();
     connected = clientHdd.connected();
 
     // on connected state changed
@@ -305,9 +371,14 @@ void handleAcsiConfig(uint32_t len)
     memset(data, 0, 32);
     uint32_t readLen = MIN(32, len);        // limit read length to buffer length
 
-    clientHdd.read(data, len);              // read data
+    clientHdd.read(data, readLen);          // read data
 
-    for(int i=0; i<readLen; i++)            // go through all the received data
+    for(uint32_t i=readLen; i<len; i++)     // drop the rest of data which doesn't fit in the buffer, so the next header can be found
+    {
+        clientHdd.read();
+    }
+
+    for(int i=0; (i + 1) < readLen; i++)    // go through all the received data, the config byte must be followed by the value byte
     {
         if(data[i] == CMD_ACSI_CONFIG) {
             uint8_t newAcsiIds = data[i + 1];
@@ -398,6 +469,11 @@ void handleReadDataReceived(void)
             }
         }
 
+        if(actualCnt <= 0) {        // timeout, nothing read - return the buffer and quit
+            ipcReleaseBuffer(bfr);
+            break;
+        }
+
         ipcSetBufferAndPutToFifo(bfr, 1, STATE_DATA_READ, actualCnt, NULL, 0);
         dataCnt -= actualCnt;                   // update total data needed to be read
     }
@@ -414,21 +490,52 @@ void handleReadDataReceived(void)
     }
 }
 
+// how many payload bytes must be available before the command can be handled
+uint32_t payloadSizeToWaitFor(const THeader* header)
+{
+    if(header->cmdCode == CMD_DATA_MARKER) {        // data of any size, handleReadDataReceived() reads it in parts as it comes
+        return 0;
+    }
+
+    return MIN(header->len, PAYLOAD_MAX_WAIT_SIZE);
+}
+
 void handleIncommingData(void)
 {
-    if(getIncommingHeader(&clientHdd, SYNC_TAG_HDD, &hddHeader))   // if got valid hdd header
+    if(!hddHeaderPending)
     {
-        hddHeader.syncTag = 0;      // clear sync tag
-
-        switch(hddHeader.cmdCode) {
-            case CMD_ACSI_CONFIG: handleAcsiConfig(hddHeader.len); break;
-            case CMD_DATA_READ_WITH_STATUS: handleReadStart(true); break;
-            case CMD_DATA_READ_WITHOUT_STATUS: handleReadStart(false); break;
-            case CMD_DATA_MARKER: handleReadDataReceived(); break;
-            case CMD_DATA_WRITE: handleWriteStart(); break;
-            case CMD_SEND_STATUS: handleSendStatus(); break;
-            default: debug("unknown cmdCode %d\n", hddHeader.cmdCode); break;
+        if(!getIncommingHeader(&clientHdd, SYNC_TAG_HDD, &hddHeader))   // no valid hdd header? quit
+        {
+            return;
         }
+
+        hddHeader.syncTag = 0;      // clear sync tag
+        hddHeaderPending = true;
+        hddHeaderTime = millis();
+    }
+
+    // The handlers read the payload right away, so wait until all of it is here - TCP might deliver the header and the payload separately.
+    // Keep returning meanwhile, so the rest of the main loop keeps running.
+    if(clientHdd.available() < (int) payloadSizeToWaitFor(&hddHeader))
+    {
+        if((millis() - hddHeaderTime) > PAYLOAD_WAIT_MS)    // waiting too long? drop this header, look for the next one
+        {
+            debug("handleIncommingData - payload of cmd %d didn't arrive, dropping it\n", hddHeader.cmdCode);
+            hddHeaderPending = false;
+        }
+        return;
+    }
+
+    hddHeaderPending = false;
+
+    switch(hddHeader.cmdCode) {
+        case CMD_ACSI_CONFIG: handleAcsiConfig(hddHeader.len); break;
+        case CMD_DATA_READ_WITH_STATUS: handleReadStart(true); break;
+        case CMD_DATA_READ_WITHOUT_STATUS: handleReadStart(false); break;
+        case CMD_DATA_MARKER: handleReadDataReceived(); break;
+        case CMD_DATA_WRITE: handleWriteStart(); break;
+        case CMD_SEND_STATUS: handleSendStatus(); break;
+        default: debug("unknown cmdCode %d\n", hddHeader.cmdCode); break;
     }
 }
 

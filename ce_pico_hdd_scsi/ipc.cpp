@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "hardware/sync.h"
 #include "ipc.h"
 
 IPCbuffer buffersForCore0[IPC_BUFFER_COUNT];
@@ -31,6 +32,7 @@ IPCbuffer* ipcGetFreeBuffer(int coreNo, uint32_t maxWaitMs)
         for(int i=0; i<IPC_BUFFER_COUNT; i++) {
             if(bfr[i].free) {
                 bfr[i].free = false;        // immediatelly not free
+                __dmb();                    // don't let the writes to the buffer happen before it's taken
                 return &bfr[i];
             }
         }
@@ -40,6 +42,13 @@ IPCbuffer* ipcGetFreeBuffer(int coreNo, uint32_t maxWaitMs)
             return NULL;
         }
     }
+}
+
+// Return the buffer to its pool - called by the core which handled it (usually not the one which took it).
+void ipcReleaseBuffer(IPCbuffer* bfr)
+{
+    __dmb();                // all reads / writes of the buffer data must be done before the other core can take it again
+    bfr->free = true;
 }
 
 IPCbuffer* ipcGetBufferFromFifo(int coreNo)

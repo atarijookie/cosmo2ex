@@ -147,6 +147,10 @@ void pioConfig(int newMode, bool force)
             whichPio = pioAcsiStatusRead;
             whichSm = smAcsiStatusRead;
             break;
+
+        default:            // unknown mode - leave all state machines halted, INT and DRQ H
+            debug("pioConfig - unknown mode %d\n", newMode);
+            return;
     }
 
     // data direction RECV for CMD and WRITE, data direction SEND for READ and STATUS
@@ -281,6 +285,10 @@ void DMA_read(uint8_t val)
 
 void DMA_write_startWithCount(uint32_t transfersCount)
 {
+    if(transfersCount == 0) {   // PIO program would get 0xffffffff and wait for 4 G bytes with DRQ / REQ active
+        return;
+    }
+
     pio_sm_put(pioAcsiDataWrite, smAcsiDataWrite, transfersCount - 1);        // write N-1 count of bytes to write here
 }
 
