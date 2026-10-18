@@ -12,8 +12,6 @@
 
 #define SLOT_COUNT          MAX_CLIENTS
 
-#define EMPTY_IMAGE_PATH    "/tmp/emptyimage.st"
-
 class ChipInterface;
 
 typedef struct

@@ -58,6 +58,7 @@ public:
     void saveFloppyConfig(FloppyConfig *fc);
 
     static void binToHex(uint8_t *inBfr, int len, char *outBfr);
+    static std::string defaultTranslatedDrivePath(void);    // per-OS default of PATH_GEM_C
 
 private:
     void init(uint8_t* prefixBytes, int len);

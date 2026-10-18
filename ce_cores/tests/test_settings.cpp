@@ -53,6 +53,10 @@ TEST_CASE_FIXTURE(SettingsDir, "new device prefix dir gets default values")
     CHECK(Utils::fileExists(dir + "/001122334455/DRIVELETTER_CONFDRIVE"));
     CHECK(s.getChar("DRIVELETTER_CONFDRIVE", 'C') == 'O');                  // stored default, not the getter default
     CHECK(s.getInt("ACSI_DEVTYPE_1", DEVTYPE_OFF) == DEVTYPE_TRANSLATED);
+    CHECK(s.getString("PATH_GEM_C", "") == Settings::defaultTranslatedDrivePath());
+#if defined(__linux__)
+    CHECK(Settings::defaultTranslatedDrivePath() == "/mnt/");                // Linux default stays as it was
+#endif
 
     SUBCASE("defaults are not stored again over changed values") {
         s.setChar("DRIVELETTER_CONFDRIVE", 'P');

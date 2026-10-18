@@ -15,7 +15,8 @@ import (
 func loadEnvFromDotFile(path string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		// No .env file; nothing to do.
+		// No .env file; only the default dirs.
+		setDefaultDirs(nil)
 		return
 	}
 
@@ -41,6 +42,9 @@ func loadEnvFromDotFile(path string) {
 			}
 		}
 	}
+
+	// before resolving, so e.g. ${DATA_DIR}/core_cmd.token works even without DATA_DIR in .env
+	setDefaultDirs(envVars)
 
 	// Second pass: resolve variable references and set environment variables
 	for key, val := range envVars {
@@ -103,10 +107,7 @@ func resolveEnvVar(value string, envVars map[string]string, visited map[string]b
 
 // getPIDFilePath returns the path to the PID file based on PID_DIR environment variable
 func getPIDFilePath() string {
-	pidDir := os.Getenv("PID_DIR")
-	if pidDir == "" {
-		pidDir = "/run/ce"
-	}
+	pidDir := envDir("PID_DIR")
 	// Use the executable name as the PID file name
 	exePath, err := os.Executable()
 	if err != nil {

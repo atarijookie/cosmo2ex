@@ -272,3 +272,41 @@ TEST_CASE("dotEnvValue returns substituted value, default or env var")
     CHECK(Utils::dotEnvValue("CE_TEST_ENV_VAR", "default", false) == "fromenv");
     unsetenv("CE_TEST_ENV_VAR");
 }
+
+TEST_CASE("defaultDir - Linux system dirs, nothing for other keys")
+{
+#if defined(__linux__)
+    CHECK(Utils::defaultDir("LOG_DIR")  == "/var/log/ce");
+    CHECK(Utils::defaultDir("DATA_DIR") == "/var/lib/ce");
+    CHECK(Utils::defaultDir("PID_DIR")  == "/run/ce");
+#endif
+    CHECK(Utils::defaultDir("SETTINGS_DIR") == "");
+}
+
+TEST_CASE("dotEnvAddDefaultDirs - fills only dirs missing in .env and env, before substitution")
+{
+    char* oldDataDir = getenv("DATA_DIR");
+    std::string oldDataDirValue = oldDataDir ? oldDataDir : "";
+    char* oldPidDir = getenv("PID_DIR");
+    std::string oldPidDirValue = oldPidDir ? oldPidDir : "";
+
+    unsetenv("DATA_DIR");
+    setenv("PID_DIR", "/from/real/env", 1);
+
+    dotEnv.clear();
+    dotEnv["LOG_DIR"] = "/from/dotenv/log";
+    dotEnv["CMD_TOKEN_FILE"] = "${DATA_DIR}/core_cmd.token";
+
+    Utils::dotEnvAddDefaultDirs();
+    Utils::dotEnvSubstituteVars();
+
+    CHECK(val("LOG_DIR") == "/from/dotenv/log");                            // from .env - kept
+    CHECK(val("DATA_DIR") == Utils::defaultDir("DATA_DIR"));                // missing - default added
+    CHECK(val("PID_DIR") == "<missing>");                                   // real env var - not shadowed
+    CHECK(Utils::dotEnvValue("PID_DIR") == "/from/real/env");
+    CHECK(val("CMD_TOKEN_FILE") == Utils::defaultDir("DATA_DIR") + "/core_cmd.token");   // ${DATA_DIR} uses the default
+
+    if(oldDataDir) setenv("DATA_DIR", oldDataDirValue.c_str(), 1);
+    if(oldPidDir) setenv("PID_DIR", oldPidDirValue.c_str(), 1); else unsetenv("PID_DIR");
+    dotEnv.clear();
+}

@@ -5,6 +5,9 @@
 #include <errno.h>
 #include <stdlib.h>
 
+#if defined(__CYGWIN__)
+#include <sys/cygwin.h>     // cygwin_create_path()
+#endif
 #include "settings.h"
 #include "global.h"
 #include "debug.h"
@@ -64,6 +67,34 @@ void Settings::setPrefix(uint8_t* bytes, int len)
     settingsDir = settingsDirPath();    // prefix doesn't change often, so don't build the path on every get / set
 }
 
+// default host path of translated drive C:
+//  - Linux: /mnt/ - where disks get mounted (in docker the host filesystem is in /mnt/hostdrive)
+//  - macOS: home dir, Windows (Cygwin): user profile dir (e.g. C:\Users\x as /cygdrive/c/Users/x) - no /mnt on desktops
+std::string Settings::defaultTranslatedDrivePath(void)
+{
+#if defined(__APPLE__)
+    const char* home = getenv("HOME");
+
+    if(home && home[0]) {
+        return std::string(home) + "/";
+    }
+#elif defined(__CYGWIN__)
+    const char* userProfile = getenv("USERPROFILE");      // Windows path, e.g. C:\Users\x
+
+    if(userProfile && userProfile[0]) {
+        char* posixPath = (char*) cygwin_create_path(CCP_WIN_A_TO_POSIX, userProfile);
+
+        if(posixPath) {
+            std::string path = std::string(posixPath) + "/";
+            free(posixPath);
+            return path;
+        }
+    }
+#endif
+
+    return "/mnt/";     // Linux - and fallback if the dir can't be found on other OS
+}
+
 void Settings::storeDefaultValues(void)
 {
     logHdd(LOG_DEBUG, "Settings::storeDefaultValues() - storing default settings, because it seems we miss those setting...");
@@ -79,7 +110,7 @@ void Settings::storeDefaultValues(void)
         }
     }
 
-    setString("PATH_GEM_C", "/mnt/");
+    setString("PATH_GEM_C", defaultTranslatedDrivePath().c_str());
     setChar("DRIVELETTER_CONFDRIVE", 'O');
 }
 

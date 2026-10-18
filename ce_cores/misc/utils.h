@@ -54,7 +54,6 @@ public:
 
     static void getIpAdds(uint8_t *bfrIPs, uint8_t *bfrMasks=NULL);
 
-    static void forceSync(void);
 
     static uint16_t  getWord(uint8_t *bfr);
     static uint32_t getDword(uint8_t *bfr);
@@ -66,7 +65,6 @@ public:
 
     static void createTimezoneString(char *str);
     static void createTimezoneStringFromOffset(float utcOffset, char *str);    // offset in hours, e.g. 5.5 -> "UTC-05:30"
-    static void setTimezoneVariable_inProfileScript(void);
     static void setTimezoneVariable_inThisContext(void);
 
     static std::string getDeviceLabel(const std::string & devicePath);
@@ -74,9 +72,7 @@ public:
 
     static void splitString(const std::string &s, char delim, std::vector<std::string> &elems);
 
-    static bool unZIPfloppyImageAndReturnFirstImage(const char *inZipFilePath, std::string &outImageFilePath);
     static const char *getExtension(const char *fileName);
-    static bool isZIPfile(const char *fileName);
     static void createPathWithOtherExtension(std::string &inPathWithOriginalExt, const char *otherExtension, std::string &outPathWithOtherExtension);
     static bool fileExists(const std::string& path);
     static bool fileExists(const char* path);
@@ -88,6 +84,8 @@ public:
 
     static std::string dotEnvValue(std::string key, const char* defValue=NULL, bool logOnError=true);
     static void loadDotEnv(void);
+    static std::string defaultDir(const std::string& key);  // per-OS default of LOG_DIR / DATA_DIR / PID_DIR, "" for other keys
+    static void dotEnvAddDefaultDirs(void);                 // add defaultDir() for those dirs which are neither in .env nor real env vars
     static bool loadDotEnvFrom(const char* path);
     static bool parseDotEnvLine(const char* line, std::string& key, std::string& value);   // false if line has no key-value pair
     static int  dotEnvSubstituteVars(void);

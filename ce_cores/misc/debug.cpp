@@ -45,7 +45,7 @@ const char* Debug::getCoreLogFileName(bool forceCreate, int whichLog)
         return coreLogFileName[whichLog].c_str();
     }
 
-    std::string logDir = Utils::dotEnvValue("LOG_DIR", LOG_DIR_DEFAULT, false);
+    std::string logDir = Utils::dotEnvValue("LOG_DIR", Utils::defaultDir("LOG_DIR").c_str(), false);
 
     switch(whichLog) {
         case LOGFILE_DISCOVERY: coreLogFileName[whichLog] = logDir + std::string("/" DISCOVERY_LOG_FILENAME); break;

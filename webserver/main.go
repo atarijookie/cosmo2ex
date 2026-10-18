@@ -94,10 +94,7 @@ func main() {
 	}()
 
 	// Configure logging to file with optional LOG_DIR override and rotation.
-	logDir := os.Getenv("LOG_DIR")
-	if logDir == "" {
-		logDir = "/var/log/ce"
-	}
+	logDir := envDir("LOG_DIR")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		log.Printf("failed to create log directory %q: %v", logDir, err)
 	} else {

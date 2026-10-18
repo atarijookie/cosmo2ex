@@ -136,13 +136,9 @@ bool checkStartupFilesAndDirs(void);   // false if some file loaded on start or 
 #define SPECIAL_FDD_IMAGE_CE_CONF       100
 #define SPECIAL_FDD_IMAGE_FDD_TEST      101
 
-#define CE_CONF_FDD_IMAGE_PATH_AND_FILENAME_TMP "/tmp/ce_conf.st"
 #define CE_CONF_FDD_IMAGE_JUST_FILENAME         "ce_conf.st"
 
-#define FDD_TEST_IMAGE_PATH_AND_FILENAME_TMP    "/tmp/fdd_test.st"
 #define FDD_TEST_IMAGE_JUST_FILENAME            "fdd_test.st"
-
-#define MAX_ZIPDIR_ZIPFILE_SIZE             (5*1024*1024)
 
 #define PATH_ATARI_CE_FDD_TTP               "CE_FDD.TTP"
 #define PATH_ATARI_CE_HDIMG_TTP             "CE_HDIMG.TTP"
@@ -158,8 +154,5 @@ extern std::string PATH_CE_DD_BS_L2;
 extern std::string PATH_CE_DD_PRG_PATH_AND_FILENAME;
 extern std::string CONFIG_DRIVE_PATH;
 
-#define LOG_DIR_DEFAULT     "/var/log/ce"
-#define DATA_DIR_DEFAULT    "/var/lib/ce"
-#define PID_DIR_DEFAULT     "/run/ce"
 
 #endif // GLOBAL_H

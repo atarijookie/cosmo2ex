@@ -69,7 +69,7 @@ void StatusReport::createSingleReportFile(int i)
     }
 
     // if changed, write to file
-    std::string logDir = Utils::dotEnvValue("LOG_DIR", LOG_DIR_DEFAULT);  // path to logs dir
+    std::string logDir = Utils::dotEnvValue("LOG_DIR", Utils::defaultDir("LOG_DIR").c_str());  // path to logs dir
     sprintf(tmp, "%02X%02X%02X%02X%02X%02X.txt", statuses[i].mac[0], statuses[i].mac[1], statuses[i].mac[2], statuses[i].mac[3], statuses[i].mac[4], statuses[i].mac[5]);
     std::string fileAndPath = Utils::mergeHostPaths2(logDir, std::string(tmp));
 

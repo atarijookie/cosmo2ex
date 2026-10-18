@@ -25,6 +25,9 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <atomic>
+#if defined(__CYGWIN__)
+#include <sys/cygwin.h>     // cygwin_create_path()
+#endif
 
 //--------
 // following includes are here for the code for getting IP address of interfaces
@@ -463,11 +466,6 @@ void Utils::getIpAdds(uint8_t *bfrIPs, uint8_t *bfrMasks)
     freeifaddrs(ifaddr);
 }
 
-void Utils::forceSync(void)
-{
-    printf("TODO: forceSync\n");
-}
-
 uint16_t Utils::getWord(uint8_t *bfr)
 {
     uint16_t val = 0;
@@ -565,23 +563,6 @@ void Utils::createTimezoneStringFromOffset(float utcOffset, char *str)
     } else {                                                    // got offset - only hours (no minutes)
         sprintf(str, "UTC%c%02d", signChar, ofsHours);
     }
-}
-
-void Utils::setTimezoneVariable_inProfileScript(void)
-{
-    char utcOfsset[64];
-    createTimezoneString(utcOfsset);
-
-    char tzString[128];
-    sprintf(tzString, "echo 'export TZ=\"%s\"' > /etc/profile.d/set_timezone.sh", utcOfsset);
-
-    logHdd(LOG_DEBUG, "Utils::setTimezoneVariable_inProfileScript() -- creating timezone setting script like this: %s\n", tzString);
-
-    system("mkdir -p /etc/profile.d");                          // if this dir doesn't exist, create it
-    system(tzString);                                           // now create the script in the dir above
-    system("chmod 755 /etc/profile.d/set_timezone.sh");         // make it executable
-
-    forceSync();                                                // make sure it does to disk
 }
 
 void Utils::setTimezoneVariable_inThisContext(void)
@@ -683,86 +664,6 @@ int Utils::mkpath(const char *dir, int mode)
     return mkdir(dir, mode);    // create directory itself, once all parents are created
 }
 
-bool Utils::unZIPfloppyImageAndReturnFirstImage(const char *inZipFilePath, std::string &outImageFilePath)
-{
-    outImageFilePath.clear();                       // out path doesn't contain anything yet
-
-    system("rm    -rf /tmp/zipedfloppy");           // delete this dir, if it exists
-    system("mkdir -p  /tmp/zipedfloppy");           // create that dir
-
-    // put path in single quotes, and replace each ' in path with '\'' (end quote, escaped quote, start quote), so the path can't break out of quotes
-    std::string quotedPath = "'";
-    for(const char *p = inZipFilePath; *p; p++) {
-        if(*p == '\'') {
-            quotedPath += "'\\''";
-        } else {
-            quotedPath += *p;
-        }
-    }
-    quotedPath += "'";
-
-    std::string unzipCommand = "unzip -o " + quotedPath + " -d /tmp/zipedfloppy > /dev/null 2> /dev/null";
-    system(unzipCommand.c_str());                   // unzip the downloaded ZIP file into that tmp directory
-
-    // find the first usable floppy image
-    DIR *dir = opendir("/tmp/zipedfloppy");         // try to open the dir
-
-    if(dir == NULL) {                               // not found?
-        logHdd(LOG_DEBUG, "Utils::unZIPfloppyImageAndReturnFirstImage -- opendir() failed");
-        return false;
-    }
-
-    bool found          = false;
-    struct dirent *de   = NULL;
-    std::string foundFileName;                      // copy of found name - de points into dir, which is freed by closedir()
-
-    const char *pExt = NULL;
-
-    while(1) {                                      // avoid buffer overflow
-        de = readdir(dir);                          // read the next directory entry
-
-        if(de == NULL) {                            // no more entries?
-            break;
-        }
-
-        if(de->d_type != DT_REG) {                  // not a file? skip it
-            continue;
-        }
-
-        int fileNameLen = strlen(de->d_name);       // get length of filename
-
-        if(fileNameLen < 3) {                       // if it's too short, skip it
-            continue;
-        }
-
-        pExt = getExtension(de->d_name);            // get where the extension starts
-
-        if(pExt == NULL) {                          // extension not found? skip it
-            continue;
-        }
-
-        if(strcasecmp(pExt, "st") == 0 || strcasecmp(pExt, "msa") == 0) {  // the extension of the file is valid for a floppy image?
-            found = true;
-            foundFileName = de->d_name;
-            break;
-        }
-    }
-
-    closedir(dir);                                  // close the dir
-
-    if(!found) {                                    // not found? return with a fail
-        logHdd(LOG_DEBUG, "Utils::unZIPfloppyImageAndReturnFirstImage -- couldn't find an image inside of %s", inZipFilePath);
-        return false;
-    }
-
-    // construct path to unZIPed image
-    outImageFilePath = "/tmp/zipedfloppy/";
-    outImageFilePath.append(foundFileName);
-
-    logHdd(LOG_DEBUG, "Utils::unZIPfloppyImageAndReturnFirstImage -- this ZIP file: %s contains this floppy image file: %s", inZipFilePath, outImageFilePath.c_str());
-    return true;
-}
-
 const char *Utils::getExtension(const char *fileName)
 {
     const char *pExt;
@@ -774,17 +675,6 @@ const char *Utils::getExtension(const char *fileName)
 
     pExt++;                         // move beyond '.'
     return pExt;
-}
-
-bool Utils::isZIPfile(const char *fileName)
-{
-    const char *ext = Utils::getExtension(fileName);     // find extension
-
-    if(ext == NULL) {                       // no extension? not a ZIP file then
-        return false;
-    }
-
-    return (strcasecmp(ext, "zip") == 0);   // it's a ZIP file when the extension is this
 }
 
 void Utils::createPathWithOtherExtension(std::string &inPathWithOriginalExt, const char *otherExtension, std::string &outPathWithOtherExtension)
@@ -871,8 +761,68 @@ void Utils::loadDotEnv(void)
 {
     bool good = loadDotEnvFrom("./.env");
 
+    dotEnvAddDefaultDirs();     // before substitution, so e.g. ${DATA_DIR}/core_cmd.token works even without DATA_DIR in .env
+
     if(good) {      // if something was loaded, do the vars subtitution
         dotEnvSubstituteVars();
+    }
+}
+
+std::string Utils::defaultDir(const std::string& key)
+{
+    /* Linux: system dirs, as the .env shipped for Linux / docker has them.
+       macOS: ~/Library/Application Support/cosmo2ex/..., Windows (Cygwin): %LOCALAPPDATA%\cosmo2ex\...
+       - desktop users run it as regular user, without access to /var and /run */
+
+    const char* sub = (key == "LOG_DIR") ? "log" : ((key == "DATA_DIR") ? "data" : ((key == "PID_DIR") ? "run" : NULL));
+
+    if(!sub) {
+        return "";
+    }
+
+#if defined(__APPLE__)
+    const char* home = getenv("HOME");
+
+    if(home && home[0]) {
+        return std::string(home) + "/Library/Application Support/cosmo2ex/" + sub;
+    }
+#elif defined(__CYGWIN__)
+    const char* localAppData = getenv("LOCALAPPDATA");      // Windows path, e.g. C:\Users\x\AppData\Local
+
+    if(localAppData && localAppData[0]) {
+        char* posixPath = (char*) cygwin_create_path(CCP_WIN_A_TO_POSIX, localAppData);   // -> /cygdrive/c/Users/x/AppData/Local
+
+        if(posixPath) {
+            std::string dir = std::string(posixPath) + "/cosmo2ex/" + sub;
+            free(posixPath);
+            return dir;
+        }
+    }
+#endif
+
+    // Linux - and fallback if the per-user dir can't be found on other OS
+    if(key == "LOG_DIR") {
+        return "/var/log/ce";
+    }
+
+    if(key == "DATA_DIR") {
+        return "/var/lib/ce";
+    }
+
+    return "/run/ce";
+}
+
+void Utils::dotEnvAddDefaultDirs(void)
+{
+    const char* keys[] = {"LOG_DIR", "DATA_DIR", "PID_DIR"};
+
+    for(size_t i=0; i<sizeof(keys)/sizeof(keys[0]); i++) {
+        if(dotEnv.find(keys[i]) != dotEnv.end() || getenv(keys[i]) != NULL) {     // set in .env or as real env var? keep that
+            continue;
+        }
+
+        dotEnv[keys[i]] = defaultDir(keys[i]);
+        logHdd(LOG_DEBUG, "Utils::dotEnvAddDefaultDirs - %s not set, using default %s", keys[i], dotEnv[keys[i]].c_str());
     }
 }
 

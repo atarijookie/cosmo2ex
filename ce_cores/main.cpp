@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
     }                                   // otherwise the command line one (already set) wins
 
     ldp_setParam(1, (uint64_t) logLevel);                         // libDOSpath - set log level to file
-    std::string logDir = Utils::dotEnvValue("LOG_DIR", LOG_DIR_DEFAULT);  // path to logs dir
+    std::string logDir = Utils::dotEnvValue("LOG_DIR", Utils::defaultDir("LOG_DIR").c_str());  // path to logs dir
     Utils::mergeHostPaths(logDir, "libdospath.log");                    // full path = logs dir + filename
     ldp_setParam(2, (uint64_t) logDir.c_str());                         // libDOSpath - set log file path
     logHdd(LOG_ERROR, "setting libdospath log file to: %s and log level to: %d", logDir.c_str(), logLevel);
@@ -155,7 +155,7 @@ int main(int argc, char *argv[])
 // return path and filename to pid file for this core's instance, include port to distinguish between instances
 std::string pidFileName(void)
 {
-    std::string pidDir = Utils::dotEnvValue("PID_DIR", PID_DIR_DEFAULT);
+    std::string pidDir = Utils::dotEnvValue("PID_DIR", Utils::defaultDir("PID_DIR").c_str());
     std::string pidFilePath = pidDir + std::string("/ce_cores.pid");
     return pidFilePath;
 }
