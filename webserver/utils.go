@@ -5,10 +5,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 )
 
 // loadEnvFromDotFile loads simple KEY=VALUE lines from the given .env file
@@ -119,126 +117,20 @@ func getPIDFilePath() string {
 	return filepath.Join(pidDir, exeName+".pid")
 }
 
-// otherInstanceIsRunning checks if another instance of this application is running
-// by reading the PID file and verifying the process is still running the same executable.
-// If no other instance is found, it writes the current PID to the file.
-// Returns true if another instance is running, false otherwise.
-func otherInstanceIsRunning() bool {
+// writePIDFile writes own PID to pidFilePath, creating the directory if needed. Failures are only logged.
+func writePIDFile(pidFilePath string) {
+	if err := os.MkdirAll(filepath.Dir(pidFilePath), 0o755); err != nil {
+		log.Printf("writePIDFile - failed to create PID directory for %s: %v", pidFilePath, err)
+		return
+	}
+
 	selfPid := os.Getpid()
-	pidFilePath := getPIDFilePath()
-
-	// Get the current executable path
-	selfExe, err := os.Readlink("/proc/self/exe")
-	if err != nil {
-		// If /proc/self/exe is not available (e.g., on non-Linux systems), we can't verify
-		// In that case, we'll just check if the PID file exists and contains a valid PID
-		log.Printf("otherInstanceIsRunning - couldn't read /proc/self/exe: %v, using fallback check", err)
-		return otherInstanceIsRunningFallback(selfPid, pidFilePath)
-	}
-
-	// Try to read the PID file
-	data, err := os.ReadFile(pidFilePath)
-	if err != nil {
-		// Can't open file? Other instance probably not running
-		log.Printf("otherInstanceIsRunning - couldn't open %s, assuming no other instance", pidFilePath)
-	} else {
-		// Parse the PID from the file
-		pidStr := strings.TrimSpace(string(data))
-		otherPid, err := strconv.Atoi(pidStr)
-		if err != nil {
-			log.Printf("otherInstanceIsRunning - can't parse pid in %s: %v, assuming no other instance", pidFilePath, err)
-		} else {
-			log.Printf("otherInstanceIsRunning - %s contains pid=%d (own pid=%d)", pidFilePath, otherPid, selfPid)
-
-			// Check if the other process is still running and is the same executable
-			procExePath := fmt.Sprintf("/proc/%d/exe", otherPid)
-			otherExe, err := os.Readlink(procExePath)
-			if err != nil {
-				// Process doesn't exist or we can't read its exe link
-				log.Printf("otherInstanceIsRunning - process %d doesn't exist or can't read exe: %v", otherPid, err)
-			} else if otherExe == selfExe {
-				// Found another instance running the same executable
-				log.Printf("otherInstanceIsRunning - found another instance of %s with pid %d", otherExe, otherPid)
-				return true
-			} else {
-				log.Printf("otherInstanceIsRunning - process %d exists but is running different executable: %s (ours: %s)", otherPid, otherExe, selfExe)
-			}
-		}
-	}
-
-	// No other instance found, write our PID to the file
-	// Ensure the directory exists
-	pidDir := filepath.Dir(pidFilePath)
-	if err := os.MkdirAll(pidDir, 0o755); err != nil {
-		log.Printf("otherInstanceIsRunning - failed to create PID directory %s: %v", pidDir, err)
-		return false // Continue anyway
-	}
-
-	// Write PID to file
 	if err := os.WriteFile(pidFilePath, []byte(fmt.Sprintf("%d\n", selfPid)), 0o644); err != nil {
-		log.Printf("otherInstanceIsRunning - failed to write PID file %s: %v", pidFilePath, err)
-		return false // Continue anyway
+		log.Printf("writePIDFile - failed to write PID file %s: %v", pidFilePath, err)
+		return
 	}
 
-	log.Printf("otherInstanceIsRunning - pid %d written to %s", selfPid, pidFilePath)
-	return false
-}
-
-// otherInstanceIsRunningFallback is a fallback check for systems without /proc/self/exe
-// It only checks if the PID file exists and contains a PID that's still running
-func otherInstanceIsRunningFallback(selfPid int, pidFilePath string) bool {
-	data, err := os.ReadFile(pidFilePath)
-	if err != nil {
-		// No PID file, write ours
-		pidDir := filepath.Dir(pidFilePath)
-		if err := os.MkdirAll(pidDir, 0o755); err != nil {
-			log.Printf("otherInstanceIsRunningFallback - failed to create PID directory %s: %v", pidDir, err)
-			return false
-		}
-		if err := os.WriteFile(pidFilePath, []byte(fmt.Sprintf("%d\n", selfPid)), 0o644); err != nil {
-			log.Printf("otherInstanceIsRunningFallback - failed to write PID file %s: %v", pidFilePath, err)
-		}
-		return false
-	}
-
-	pidStr := strings.TrimSpace(string(data))
-	otherPid, err := strconv.Atoi(pidStr)
-	if err != nil {
-		log.Printf("otherInstanceIsRunningFallback - can't parse pid in %s: %v", pidFilePath, err)
-		// Write our PID
-		if err := os.WriteFile(pidFilePath, []byte(fmt.Sprintf("%d\n", selfPid)), 0o644); err != nil {
-			log.Printf("otherInstanceIsRunningFallback - failed to write PID file %s: %v", pidFilePath, err)
-		}
-		return false
-	}
-
-	// Check if the process is still running by sending signal 0 (doesn't kill, just checks)
-	proc, err := os.FindProcess(otherPid)
-	if err != nil {
-		log.Printf("otherInstanceIsRunningFallback - can't find process %d: %v", otherPid, err)
-		// Write our PID
-		if err := os.WriteFile(pidFilePath, []byte(fmt.Sprintf("%d\n", selfPid)), 0o644); err != nil {
-			log.Printf("otherInstanceIsRunningFallback - failed to write PID file %s: %v", pidFilePath, err)
-		}
-		return false
-	}
-
-	// Send signal 0 to check if process exists
-	err = proc.Signal(syscall.Signal(0))
-	if err != nil {
-		// Process doesn't exist
-		log.Printf("otherInstanceIsRunningFallback - process %d doesn't exist: %v", otherPid, err)
-		// Write our PID
-		if err := os.WriteFile(pidFilePath, []byte(fmt.Sprintf("%d\n", selfPid)), 0o644); err != nil {
-			log.Printf("otherInstanceIsRunningFallback - failed to write PID file %s: %v", pidFilePath, err)
-		}
-		return false
-	}
-
-	// Process exists - could be another instance or a different process with the same PID
-	// Since we can't verify the executable, we'll assume it's another instance
-	log.Printf("otherInstanceIsRunningFallback - process %d is running (can't verify if it's the same executable)", otherPid)
-	return true
+	log.Printf("writePIDFile - pid %d written to %s", selfPid, pidFilePath)
 }
 
 // rotatingFileWriter is an io.Writer that writes to a single log file and

@@ -21,7 +21,7 @@ CONFIG_DRIVE_PATH="${CONFIG_DRIVE_PATH:-${DATA_DIR}/configdrive}"
 IKBD_VIRTUAL_DEVICES_PATH="${IKBD_VIRTUAL_DEVICES_PATH:-${DATA_DIR}/vdev}"
 
 mkdir -p "$DATA_DIR" "$LOG_DIR" "$PID_DIR" "$SETTINGS_DIR" "$IKBD_VIRTUAL_DEVICES_PATH"
-chmod 0700 "$DATA_DIR" "$IKBD_VIRTUAL_DEVICES_PATH"    # owner only - command socket and virtual ikbd devices
+chmod 0700 "$DATA_DIR" "$IKBD_VIRTUAL_DEVICES_PATH"    # owner only - command token and virtual ikbd devices
 
 # PID files survive a container restart, and PIDs inside the container repeat,
 # so a stale file would make the apps think another instance is running.

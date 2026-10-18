@@ -19,7 +19,7 @@
 
 extern DebugVars    dbgVars;
 
-HddClient::HddClient(ChipInterface* chipInterfaceIn, ClientInfo* ci, int aSharedMemFd, uint8_t* aSharedMemPointer)
+HddClient::HddClient(ChipInterface* chipInterfaceIn, ClientInfo* ci)
 {
     chipInterface = chipInterfaceIn;
     this->ci = ci;
@@ -36,7 +36,7 @@ HddClient::HddClient(ChipInterface* chipInterfaceIn, ClientInfo* ci, int aShared
     scsi->setAcsiDataTrans(dataTrans);
     scsi->updateTranslatedBootMedia();   // update CE_DD bootsector with proper SCSI ID
 
-    translated = new TranslatedDisk(dataTrans, &hwConfig, aSharedMemFd, aSharedMemPointer);
+    translated = new TranslatedDisk(dataTrans, &hwConfig);
 }
 
 void HddClient::resetHwConfig(void)

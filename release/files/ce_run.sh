@@ -11,7 +11,7 @@ cd "$(dirname "$0")"        # both apps load ./.env, so they need to run from BI
 . ./.env
 
 mkdir -p "$DATA_DIR" "$LOG_DIR" "$PID_DIR" "$SETTINGS_DIR" "$IKBD_VIRTUAL_DEVICES_PATH"
-chmod 0700 "$DATA_DIR" "$IKBD_VIRTUAL_DEVICES_PATH"    # owner only - command socket and virtual ikbd devices
+chmod 0700 "$DATA_DIR" "$IKBD_VIRTUAL_DEVICES_PATH"    # owner only - command token and virtual ikbd devices
 
 # Nothing else is running (systemd makes sure of that), so any PID files and
 # sockets are leftovers of a crash and would make the apps think another

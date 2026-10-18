@@ -415,7 +415,11 @@ func listenAndServeHTTPS(addr string, handler http.Handler, certs *certManager) 
 	if err != nil {
 		return err
 	}
+	return serveHTTPS(ln, handler, certs)
+}
 
+// serveHTTPS serves handler over HTTPS on ln, and redirects plain HTTP on ln to HTTPS.
+func serveHTTPS(ln net.Listener, handler http.Handler, certs *certManager) error {
 	tlsLn := newChanListener(ln.Addr())
 	plainLn := newChanListener(ln.Addr())
 

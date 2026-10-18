@@ -14,7 +14,7 @@ fi
 
 # create the log and data dirs if they don't exist
 mkdir -p "$DATA_DIR"
-chmod 0700 "$DATA_DIR"      # owner only - holds command socket and virtual ikbd devices
+chmod 0700 "$DATA_DIR"      # owner only - holds command token and virtual ikbd devices
 mkdir -p "$LOG_DIR"
 mkdir -p "$SETTINGS_DIR"
 mkdir -p "$PID_DIR"

@@ -21,7 +21,6 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <sys/select.h>
-#include <sys/un.h>
 #include <sys/socket.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -1207,42 +1206,6 @@ void Utils::screenShotVblEnabled(bool enabled)
 {
     events.screenShotVblEnabled = enabled;
     Utils::intToFileFromEnv((int) enabled, "SCREENSHOT_VBL_ENABLED_FILE");        // new value to file
-}
-
-void Utils::sendToMounter(const std::string& jsonString)
-{
-    std::string sockPath = Utils::dotEnvValue("MOUNT_SOCK_PATH");    // path to mounter socket
-
-	// create a UNIX DGRAM socket
-	int sockFd = socket(AF_UNIX, SOCK_DGRAM, 0);
-
-	if (sockFd < 0) {   // if failed to create socket
-	    logHdd(LOG_ERROR, "sendToMounter: failed to create socket - errno: %d", errno);
-	    return;
-	}
-
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-
-    if(sockPath.empty() || sockPath.length() >= sizeof(addr.sun_path)) {     // no path or path too long for sun_path?
-        logHdd(LOG_ERROR, "sendToMounter: socket path '%s' is empty or longer than %d chars", sockPath.c_str(), (int) sizeof(addr.sun_path) - 1);
-        close(sockFd);
-        return;
-    }
-
-    strcpy(addr.sun_path, sockPath.c_str());    // fits, length checked above
-    addr.sun_family = AF_UNIX;
-
-    // try to send to mounter socket
-    int res = sendto(sockFd, jsonString.c_str(), jsonString.length() + 1, 0, (struct sockaddr *) &addr, sizeof(struct sockaddr_un));
-
-    if(res < 0) {       // if failed to send
-	    logHdd(LOG_ERROR, "sendToMounter: sendto failed - errno: %d", errno);
-    } else {
-        logHdd(LOG_DEBUG, "sendToMounter: sent to mounter: %s", jsonString.c_str());
-    }
-
-    close(sockFd);
 }
 
 void Utils::createFloppyTestImage(void)

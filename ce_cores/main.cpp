@@ -10,9 +10,6 @@
 #include <sys/file.h>
 #include <errno.h>
 #include <limits.h>
-#include <stddef.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 
 #include "misc/settings.h"
 #include "misc/global.h"
@@ -46,7 +43,7 @@ pthread_t fddThreadInfo;
 pthread_t cmdSockThreadInfo;
 pthread_t ikbdThreadInfo;
 
-bool otherInstanceIsRunning(void);
+void writePidFile(void);
 int runCoreHdd(void);
 
 bool noCapture = false;
@@ -96,11 +93,19 @@ int main(int argc, char *argv[])
 
     //------------------------------------
     // before touching USB devices, disks, ports etc. make sure that no other instance is running
-    if(otherInstanceIsRunning()) {
-        logHdd(LOG_ERROR, "Other instance of CosmosEx is running, terminate it before starting a new one!");
-        printf("\nOther instance of CosmosEx is running, terminate it before starting a new one!\n\n\n");
+    // the command socket is the instance lock, so it's opened here, before any thread starts
+    int lockErr = 0;
+    if(!cmdSockOpen(lockErr)) {
+        if(lockErr == EADDRINUSE) {     // port taken = other instance holds it (or some other program uses CMD_UDP_PORT)
+            logHdd(LOG_ERROR, "Other instance of CosmosEx is running (CMD_UDP_PORT is in use), terminate it before starting a new one!");
+            printf("\nOther instance of CosmosEx is running (CMD_UDP_PORT is in use), terminate it before starting a new one!\n\n\n");
+        } else {                        // without command socket nobody can control the app
+            logHdd(LOG_ERROR, "Could not create command socket, terminating");
+            printf("\nCould not create command socket, terminating\n\n\n");
+        }
         return 1;                       // failure - so a supervisor (systemd, docker) sees that this start didn't work
     }
+    writePidFile();
 
     logHdd(LOG_INFO, "logLevel: %d", logLevel);
 
@@ -245,51 +250,11 @@ void sigint_handler(int sig)
     sigintReceived = 1;
 }
 
-// Only one instance may run - on this host, and also in host-network docker containers.
-// The lock is an abstract UNIX socket: its name lives in the network namespace (shared by all host processes and by
-// containers with network_mode: host), only one process can bind it, and the kernel releases it automatically when
-// the process exits or crashes - no lock file, nothing stale left behind.
-#define INSTANCE_LOCK_NAME  "cosmosex_ce_cores_instance"
-
-static int instanceLockFd = -1;     // kept open (bound) for the whole run - that's what holds the lock
-
-bool otherInstanceIsRunning(void)
+// pid file is just information for humans / scripts (ce_stop.sh), not the lock - see cmdSockOpen()
+void writePidFile(void)
 {
-    // CLOEXEC: processes started by system() must not inherit it, otherwise they'd keep the lock after we're gone
-    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-
-    if(fd < 0) {            // can't check - don't block the start, the port binding would still catch 2nd instance
-        logHdd(LOG_ERROR, "otherInstanceIsRunning - socket() failed: %s", strerror(errno));
-        return false;
-    }
-
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    addr.sun_path[0] = 0;   // leading zero byte = abstract socket (no file in filesystem)
-    memcpy(addr.sun_path + 1, INSTANCE_LOCK_NAME, strlen(INSTANCE_LOCK_NAME));
-    socklen_t addrLen = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(INSTANCE_LOCK_NAME);
-
-    if(bind(fd, (struct sockaddr *) &addr, addrLen) != 0) {
-        int err = errno;
-        close(fd);
-
-        if(err == EADDRINUSE) {     // name taken = other instance holds it
-            logHdd(LOG_DEBUG, "otherInstanceIsRunning - instance lock '%s' is held by another process", INSTANCE_LOCK_NAME);
-            return true;
-        }
-
-        logHdd(LOG_ERROR, "otherInstanceIsRunning - bind() failed: %s", strerror(err));
-        return false;
-    }
-
-    instanceLockFd = fd;    // we hold the lock now
-
-    // pid file is just information for humans / scripts now, not the lock
     std::string pidFilePath = pidFileName();
     Utils::intToFile(getpid(), pidFilePath.c_str());
-    logHdd(LOG_DEBUG, "otherInstanceIsRunning -- got instance lock, pid %d written to %s", (int) getpid(), pidFilePath.c_str());
-
-    return false;
+    logHdd(LOG_DEBUG, "writePidFile - pid %d written to %s", (int) getpid(), pidFilePath.c_str());
 }
 

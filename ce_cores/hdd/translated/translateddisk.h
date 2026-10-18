@@ -105,7 +105,7 @@ class ZipDirEntry {
 class TranslatedDisk
 {
 public:
-    TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig, int aSharedMemFd, uint8_t* aSharedMemPointer);
+    TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig);
     virtual ~TranslatedDisk();
 
     void setMac(uint8_t* mac);

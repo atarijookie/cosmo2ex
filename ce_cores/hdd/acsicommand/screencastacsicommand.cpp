@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include "screencastacsicommand.h"
 #include "../../misc/global.h"
@@ -21,71 +21,46 @@ ScreencastAcsiCommand::~ScreencastAcsiCommand()
 	delete []dataBuffer;
 }
 
-void ScreencastAcsiCommand::sharedMemoryOpen(int& aSharedMemFd, uint8_t** aSharedMemPointer)
+// latest frame - written by HDD thread (readScreen, readPalette), read by command socket thread (frameGet)
+static uint8_t frame[SCREENCAST_FRAME_SIZE];
+static pthread_mutex_t frameMutex = PTHREAD_MUTEX_INITIALIZER;
+
+void ScreencastAcsiCommand::frameInit(void)
 {
-	// initialize values
-	aSharedMemFd = -1;
-	*aSharedMemPointer = NULL;
+    pthread_mutex_lock(&frameMutex);
+    memset(frame, 0, sizeof(frame));                // set all to zeros
 
-    // open the shared memory file - owner only, webserver runs as the same user and reads it
-    std::string sharedMemoryName = Utils::dotEnvValue("SCREENCAST_MEMORY_NAME");
-    aSharedMemFd = shm_open(sharedMemoryName.c_str(), O_RDWR | O_CREAT, 0600);
-
-    if(aSharedMemFd < 0) {
-        logHdd(LOG_ERROR, "ScreencastAcsiCommand::sharedMemoryOpen - failed to create shared memory file: %d", errno);
-        return;
+    std::string logoPath = Utils::dotEnvValue("CE_LOGO_FILE", "ce_logo.bin");   // path to logo file
+    FILE *f = fopen(logoPath.c_str(), "rb");        // if can open this logo file
+    if(f) {
+        fread(frame + 1, 1, sizeof(frame) - 1, f);  // fill the initial frame with logo - palette and screen data
+        fclose(f);
+    } else {
+        logHdd(LOG_WARNING, "ScreencastAcsiCommand::frameInit - failed to load %s", logoPath.c_str());
     }
-
-    fchmod(aSharedMemFd, 0600);                 // mode from shm_open() is not applied when it already existed
-
-    // resize from 0 to required size - must succeed before touching the mapping, otherwise access past end of file -> SIGBUS
-    if(ftruncate(aSharedMemFd, SCREENCAST_BUFFER_SIZE) != 0) {
-        logHdd(LOG_ERROR, "ScreencastAcsiCommand::sharedMemoryOpen - ftruncate() failed : %s", strerror(errno));
-        return;                                         // fd stays open, sharedMemoryClose() will close and unlink it
-    }
-
-    // map the shared memory
-    void* mmapRes = mmap(0, SCREENCAST_BUFFER_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, aSharedMemFd, 0);
-
-    if(mmapRes != MAP_FAILED) {                         // on success, use as address
-        *aSharedMemPointer = (uint8_t*) mmapRes;                // store pointer
-        memset(*aSharedMemPointer, 0, SCREENCAST_BUFFER_SIZE);  // set all to zeros
-
-        std::string logoPath = Utils::dotEnvValue("CE_LOGO_FILE", "ce_logo.bin");   // path to logo file
-        FILE *f = fopen(logoPath.c_str(), "rb");        // if can open this logo file
-        if(f) {
-            fread(*aSharedMemPointer + 1, 1, 32032, f);   // fill the initial screencast buffer with logo
-            fclose(f);
-        } else {
-            logHdd(LOG_WARNING, "ScreencastAcsiCommand::sharedMemoryOpen - failed to load %s", logoPath.c_str());
-        }
-
-        logHdd(LOG_DEBUG, "ScreencastAcsiCommand::sharedMemoryOpen - mmap() success");
-    } else {                        // on error, log error
-        logHdd(LOG_ERROR, "ScreencastAcsiCommand::sharedMemoryOpen - mmap() shared memory failed : %d", errno);
-    }
+    pthread_mutex_unlock(&frameMutex);
 }
 
-void ScreencastAcsiCommand::sharedMemoryClose(int& aSharedMemFd, uint8_t** aSharedMemPointer)
+void ScreencastAcsiCommand::frameGet(uint8_t* out)
 {
-	if(*aSharedMemPointer) {                  // got pointer to shared memory?
-	    munmap(*aSharedMemPointer, SCREENCAST_BUFFER_SIZE);
-	    *aSharedMemPointer = NULL;
-	}
-
-    if(aSharedMemFd >= 0) {                  // got fd for shared memory?
-        close(aSharedMemFd);
-	    aSharedMemFd = -1;
-
-        std::string sharedMemoryName = Utils::dotEnvValue("SCREENCAST_MEMORY_NAME");
-	    shm_unlink(sharedMemoryName.c_str());
-	}
+    pthread_mutex_lock(&frameMutex);
+    memcpy(out, frame, sizeof(frame));
+    pthread_mutex_unlock(&frameMutex);
 }
 
-void ScreencastAcsiCommand::sharedMemorySet(int aSharedMemFd, uint8_t* aSharedMemPointer)
+size_t ScreencastAcsiCommand::frameChunk(const uint8_t* frm, size_t offset, uint8_t* out)
 {
-    sharedMemFd = aSharedMemFd;
-    sharedMemPointer = aSharedMemPointer;
+    if(offset >= SCREENCAST_FRAME_SIZE) {
+        return 0;
+    }
+
+    size_t len = MIN(SCREENCAST_CHUNK_PAYLOAD, SCREENCAST_FRAME_SIZE - offset);
+
+    Utils::storeWord(out, (uint16_t) offset);
+    Utils::storeWord(out + 2, (uint16_t) SCREENCAST_FRAME_SIZE);
+    memcpy(out + SCREENCAST_CHUNK_HEADER, frm + offset, len);
+
+    return SCREENCAST_CHUNK_HEADER + len;
 }
 
 void ScreencastAcsiCommand::processCommand(uint8_t *command)
@@ -152,9 +127,9 @@ void ScreencastAcsiCommand::readScreen(void)
         return;
     }
 
-    if(sharedMemPointer) {                                // got shared memory? copy values there
-        memcpy(sharedMemPointer + 33, dataBuffer, 32000); // 33 - 32032: screen data
-    }
+    pthread_mutex_lock(&frameMutex);
+    memcpy(frame + 33, dataBuffer, 32000);                      // 33 - 32032: screen data
+    pthread_mutex_unlock(&frameMutex);
 
     dataTrans->setStatus(RW_ALL_TRANSFERED);                    // when all the data was written
 }
@@ -203,10 +178,10 @@ void ScreencastAcsiCommand::readPalette(void)
         dataBuffer[2] = dataBuffer[3] = 0x00;
     }
 
-    if(sharedMemPointer) {                                // got shared memory? copy values there
-        sharedMemPointer[0] = iScreenmode;                // 0: resolution
-        memcpy(sharedMemPointer + 1, dataBuffer, 32);     // 1-32: palette
-    }
+    pthread_mutex_lock(&frameMutex);
+    frame[0] = iScreenmode;                                     // 0: resolution
+    memcpy(frame + 1, dataBuffer, 32);                          // 1-32: palette
+    pthread_mutex_unlock(&frameMutex);
 
     dataTrans->setStatus(RW_ALL_TRANSFERED);                    // when all the data was written
 }

@@ -60,13 +60,22 @@ func (rw *responseWriter) WriteHeader(code int) {
 func main() {
 	loadEnvFromDotFile(".env")
 
-	// Check if another instance is running and write PID file
-	if otherInstanceIsRunning() {
-		log.Fatalf("Another instance of this application is already running")
+	port := os.Getenv("WEBSERVER_PORT")
+	if port == "" {
+		port = "8080"
+	}
+	addr := ":" + port
+
+	// The listening port is also the single instance lock: only one process can bind it, and the OS releases it
+	// when the process exits or crashes - works the same on Linux, macOS and Windows, nothing stale left behind.
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("Can't listen on %s - another instance of this application (or another program) is already using this port: %v", addr, err)
 	}
 
-	// Set up cleanup of PID file on exit
+	// PID file is just information for humans / scripts (ce_stop.sh), not the lock
 	pidFilePath := getPIDFilePath()
+	writePIDFile(pidFilePath)
 	defer func() {
 		if err := os.Remove(pidFilePath); err != nil && !os.IsNotExist(err) {
 			log.Printf("Failed to remove PID file %s: %v", pidFilePath, err)
@@ -101,12 +110,6 @@ func main() {
 	}
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
-	port := os.Getenv("WEBSERVER_PORT")
-	if port == "" {
-		port = "8080"
-	}
-	addr := ":" + port
-
 	// Get local IP address for URL
 	localIP := getLocalIP()
 	url := "https://" + localIP + ":" + port
@@ -134,7 +137,7 @@ func main() {
 		}
 	}()
 
-	if err := listenAndServeHTTPS(addr, s.router, certs); err != nil {
+	if err := serveHTTPS(ln, s.router, certs); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }

@@ -26,7 +26,7 @@
 
 extern InterProcessEvents events;
 
-TranslatedDisk::TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig, int aSharedMemFd, uint8_t* aSharedMemPointer)
+TranslatedDisk::TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig)
 {
     dataTrans = dt;
     this->hwConfig = hwConfig;
@@ -67,7 +67,6 @@ TranslatedDisk::TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig, int aShar
 
     //ACSI commands "screencast"
     screencastAcsiCommand = new ScreencastAcsiCommand(dataTrans);
-    screencastAcsiCommand->sharedMemorySet(aSharedMemFd, aSharedMemPointer);
 
     initAsciiTranslationTable();
 }
