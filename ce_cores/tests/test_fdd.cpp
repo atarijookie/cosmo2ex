@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <dirent.h>
 #include <pthread.h>
 #include <sys/stat.h>
@@ -275,13 +276,22 @@ TEST_CASE_FIXTURE(FddTmpDir, "st image: save is atomic - keeps permissions and s
 
 TEST_CASE_FIXTURE(FddTmpDir, "st image: failed save leaves the original file intact")
 {
-    if(geteuid() == 0) {            // root can write to read-only dirs, can't test this
-        MESSAGE("running as root, skipping");
+    std::string sub = path("ro");
+    REQUIRE(mkdir(sub.c_str(), 0755) == 0);
+
+    // root can write to read-only dirs, and so can an administrator under Cygwin (permissions there are only mapped
+    // to Windows ACLs) - can't test this then
+    REQUIRE(chmod(sub.c_str(), 0555) == 0);
+    std::string probe = sub + "/probe";
+    int probeFd = open(probe.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+    REQUIRE(chmod(sub.c_str(), 0755) == 0);
+    if(probeFd >= 0) {
+        close(probeFd);
+        unlink(probe.c_str());
+        MESSAGE("read-only dir is writable here (root / Windows administrator), skipping");
         return;
     }
 
-    std::string sub = path("ro");
-    REQUIRE(mkdir(sub.c_str(), 0755) == 0);
     std::string file = sub + "/x.st";
     std::vector<uint8_t> original = makeImageData(80, 2, 9, false);
     writeFile(file, original);

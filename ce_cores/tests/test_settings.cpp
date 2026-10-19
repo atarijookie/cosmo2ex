@@ -289,13 +289,16 @@ TEST_CASE_FIXTURE(SettingsDir, "settings: reader never sees an empty or partial 
 
     std::atomic<bool> done(false);
     std::atomic<int> bad(0), reads(0);
+    std::string firstBad;                               // what was read instead - written only by the reader thread
 
     std::thread reader([&]() {
         Settings rs;
         while(!done) {
             std::string v = rs.getString("FLOPPY_IMAGE", "DEFAULT");
             if(v != valueA && v != valueB) {
-                bad++;
+                if(bad++ == 0) {
+                    firstBad = v.substr(0, 40) + " (" + std::to_string(v.length()) + " chars)";
+                }
             }
             reads++;
         }
@@ -308,7 +311,23 @@ TEST_CASE_FIXTURE(SettingsDir, "settings: reader never sees an empty or partial 
     reader.join();
 
     CHECK(reads.load() > 0);
+    CAPTURE(firstBad);                                  // e.g. DEFAULT - file wasn't there, empty - file was empty
     CHECK(bad.load() == 0);
+}
+
+TEST_CASE_FIXTURE(SettingsDir, "atomicWriteInProgress - true only while a temp file of that file exists")
+{
+    std::string file = dir + "/SOME_KEY";
+    CHECK_FALSE(Utils::atomicWriteInProgress(file));
+
+    FILE *f = fopen((file + ".tmp-123-4").c_str(), "w");                // temp file of writeFileAtomically()
+    REQUIRE(f != NULL);
+    fclose(f);
+    CHECK(Utils::atomicWriteInProgress(file));
+    CHECK_FALSE(Utils::atomicWriteInProgress(dir + "/SOME"));           // other key, which is a prefix of this one
+
+    unlink((file + ".tmp-123-4").c_str());
+    CHECK_FALSE(Utils::atomicWriteInProgress(file));
 }
 
 TEST_CASE_FIXTURE(SettingsDir, "settings: atomic write leaves no temp files and keeps permissions")

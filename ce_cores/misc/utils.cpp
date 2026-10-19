@@ -818,7 +818,15 @@ std::string Utils::pathFromUi(const std::string& uiPath)
 {
 #if defined(__CYGWIN__)
     if(isWindowsPath(uiPath)) {
-        return cygwinConvertPath(CCP_WIN_A_TO_POSIX, uiPath);
+        std::string posixPath = cygwinConvertPath(CCP_WIN_A_TO_POSIX, uiPath);
+
+        // Cygwin drops the trailing separator (C:\Atari\ -> /cygdrive/c/Atari) - keep it, it marks a dir and paths are
+        // merged / compared with it
+        char last = uiPath[uiPath.length() - 1];
+        if((last == '\\' || last == '/') && !posixPath.empty() && posixPath[posixPath.length() - 1] != '/') {
+            posixPath += '/';
+        }
+        return posixPath;
     }
 #endif
     return uiPath;
@@ -1337,6 +1345,31 @@ void pthread_kill_join(const char* threadName, pthread_t& threadInfo)
     printf("Stoping %s thread\n", threadName);
     pthread_kill(threadInfo, SIGINT);           // stop the select()
     pthread_join(threadInfo, NULL);             // wait until thread finishes
+}
+
+// Is writeFileAtomically() of this file running now (in this or another process)? Its temp file exists then.
+bool Utils::atomicWriteInProgress(const std::string& path)
+{
+    std::string dir, file;
+    splitFilenameFromPath(path, dir, file);
+    std::string tmpPrefix = file + ".tmp-";             // see the temp file name in writeFileAtomically()
+
+    DIR *d = opendir(dir.empty() ? "." : dir.c_str());
+    if(!d) {
+        return false;
+    }
+
+    bool found = false;
+    struct dirent *de;
+    while((de = readdir(d)) != NULL) {
+        if(strncmp(de->d_name, tmpPrefix.c_str(), tmpPrefix.length()) == 0) {
+            found = true;
+            break;
+        }
+    }
+
+    closedir(d);
+    return found;
 }
 
 bool Utils::writeFileAtomically(const char* path, const uint8_t* data, size_t size)

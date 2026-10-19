@@ -2,6 +2,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <unistd.h>
 #include <errno.h>
 #include <stdlib.h>
 
@@ -404,7 +405,26 @@ FILE *Settings::sOpen(const char *key, bool readNotWrite)
     std::string path = Utils::mergeHostPaths2(settingsDir, std::string(key));  // add key at the end of settings + prefix path
 
     // only for reading - writes go through sWrite(); dir doesn't exist? just fail (getter returns default value)
-    return fopen(path.c_str(), readNotWrite ? "r" : "w");
+    FILE *f = fopen(path.c_str(), readNotWrite ? "r" : "w");
+
+#if defined(__CYGWIN__)
+    // Windows: replacing a file which is open (e.g. by a reader in another thread) isn't atomic for other readers -
+    // there can be a moment without the file. While a write of this key is in progress (its temp file exists), wait
+    // for it and try again; then once more, in case the write finished just before the check. A key which really
+    // doesn't exist costs just that check and one more fopen().
+    if(!f && readNotWrite) {
+        for(int i=0; i<100 && Utils::atomicWriteInProgress(path); i++) {
+            usleep(1000);
+            f = fopen(path.c_str(), "r");
+            if(f) {
+                return f;
+            }
+        }
+        f = fopen(path.c_str(), "r");
+    }
+#endif
+
+    return f;
 }
 
 // Store setting value atomically (temp file + rename): a reader in another thread or process (webserver) never sees

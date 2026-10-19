@@ -118,6 +118,7 @@ public:
     // write to temp file next to it, fsync, then rename over the original. Keeps permissions of existing file,
     // writes through symlink. Returns false (errno set) on failure - original file is then untouched.
     static bool writeFileAtomically(const char* path, const uint8_t* data, size_t size);         // text to text file
+    static bool atomicWriteInProgress(const std::string& path);    // is writeFileAtomically() of this file running now?
     static void textToFileFromEnv(const char* text, const char* envKeyForFileName); // text to text file specified in .env
 
     static void textFromFile(char* bfr, uint32_t bfrSize, const char* filePath, bool trimTrailing=true); // get one line from text file

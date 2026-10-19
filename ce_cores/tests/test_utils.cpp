@@ -217,6 +217,8 @@ TEST_CASE("isWindowsPath / pathFromUi / pathToUi - Windows paths detected, other
     CHECK(Utils::pathFromUi("C:\\Atari\\hdd") == "/cygdrive/c/Atari/hdd");
     CHECK(Utils::pathToUi("/cygdrive/c/Atari/hdd") == "C:\\Atari\\hdd");
     CHECK(Utils::pathFromUi("/home/x") == "/home/x");             // POSIX path typed in the UI stays
+    CHECK(Utils::pathFromUi("C:\\Atari\\") == "/cygdrive/c/Atari/");   // trailing separator kept - Cygwin drops it
+    CHECK(Utils::pathFromUi("C:/Atari/") == "/cygdrive/c/Atari/");
 #endif
 }
 
