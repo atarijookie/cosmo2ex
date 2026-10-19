@@ -11,24 +11,48 @@ DEPFLAGS = -MM -MT $(patsubst %.d,%.o,$@) -MT $@
 
 VPATH = ./lib
 LDFLAGS	= -Llib $(CPU_FLAGS)
-# -lpthread: glibc before 2.34 (e.g. Debian bullseye, Raspberry Pi OS bullseye) has pthreads in a separate library
-LDLIBS = -ldospath -lpthread
+LDLIBS = -ldospath
 OBJDIR = obj
-TARGET = ce_cores.elf
 
 CFLAGS += -I./
 
-# USB keyboard / mouse / joysticks (ikbd/inputdevices.cpp): found with libudev, inspected with libevdev - Linux only.
+# platform switch - the system we build for, e.g. 'make UNAME_S=Linux' when cross compiling from elsewhere
+#   BIN_EXT         - extension of ce_cores and the test binary
+#   LDLIBS          - system libraries
+#   INPUT_LIBS      - libraries for USB keyboard / mouse / joysticks (not in LDLIBS - that is also a prerequisite list,
+#                     where -l:libevdev.a doesn't work)
+#   STATIC_RUNTIME  - link libgcc and libstdc++ statically, so the binary doesn't depend on the compiler's versions of them
+UNAME_S ?= $(shell uname -s)
+
+ifeq ($(UNAME_S),Linux)
+BIN_EXT = .elf
+# glibc before 2.34 (e.g. Debian bullseye, Raspberry Pi OS bullseye) has pthreads in a separate library
+LDLIBS += -lpthread
+# USB keyboard / mouse / joysticks (ikbd/inputdevices.cpp): found with libudev, inspected with libevdev.
 # Needs libudev-dev + libevdev-dev. libevdev is linked statically (it's not installed on every system), libudev.so.1
 # is part of systemd / udev, so it's everywhere where udev is. Headers are taken from the sysroot of the compiler
-# (empty for native builds, the Raspbian one for armhf). Not in LDLIBS - that is also a prerequisite list,
-# where -l:libevdev.a doesn't work.
-ifeq ($(shell uname -s),Linux)
+# (empty for native builds, the Raspbian one for armhf).
 CXX_SYSROOT := $(shell $(CXX) -print-sysroot)
 CFLAGS += -I$(CXX_SYSROOT)/usr/include/libevdev-1.0
 LIBEVDEV ?= -l:libevdev.a
 INPUT_LIBS = -ludev $(LIBEVDEV)
+STATIC_RUNTIME = -static-libstdc++ -static-libgcc
+
+else ifeq ($(UNAME_S),Darwin)
+BIN_EXT =
+# pthreads are in libSystem; Apple clang has no static libgcc, and its libc++ is part of the system anyway
+STATIC_RUNTIME =
+
+else ifneq ($(filter CYGWIN_NT%,$(UNAME_S)),)
+BIN_EXT = .exe
+# pthreads are in cygwin1.dll; static libgcc / libstdc++ - then only cygwin1.dll is needed next to ce_cores.exe
+STATIC_RUNTIME = -static-libstdc++ -static-libgcc
+
+else
+$(error Unsupported platform '$(UNAME_S)' - expected Linux, Darwin or CYGWIN_NT*)
 endif
+
+TARGET = ce_cores$(BIN_EXT)
 
 # uncomment following line to get map file (ce.map)
 #LDFLAGS += -Wl,-Map,ce.map
@@ -91,22 +115,22 @@ TEST_DIR  = tests
 TEST_SRCS = $(wildcard $(TEST_DIR)/*.cpp)
 TEST_OBJS = $(addprefix $(OBJDIR)/, $(patsubst %.cpp,%.o,$(TEST_SRCS)))
 TEST_DEPS = $(patsubst %.o,%.d,$(TEST_OBJS))
-TEST_BIN  = $(TEST_DIR)/run_tests.elf
+TEST_BIN  = $(TEST_DIR)/run_tests$(BIN_EXT)
 APP_OBJS_NO_MAIN = $(filter-out $(OBJDIR)/main.o, $(OBJS))
 
 $(TEST_OBJS) $(TEST_DEPS): CXXFLAGS += -I../third_party/doctest
 
 all:	$(TARGET)
 
-$(TARGET): $(LDLIBS) $(OBJS) $(HDRS)
-	$(CXX_LINK) $(CFLAGS) $(OBJS) $(LDFLAGS) -o $@ $(LDLIBS) $(INPUT_LIBS)
+$(TARGET): lib/libdospath.a $(LDLIBS) $(OBJS) $(HDRS)
+	$(CXX_LINK) $(CFLAGS) $(OBJS) $(LDFLAGS) $(STATIC_RUNTIME) -o $@ $(LDLIBS) $(INPUT_LIBS)
 #	$(STRIP) -s $@
 	@ln -sf $(CURDIR)/$(TARGET) ./core/cosmosex.elf		# create symlink from whatever the output target is to just cosmosex.elf
 
 print-%:	; @echo $* = $($*)
 
-$(TEST_BIN): $(LDLIBS) $(APP_OBJS_NO_MAIN) $(TEST_OBJS)
-	$(CXX_LINK) $(CFLAGS) $(APP_OBJS_NO_MAIN) $(TEST_OBJS) $(LDFLAGS) -o $@ $(LDLIBS) $(INPUT_LIBS)
+$(TEST_BIN): lib/libdospath.a $(LDLIBS) $(APP_OBJS_NO_MAIN) $(TEST_OBJS)
+	$(CXX_LINK) $(CFLAGS) $(APP_OBJS_NO_MAIN) $(TEST_OBJS) $(LDFLAGS) $(STATIC_RUNTIME) -o $@ $(LDLIBS) $(INPUT_LIBS)
 
 # build and run unit tests, pass extra doctest options via TEST_ARGS, e.g.: make test TEST_ARGS="-tc=*substitution* -s"
 test:	$(TEST_BIN)
@@ -114,7 +138,8 @@ test:	$(TEST_BIN)
 
 -ldospath:	lib/libdospath.a
 
-lib/libdospath.a:
+# rebuilt when libdospath sources change, otherwise the old copy in lib/ would be linked
+lib/libdospath.a: $(wildcard ../libdospath/*.cpp ../libdospath/*.h ../libdospath/makefile)
 	@echo "-> Entering libdospath and making libdospath"
 	cd ../libdospath && $(MAKE) all
 	mkdir -p lib

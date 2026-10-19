@@ -46,6 +46,11 @@ public:
     std::string getString(const char *key, const char *defValue);     // returns a copy - thread safe
     void  setString(const char *key, const char *value);
 
+    // settings with host paths: stored the way the web UI shows them (Windows paths on Windows),
+    // returned / taken the way ce_cores uses them (POSIX paths under Cygwin) - see Utils::pathFromUi()
+    std::string getPath(const char *key, const char *defValue);
+    void  setPath(const char *key, const std::string& path);
+
     char *getBinaryString(const char *key, int len);
     void  setBinaryString(const char *key, uint8_t *inBfr, int len);
 

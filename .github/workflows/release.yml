@@ -2,7 +2,8 @@
 #   git tag v1.2.3 && git push origin v1.2.3
 #
 # Runs CI first, then builds in parallel:
-#   - the release tarballs (release/build.sh) + install.sh + SHA256SUMS
+#   - the release tarballs (release/build.sh) + install.sh + SHA256SUMS, and the Windows zip - its programs are
+#     built in Cygwin first (release/builder/build_windows.sh), the rest is the same as in the tarballs
 #   - the docker image for all platforms, pushed to ghcr.io/<owner>/cosmo2ex as :1.2.3 and :latest
 #   - the Pico firmwares (firmware/build.sh), in the ghcr.io/<owner>/ce-pico-builder image - that one is
 #     tagged with the hash of firmware/Dockerfile, and built + pushed only when that file changed
@@ -28,19 +29,56 @@ jobs:
       contents: read
       packages: read                            # CI pulls the ce-pico-builder image
 
-  tarballs:
+  windows:
+    # ce_cores.exe + cygwin1.dll + licenses, webserver.exe, ce_run.exe - packed into the zip by the tarballs job
     needs: ci
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: C:\cygwin\bin\bash.exe --noprofile --norc -eo pipefail -o igncr '{0}'
+    steps:
+      - name: Keep LF line endings                # Cygwin's make and sh don't like CRLF
+        shell: pwsh
+        run: git config --global core.autocrlf input
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.22'
+          cache-dependency-path: webserver/go.sum
+
+      - uses: cygwin/cygwin-install-action@v4
+        with:
+          packages: gcc-g++ make curl
+
+      - name: Build Windows programs
+        run: release/builder/build_windows.sh . out/windows
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-bin
+          path: out/windows/
+          if-no-files-found: error
+
+  tarballs:
+    needs: [ci, windows]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-bin
+          path: windows-bin
 
       - name: Install m68k-atari-mint toolchain
         run: |
           sudo add-apt-repository -y ppa:vriviere/ppa
           sudo apt-get install -y --no-install-recommends cross-mint-essential
 
-      - name: Build release tarballs
-        run: VERSION="${GITHUB_REF_NAME#v}" release/build.sh
+      - name: Build release tarballs + Windows zip
+        run: VERSION="${GITHUB_REF_NAME#v}" WINDOWS_BIN="$PWD/windows-bin" release/build.sh amd64 arm64 armhf i386 windows
 
       - uses: actions/upload-artifact@v7
         with:
@@ -195,7 +233,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           prerelease=""
           case "$version" in *-*) prerelease="--prerelease" ;; esac
-          (cd out && sha256sum ce-*.tar.gz install.sh *.uf2 > SHA256SUMS)
+          (cd out && sha256sum ce-*.tar.gz ce-*.zip install.sh *.uf2 > SHA256SUMS)
           gh release create "$GITHUB_REF_NAME" out/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \

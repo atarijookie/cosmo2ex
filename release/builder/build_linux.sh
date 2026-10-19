@@ -54,11 +54,11 @@ mkdir -p "$BUILD/ce_cores/obj" "$BUILD/ce_cores/lib"
 
 #-------------
 # ce_cores (builds libdospath on its own)
-# libstdc++ and libgcc are linked statically, so the binary only depends on glibc
+# libstdc++ and libgcc are linked statically (the makefile does that on Linux), so the binary depends only on
+# glibc (and libudev); UNAME_S=Linux in case this runs on something else one day
 echo "[$ARCH] building ce_cores"
 make -C "$BUILD/ce_cores" -j"$(nproc)" \
-    CXX="${CROSS}g++ $ARCH_FLAGS" CC="${CROSS}gcc $ARCH_FLAGS" AR="${CROSS}ar" \
-    LDFLAGS="-Llib -static-libstdc++ -static-libgcc"
+    CXX="${CROSS}g++ $ARCH_FLAGS" CC="${CROSS}gcc $ARCH_FLAGS" AR="${CROSS}ar" UNAME_S=Linux
 
 "${CROSS}strip" -o "$OUT/ce_cores.elf" "$BUILD/ce_cores/ce_cores.elf"
 

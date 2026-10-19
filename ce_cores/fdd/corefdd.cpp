@@ -226,7 +226,7 @@ void CoreFdd::loadSettings(void)
 void CoreFdd::loadLastImageIntoSlot(ClientInfo* ci)
 {
     Settings s(ci->mac);
-    std::string pathAndFile = s.getString("FLOPPY_IMAGE", "");   // try to read the value
+    std::string pathAndFile = s.getPath("FLOPPY_IMAGE", "");     // try to read the value
 
     if(!pathAndFile.empty()) {      // this specific device has file? store it also to slot #
         logFdd(LOG_DEBUG, "CoreFdd::loadLastImageIntoSlot - have stored image for this specific device, saving to slot %d -> %s", ci->floppySlotIndex, pathAndFile.c_str());
@@ -236,7 +236,7 @@ void CoreFdd::loadLastImageIntoSlot(ClientInfo* ci)
 
         if(!pathAndFile.empty()) {  // slot # had an image stored? store it for this specific device
             logFdd(LOG_DEBUG, "CoreFdd::loadLastImageIntoSlot - no stored image for this specific device, but slot %d had image, so storing for specific device -> %s", ci->floppySlotIndex, pathAndFile.c_str());
-            s.setString("FLOPPY_IMAGE", pathAndFile.c_str());
+            s.setPath("FLOPPY_IMAGE", pathAndFile);         // shown in the web UI
         } else {
             logFdd(LOG_DEBUG, "CoreFdd::loadLastImageIntoSlot - no stored image for this specific device and no stored image for slot %d, so no image to load", ci->floppySlotIndex);
         }
@@ -386,7 +386,7 @@ void CoreFdd::handleFddAction(int fddAction, const std::string& fddMac)
 
     if(fddAction == FDD_ACTION_INSERT) {
         Settings s(client->mac);
-        std::string pathAndFile = s.getString("FLOPPY_IMAGE", ""); // try to read the value
+        std::string pathAndFile = s.getPath("FLOPPY_IMAGE", "");   // try to read the value
         logFdd(LOG_DEBUG, "inserting %s into slot %d", pathAndFile.c_str(), client->floppySlotIndex);
         imageSilo->loadImageToSlot(client->floppySlotIndex, pathAndFile.c_str());
         return;

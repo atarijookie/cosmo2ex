@@ -109,7 +109,7 @@ void TranslatedDisk::findAttachedDisks(void)
     for(int i=2; i<MAX_DRIVES; i++) {               // go through all the possible drives
         char driveLetter = ((char) (65 + i));
         std::string settingPath = std::string("PATH_GEM_") + driveLetter;   // create a setting name, under which the path to translated drive i is stored
-        std::string drivePath = s.getString(settingPath.c_str(), "");          // get the setting value
+        std::string drivePath = s.getPath(settingPath.c_str(), "");            // get the setting value
 
         // is this the config drive?
         if(configDriveIndex == i) {

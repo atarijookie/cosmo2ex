@@ -12,7 +12,6 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/stat.h>
-#include <sys/mount.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 

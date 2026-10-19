@@ -58,14 +58,12 @@ bool InputSocket::open(void)
 
 bool InputSocket::listenOn(int port, const std::string& aToken)
 {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    int fd = Utils::socketCloexec(AF_INET, SOCK_STREAM, 0);
 
     if(fd < 0) {
         logIkbd(LOG_ERROR, "InputSocket::listenOn - socket() failed: %s", strerror(errno));
         return false;
     }
-
-    fcntl(fd, F_SETFD, FD_CLOEXEC);
 
     int one = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));    // restart right after stop - the instance lock is the command socket
@@ -150,7 +148,7 @@ void InputSocket::handle(fd_set *fds)
 
 void InputSocket::acceptClient(void)
 {
-    int fd = accept(fdListen, NULL, NULL);
+    int fd = Utils::acceptCloexec(fdListen, NULL, NULL);    // CLOEXEC + no SIGPIPE on macOS, see SEND_NOSIGNAL
 
     if(fd < 0) {
         return;
@@ -246,7 +244,7 @@ bool InputSocket::handleHello(InputClient& client)
         return false;
     }
 
-    if(send(client.fd, "OK\n", 3, MSG_NOSIGNAL) != 3) {
+    if(send(client.fd, "OK\n", 3, SEND_NOSIGNAL) != 3) {
         closeClient(client);
         return false;
     }

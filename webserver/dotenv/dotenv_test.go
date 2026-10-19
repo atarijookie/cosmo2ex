@@ -1,4 +1,4 @@
-package main
+package dotenv
 
 import (
 	"os"
@@ -20,15 +20,15 @@ func TestDefaultDirPerOS(t *testing.T) {
 		{"linux", "SETTINGS_DIR", ""},
 	}
 	for _, c := range cases {
-		if got := defaultDirOn(c.goos, c.key); got != c.want {
-			t.Errorf("defaultDirOn(%q, %q) = %q, want %q", c.goos, c.key, got, c.want)
+		if got := DefaultDirOn(c.goos, c.key); got != c.want {
+			t.Errorf("DefaultDirOn(%q, %q) = %q, want %q", c.goos, c.key, got, c.want)
 		}
 	}
 }
 
 func TestDefaultDirWindowsWithoutLocalAppDataFallsBack(t *testing.T) {
 	t.Setenv("LOCALAPPDATA", "")
-	if got := defaultDirOn("windows", "LOG_DIR"); got != "/var/log/ce" {
+	if got := DefaultDirOn("windows", "LOG_DIR"); got != "/var/log/ce" {
 		t.Errorf("got %q", got)
 	}
 }
@@ -47,7 +47,7 @@ func TestLoadEnvFromDotFileUsesDefaultDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	loadEnvFromDotFile(envFile)
+	Load(envFile)
 
 	check := func(key, want string) {
 		if got := os.Getenv(key); got != want {
@@ -55,7 +55,7 @@ func TestLoadEnvFromDotFileUsesDefaultDirs(t *testing.T) {
 		}
 	}
 	check("LOG_DIR", "/from/dotenv/log")                              // from .env - kept
-	check("DATA_DIR", defaultDir("DATA_DIR"))                         // missing - default
+	check("DATA_DIR", DefaultDir("DATA_DIR"))                         // missing - default
 	check("PID_DIR", "/from/real/env")                                // real env var - kept
-	check("CMD_TOKEN_FILE", defaultDir("DATA_DIR")+"/core_cmd.token") // ${DATA_DIR} uses the default
+	check("CMD_TOKEN_FILE", DefaultDir("DATA_DIR")+"/core_cmd.token") // ${DATA_DIR} uses the default
 }

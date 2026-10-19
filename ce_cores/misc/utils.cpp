@@ -35,7 +35,6 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <ifaddrs.h>
-#include <linux/if_link.h>
 //--------
 
 #include "../hdd/translated/translatedhelper.h"
@@ -717,30 +716,45 @@ bool Utils::devExists(std::string& path)
     return false;
 }
 
+// without MSG_NOSIGNAL (macOS) the socket itself must be told not to raise SIGPIPE - see SEND_NOSIGNAL
+static void socketNoSigpipe(int fd)
+{
+#if !defined(MSG_NOSIGNAL) && defined(SO_NOSIGPIPE)
+    if(fd >= 0) {
+        int one = 1;
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+    }
+#else
+    (void) fd;
+#endif
+}
+
 int Utils::socketCloexec(int domain, int type, int protocol)
 {
 #if defined(SOCK_CLOEXEC)       // Linux, BSDs, Cygwin
-    return socket(domain, type | SOCK_CLOEXEC, protocol);
+    int fd = socket(domain, type | SOCK_CLOEXEC, protocol);
 #else                           // e.g. macOS - set it right after creating, there's a short window when a fork() would inherit it
     int fd = socket(domain, type, protocol);
     if(fd >= 0) {
         fcntl(fd, F_SETFD, FD_CLOEXEC);
     }
-    return fd;
 #endif
+    socketNoSigpipe(fd);
+    return fd;
 }
 
 int Utils::acceptCloexec(int fdListen, struct sockaddr *addr, socklen_t *addrLen)
 {
 #if defined(SOCK_CLOEXEC)       // where there's SOCK_CLOEXEC, there's also accept4()
-    return accept4(fdListen, addr, addrLen, SOCK_CLOEXEC);
+    int fd = accept4(fdListen, addr, addrLen, SOCK_CLOEXEC);
 #else
     int fd = accept(fdListen, addr, addrLen);
     if(fd >= 0) {
         fcntl(fd, F_SETFD, FD_CLOEXEC);
     }
-    return fd;
 #endif
+    socketNoSigpipe(fd);        // accepted socket doesn't inherit it from the listening one
+    return fd;
 }
 
 int Utils::bcdToInt(int bcd)
@@ -772,6 +786,50 @@ void Utils::loadDotEnv(void)
     if(good) {      // if something was loaded, do the vars subtitution
         dotEnvSubstituteVars();
     }
+}
+
+bool Utils::isWindowsPath(const std::string& path)
+{
+    bool driveLetter = path.length() >= 2 && isalpha((unsigned char) path[0]) && path[1] == ':';    // C:\ or C:/
+    bool unc         = path.length() >= 2 && path[0] == '\\' && path[1] == '\\';                  // \\server\share
+    return driveLetter || unc;
+}
+
+#if defined(__CYGWIN__)
+// cygwin_create_path() - cygwin_conv_path() which allocates the result; on failure returns the path unchanged
+static std::string cygwinConvertPath(cygwin_conv_path_t what, const std::string& path)
+{
+    char* converted = (char*) cygwin_create_path(what, path.c_str());
+
+    if(!converted) {
+        logHdd(LOG_WARNING, "Utils - converting path '%s' failed : %s", path.c_str(), strerror(errno));
+        return path;
+    }
+
+    std::string result = converted;
+    free(converted);
+    return result;
+}
+#endif
+
+std::string Utils::pathFromUi(const std::string& uiPath)
+{
+#if defined(__CYGWIN__)
+    if(isWindowsPath(uiPath)) {
+        return cygwinConvertPath(CCP_WIN_A_TO_POSIX, uiPath);
+    }
+#endif
+    return uiPath;
+}
+
+std::string Utils::pathToUi(const std::string& hostPath)
+{
+#if defined(__CYGWIN__)
+    if(!hostPath.empty() && hostPath[0] == '/') {           // absolute POSIX path - relative / empty ones stay as they are
+        return cygwinConvertPath(CCP_POSIX_TO_WIN_A, hostPath);
+    }
+#endif
+    return hostPath;
 }
 
 std::string Utils::defaultDir(const std::string& key)
@@ -834,11 +892,13 @@ void Utils::dotEnvAddDefaultDirs(void)
 
 std::string Utils::dotEnvValue(std::string key, const char* defValue, bool logOnError)
 {
-    /* get value from dotEnv map for specified key */
+    /* get value from dotEnv map for specified key
+       Windows paths (C:\...) - e.g. ${LOCALAPPDATA}/cosmo2ex in the .env for Windows - are converted to POSIX paths for Cygwin,
+       the .env is shared with the webserver, which is a native Windows program */
 
     try {
         std::string& value = dotEnv.at(key);             // get value and return it (if found in map)
-        return value;
+        return pathFromUi(value);
     }
     catch (const std::out_of_range&) {
         if(logOnError) {
@@ -855,7 +915,7 @@ std::string Utils::dotEnvValue(std::string key, const char* defValue, bool logOn
         if(logOnError) {
             logHdd(LOG_DEBUG, "Utils::dotEnvValue - ...but found env var '%s' with value '%s'", key.c_str(), retValueFromEnv.c_str());
         }
-        return retValueFromEnv;
+        return pathFromUi(retValueFromEnv);     // e.g. BIN_DIR set by the ce_run launcher on Windows
     }
 
     // if value not found and default value was provided, use it; otherwise return empty string
@@ -1242,7 +1302,9 @@ void handlePthreadCreate(const char* threadName, pthread_t* pThreadInfo, ThreadF
         sigintReceived = 1;
     } else {
         logHdd(LOG_DEBUG, "%s thread created", threadName);
+#if !defined(__APPLE__)      // macOS can only name the calling thread - there the thread stays unnamed
         pthread_setname_np(*pThreadInfo, threadName);
+#endif
 
         pthread_mutex_lock(&createdThreadsMutex);
         createdThreads.push_back(*pThreadInfo);         // remember it, so pthread_kill_join() knows it can kill and join it

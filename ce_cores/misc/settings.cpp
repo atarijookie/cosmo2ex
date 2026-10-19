@@ -110,8 +110,18 @@ void Settings::storeDefaultValues(void)
         }
     }
 
-    setString("PATH_GEM_C", defaultTranslatedDrivePath().c_str());
+    setPath("PATH_GEM_C", defaultTranslatedDrivePath());       // shown in the web UI - e.g. C:\Users\x\ on Windows
     setChar("DRIVELETTER_CONFDRIVE", 'O');
+}
+
+std::string Settings::getPath(const char *key, const char *defValue)
+{
+    return Utils::pathFromUi(getString(key, defValue));
+}
+
+void Settings::setPath(const char *key, const std::string& path)
+{
+    setString(key, Utils::pathToUi(path).c_str());
 }
 
 bool Settings::getBool(const char *key, bool defValue)

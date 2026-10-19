@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -105,10 +104,10 @@ func (s *Server) handleGetFDDImageStep(w http.ResponseWriter, r *http.Request, s
 		return
 	}
 
-	// Stored paths are expected to be POSIX-like ("/home/..."), so use path.* for split/join.
-	dir := path.Dir(current)
-	base := path.Base(current)
-	if dir == "." || base == "." || base == "/" || base == "" {
+	// Stored paths are native paths of this machine ("/home/..." or "C:\Atari\..." on Windows), so use filepath.* for split/join.
+	dir := filepath.Dir(current)
+	base := filepath.Base(current)
+	if dir == "." || base == "." || base == string(filepath.Separator) || base == "" {
 		http.Error(w, "invalid current image path", http.StatusBadRequest)
 		return
 	}
@@ -146,7 +145,7 @@ func (s *Server) handleGetFDDImageStep(w http.ResponseWriter, r *http.Request, s
 		nextIdx += len(names)
 	}
 
-	newImage := path.Join(dir, names[nextIdx])
+	newImage := filepath.Join(dir, names[nextIdx])
 	if err := s.writeFddImage(mac, newImage); err != nil {
 		http.Error(w, "cannot write FLOPPY_IMAGE", http.StatusInternalServerError)
 		return

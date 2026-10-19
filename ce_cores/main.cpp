@@ -9,6 +9,9 @@
 #include <sys/file.h>
 #include <errno.h>
 #include <limits.h>
+#if defined(__CYGWIN__)
+#include <sys/cygwin.h>     // cygwin_internal(CW_CYGWIN_PID_TO_WINPID)
+#endif
 
 #include "misc/settings.h"
 #include "misc/global.h"
@@ -49,6 +52,7 @@ bool noCapture = false;
 
 int main(int argc, char *argv[])
 {
+    setvbuf(stdout, NULL, _IOLBF, 0);   // line buffered also when stdout is a pipe (ce_run launcher, journal) - by default only on terminal
 
     justShowHelp = false;
     Debug::setLogLevel(LOG_ERROR);      // init current log level to LOG_ERROR
@@ -250,10 +254,17 @@ void sigint_handler(int sig)
 }
 
 // pid file is just information for humans / scripts (ce_stop.sh), not the lock - see cmdSockOpen()
+// On Windows (Cygwin) it holds the Windows PID, not the Cygwin one - like webserver.pid (native Windows program),
+// so all pid files mean the same and work with Task Manager / taskkill (in Cygwin shell: kill -W).
 void writePidFile(void)
 {
+    int pid = (int) getpid();
+#if defined(__CYGWIN__)
+    pid = (int) cygwin_internal(CW_CYGWIN_PID_TO_WINPID, (pid_t) pid);
+#endif
+
     std::string pidFilePath = pidFileName();
-    Utils::intToFile(getpid(), pidFilePath.c_str());
-    logHdd(LOG_DEBUG, "writePidFile - pid %d written to %s", (int) getpid(), pidFilePath.c_str());
+    Utils::intToFile(pid, pidFilePath.c_str());
+    logHdd(LOG_DEBUG, "writePidFile - pid %d written to %s", pid, pidFilePath.c_str());
 }
 

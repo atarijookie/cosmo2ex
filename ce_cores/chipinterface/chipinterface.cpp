@@ -510,7 +510,7 @@ bool ChipInterface::sendAll(int& fdClient, const uint8_t* data, uint32_t len)
             return false;
         }
 
-        ssize_t res = send(fdClient, data + sent, len - sent, MSG_NOSIGNAL);
+        ssize_t res = send(fdClient, data + sent, len - sent, SEND_NOSIGNAL);
 
         if(res > 0) {                       // some (or all) bytes sent? continue with the rest
             sent += res;

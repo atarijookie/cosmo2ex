@@ -199,3 +199,43 @@ TEST_CASE("socketCloexec / acceptCloexec - fds are not inherited by processes st
     close(fdListen);
 }
 
+TEST_CASE("isWindowsPath / pathFromUi / pathToUi - Windows paths detected, other systems use paths unchanged")
+{
+    CHECK(Utils::isWindowsPath("C:\\Atari\\hdd"));
+    CHECK(Utils::isWindowsPath("d:/games"));
+    CHECK(Utils::isWindowsPath("\\\\server\\share"));
+    CHECK_FALSE(Utils::isWindowsPath("/mnt/hdd"));
+    CHECK_FALSE(Utils::isWindowsPath("relative\\path"));
+    CHECK_FALSE(Utils::isWindowsPath(""));
+    CHECK_FALSE(Utils::isWindowsPath("C"));
+
+#if !defined(__CYGWIN__)
+    CHECK(Utils::pathFromUi("/mnt/hdd") == "/mnt/hdd");
+    CHECK(Utils::pathFromUi("C:\\Atari") == "C:\\Atari");     // not converted - only Cygwin knows how
+    CHECK(Utils::pathToUi("/mnt/hdd") == "/mnt/hdd");
+#else
+    CHECK(Utils::pathFromUi("C:\\Atari\\hdd") == "/cygdrive/c/Atari/hdd");
+    CHECK(Utils::pathToUi("/cygdrive/c/Atari/hdd") == "C:\\Atari\\hdd");
+    CHECK(Utils::pathFromUi("/home/x") == "/home/x");             // POSIX path typed in the UI stays
+#endif
+}
+
+TEST_CASE("dotEnvValue - Windows paths from .env and real env vars are converted like paths from the UI")
+{
+    dotEnv["TEST_WIN_DIR"] = "C:\\Users\\atari\\AppData\\Local/cosmo2ex";     // e.g. ${LOCALAPPDATA}/cosmo2ex expanded
+    dotEnv["TEST_PORT"] = "7311";
+    setenv("TEST_ENV_WIN_DIR", "C:\\CosmosEx", 1);                              // e.g. BIN_DIR from the ce_run launcher
+
+    CHECK(Utils::dotEnvValue("TEST_PORT") == "7311");                          // not a path - unchanged everywhere
+    CHECK(Utils::dotEnvValue("TEST_WIN_DIR") == Utils::pathFromUi(dotEnv["TEST_WIN_DIR"]));
+    CHECK(Utils::dotEnvValue("TEST_ENV_WIN_DIR") == Utils::pathFromUi("C:\\CosmosEx"));
+#if defined(__CYGWIN__)
+    CHECK(Utils::dotEnvValue("TEST_WIN_DIR") == "/cygdrive/c/Users/atari/AppData/Local/cosmo2ex");
+    CHECK(Utils::dotEnvValue("TEST_ENV_WIN_DIR") == "/cygdrive/c/CosmosEx");
+#endif
+
+    dotEnv.erase("TEST_WIN_DIR");
+    dotEnv.erase("TEST_PORT");
+    unsetenv("TEST_ENV_WIN_DIR");
+}
+

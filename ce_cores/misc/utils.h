@@ -20,6 +20,14 @@ extern "C" volatile sig_atomic_t fatalErrorOccurred;     // set together with si
     #define MAX(x, y)   (((x) > (y)) ? (x) : (y))
 #endif
 
+// send() flag: no SIGPIPE when the other side has closed the connection. macOS doesn't have MSG_NOSIGNAL - there
+// Utils::socketCloexec() and Utils::acceptCloexec() set SO_NOSIGPIPE on the socket instead
+#if defined(MSG_NOSIGNAL)
+    #define SEND_NOSIGNAL   MSG_NOSIGNAL
+#else
+    #define SEND_NOSIGNAL   0
+#endif
+
 class Utils {
 public:
     static uint32_t getCurrentMs(void);
@@ -89,6 +97,14 @@ public:
     static std::string dotEnvValue(std::string key, const char* defValue=NULL, bool logOnError=true);
     static void loadDotEnv(void);
     static std::string defaultDir(const std::string& key);  // per-OS default of LOG_DIR / DATA_DIR / PID_DIR, "" for other keys
+
+    // Paths as the user sees them in the web UI <-> paths ce_cores works with. On Windows (Cygwin) the UI has Windows paths
+    // (C:\Atari\hdd, \\server\share), ce_cores POSIX ones (/cygdrive/c/Atari/hdd, //server/share). Elsewhere both are the same.
+    // Paths which are not of the expected kind (e.g. POSIX path typed in the UI) are returned unchanged.
+    // dotEnvValue() uses pathFromUi() too - the .env is shared with the webserver, a native Windows program.
+    static bool isWindowsPath(const std::string& path);     // C:\..., C:/..., \\server\...
+    static std::string pathFromUi(const std::string& uiPath);
+    static std::string pathToUi(const std::string& hostPath);
     static void dotEnvAddDefaultDirs(void);                 // add defaultDir() for those dirs which are neither in .env nor real env vars
     static bool loadDotEnvFrom(const char* path);
     static bool parseDotEnvLine(const char* line, std::string& key, std::string& value);   // false if line has no key-value pair

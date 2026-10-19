@@ -21,3 +21,16 @@ This is a continuation / evolution of CosmosEx device. It is an ACSI/SCSI hard d
   - test_ikbd	- Atari IKBD injection chain tester
   - test_manual, test_manual2	- Atari another ACSI/SCSI transfer testers
   - test_rw, test_rw_user	- Atari ACSI write/read verification testers
+
+# Unit tests
+
+`make test` runs all of them (see the top level `Makefile`, CI runs the same in `.github/workflows/ci.yml`).
+
+- Linux: needs `g++`, `make`, `go` and the `libudev-dev` + `libevdev-dev` packages
+- Windows: install [Cygwin](https://www.cygwin.com/) with the `gcc-g++` and `make` packages, then in the Cygwin shell:
+
+      make -C libdospath test
+      make -C ce_cores test
+
+  Check out the repository with LF line endings (`git config --global core.autocrlf input` before cloning).
+- macOS: needs the Xcode command line tools (`xcode-select --install`), then the same two `make` commands as for Windows

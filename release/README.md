@@ -68,8 +68,39 @@ Without systemd the files are installed, but you have to start it yourself: `cd 
 
 ## Files
 
-- `build.sh` - builds everything and creates the tarballs
+- `build.sh` - builds everything and creates the tarballs (and the Windows zip)
 - `install.sh` - installs / upgrades / uninstalls from a tarball
 - `builder/build_linux.sh` - builds `ce_cores` + `webserver` for one architecture
 - `files/ce_run.sh` - runs `ce_cores` + `webserver` in the foreground, used by the service
 - `files/ce.service` - the systemd unit
+- `builder/build_windows.sh` - builds the Windows programs, in Cygwin
+- `files/windows.env`, `files/windows-README.txt` - `.env` and `README.txt` of the Windows zip
+
+## Windows
+
+The Windows release is a zip, `ce-<version>-windows-x64.zip`: one folder, unzip it anywhere and double-click
+`ce_run.exe` (see `files/windows-README.txt`, which goes into the zip as `README.txt`).
+
+- `ce_run.exe` - the launcher, does what `ce_run.sh` + the systemd service do on Linux: creates the dirs from `.env`,
+  copies the config drive, runs `ce_cores.exe` + `webserver.exe` with their output in its console window, and stops
+  both on Ctrl+C / closing the window, or when one of them exits. Only one instance can run. Source:
+  `webserver/cmd/ce_run`
+- `.env` - `files/windows.env`: settings, logs and data in `%LOCALAPPDATA%\cosmo2ex`, Windows paths
+  (`ce_cores` converts them to Cygwin paths); `BIN_DIR` is the folder of `ce_run.exe`, set by `ce_run.exe`
+- `ce_cores.exe` + `cygwin1.dll` - `ce_cores` is a Cygwin program; `libstdc++` / `libgcc` are linked in statically, so
+  `cygstdc++-6.dll` / `cyggcc_s-seh-1.dll` are not needed (the DLLs are taken from what `cygcheck` finds, so they'd be
+  bundled if that ever changed)
+- `webserver.exe` - native Windows program
+- `licenses/` - `cygwin1.dll` is LGPLv3: distributing it with this BSD licensed project is fine, as long as the package
+  has the LGPLv3 + GPLv3 texts, a notice that the Cygwin library is used, and the source of exactly the bundled
+  `cygwin1.dll` (its Cygwin source package, checked against the mirror's checksum)
+- the rest is the same as in the Linux tarballs (web UI, config drive with the Atari programs, floppy images)
+
+Building takes two steps, as the Atari programs need the m68k-atari-mint toolchain, which is not available in Cygwin:
+
+1. in a Cygwin shell (packages `gcc-g++`, `make`, `curl`, with Go for Windows in `PATH`):
+   `release/builder/build_windows.sh <repo dir> <output dir>` - builds the Windows programs and puts the license files
+   next to them. CI runs it too and keeps the result as the `windows-ci` artifact.
+2. on Linux: `WINDOWS_BIN=<that output dir> release/build.sh windows` - makes the zip (needs `python3`)
+
+The release workflow does both (`windows` job, then `tarballs`).

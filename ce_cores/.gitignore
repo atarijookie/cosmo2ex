@@ -8,3 +8,9 @@ webroot/css/combined.css.gz
 webroot/js/jquery-combined.js.gz
 webroot/js/log.js.gz
 webroot/js/zepto-combined.js.gz
+
+# ce_cores on macOS / Cygwin (on Linux they are *.elf)
+/ce_cores
+/ce_cores.exe
+tests/run_tests
+tests/run_tests.exe

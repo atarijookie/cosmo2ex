@@ -1,24 +1,40 @@
 CXX	= g++
 CC	= gcc
 
-CFLAGS	= -Wall -g -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE
+CFLAGS	= -Wall -g -D_FILE_OFFSET_BITS=64
 CXXFLAGS	= $(CFLAGS)
 
 TARGET	= libdospath.a
+OBJS	= dirtranslator.o filenameshortener.o libexports.o utilslib.o
+
+# platform switch, like in ce_cores/makefile - the library is the same everywhere, only the test binary name differs
+UNAME_S ?= $(shell uname -s)
+
+ifeq ($(UNAME_S),Linux)
+BIN_EXT	= .elf
+else ifeq ($(UNAME_S),Darwin)
+BIN_EXT	=
+else ifneq ($(filter CYGWIN_NT%,$(UNAME_S)),)
+BIN_EXT	= .exe
+else
+$(error Unsupported platform '$(UNAME_S)' - expected Linux, Darwin or CYGWIN_NT*)
+endif
 
 # unit tests - doctest framework, see ../third_party/doctest
 TEST_DIR	= tests
 TEST_SRCS	= $(wildcard $(TEST_DIR)/*.cpp)
 TEST_OBJS	= $(TEST_SRCS:.cpp=.o)
-TEST_BIN	= $(TEST_DIR)/run_tests.elf
+TEST_BIN	= $(TEST_DIR)/run_tests$(BIN_EXT)
 TEST_CXXFLAGS	= $(CXXFLAGS) -I. -I../third_party/doctest
 
 .PHONY: all lib test test-asan clean
 
 all: libdospath.a
 
-libdospath.a: dirtranslator.o filenameshortener.o libexports.o utilslib.o
-	$(AR) rcs libdospath.a dirtranslator.o filenameshortener.o libexports.o utilslib.o
+libdospath.a: $(OBJS)
+	$(AR) rcs libdospath.a $(OBJS)
+
+$(OBJS): *.h		# rebuild when a header changes (built by the implicit %.o: %.cpp rule)
 
 lib: libdospath.a
 
@@ -37,9 +53,12 @@ test: $(TEST_BIN)
 SANITIZE_FLAGS	= -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer
 
 test-asan:
+ifneq ($(filter CYGWIN_NT%,$(UNAME_S)),)
+	$(error AddressSanitizer is not available on Cygwin, use 'make test')
+endif
 	$(MAKE) clean
 	$(MAKE) test CFLAGS="$(CFLAGS) $(SANITIZE_FLAGS)"
 	$(MAKE) clean
 
 clean:
-	rm -f libtest *.o *.a *.elf $(TEST_DIR)/*.o $(TEST_BIN)
+	rm -f libtest *.o *.a $(TEST_DIR)/*.o $(TEST_BIN)

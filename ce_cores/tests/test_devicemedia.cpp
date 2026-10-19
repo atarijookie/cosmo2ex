@@ -12,7 +12,15 @@
 
 #include "hdd/native/devicemedia.h"
 
-TEST_CASE("DeviceMedia - image file > 4 GB: capacity from file size, sectors above 4 GB don't wrap around")
+// The big test file is sparse on Linux / macOS. On Windows (Cygwin) NTFS files are sparse only with the 'sparse' mount
+// option, so it would really write over 4 GB of zeros - skip it there (64 bit off_t is checked by static_assert anyway).
+#if defined(__CYGWIN__)
+#define NO_SPARSE_FILES     true
+#else
+#define NO_SPARSE_FILES     false
+#endif
+
+TEST_CASE("DeviceMedia - image file > 4 GB: capacity from file size, sectors above 4 GB don't wrap around" * doctest::skip(NO_SPARSE_FILES))
 {
     char path[] = "/tmp/ce_test_devmedia_XXXXXX";
     int fd = mkstemp(path);
