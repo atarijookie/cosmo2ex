@@ -26,7 +26,7 @@
 
 extern InterProcessEvents events;
 
-TranslatedDisk::TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig, int aSharedMemFd, uint8_t* aSharedMemPointer)
+TranslatedDisk::TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig)
 {
     dataTrans = dt;
     this->hwConfig = hwConfig;
@@ -67,7 +67,6 @@ TranslatedDisk::TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig, int aShar
 
     //ACSI commands "screencast"
     screencastAcsiCommand = new ScreencastAcsiCommand(dataTrans);
-    screencastAcsiCommand->sharedMemorySet(aSharedMemFd, aSharedMemPointer);
 
     initAsciiTranslationTable();
 }
@@ -110,7 +109,7 @@ void TranslatedDisk::findAttachedDisks(void)
     for(int i=2; i<MAX_DRIVES; i++) {               // go through all the possible drives
         char driveLetter = ((char) (65 + i));
         std::string settingPath = std::string("PATH_GEM_") + driveLetter;   // create a setting name, under which the path to translated drive i is stored
-        std::string drivePath = s.getString(settingPath.c_str(), "");          // get the setting value
+        std::string drivePath = s.getPath(settingPath.c_str(), "");            // get the setting value
 
         // is this the config drive?
         if(configDriveIndex == i) {
@@ -283,12 +282,12 @@ void TranslatedDisk::onGetMounts(uint8_t *cmd)
 
         if(conf[i].enabled) {
             if(conf[i].label.empty()) {             // no label directly in this drive? don't show it
-                sprintf(tmp, "%c: %s\n", ('A' + i), mountStr);
+                snprintf(tmp, sizeof(tmp), "%c: %s\n", ('A' + i), mountStr);
             } else {                                // got label from this drive? use it
-                sprintf(tmp, "%c: %s (%s)\n", ('A' + i), conf[i].label.c_str(), mountStr);
+                snprintf(tmp, sizeof(tmp), "%c: %s (%s)\n", ('A' + i), conf[i].label.c_str(), mountStr);
             }
         } else {
-            sprintf(tmp, "%c:\n", ('A' + i));
+            snprintf(tmp, sizeof(tmp), "%c:\n", ('A' + i));
         }
 
         mounts += tmp;

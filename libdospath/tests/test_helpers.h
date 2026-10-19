@@ -8,8 +8,13 @@
 
 #include "libdospath.h"
 
-// all test files are created under this dir, which is wiped before and after each test case
-#define LDP_TEST_ROOT   "/tmp/ldptest"
+// all test files are created under this dir, which is wiped before and after each test case - in /tmp, or in
+// $CE_TEST_TMPDIR, to run the tests on another filesystem (e.g. a case-insensitive one, like APFS on macOS)
+inline std::string ldpTestRoot(void)
+{
+    const char* dir = getenv("CE_TEST_TMPDIR");
+    return std::string((dir && dir[0]) ? dir : "/tmp") + "/ldptest";
+}
 
 // run shell command, fail the test case if it doesn't succeed
 inline void sh(const std::string& cmd)
@@ -26,7 +31,7 @@ struct ScratchDir
 {
     std::string root;
 
-    ScratchDir() : root(LDP_TEST_ROOT) {
+    ScratchDir() : root(ldpTestRoot()) {
         ldp_cleanup();
         sh("rm -rf " + root + " && mkdir -p " + root);
     }

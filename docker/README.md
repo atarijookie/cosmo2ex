@@ -81,10 +81,11 @@ the server unicasts the reply to the device on port 7201. Bridge port mapping
 (-p 7200:7200/udp) does not receive LAN broadcasts. 8080 and 7300-7302 are
 also bound directly on the host.
 
-USB mice, keyboards and gamepads: IKBD lists /dev/input/by-path and opens
-/dev/input/event* / js*. Host /dev is bind-mounted at the same path.
-Char major 13 is allowed so newly plugged devices can be opened (hotplug
-plus inotify on /dev/input and /dev/input/by-path).
+USB mice, keyboards and gamepads: IKBD lists input devices with libudev and
+opens /dev/input/event* / js*. Host /dev is bind-mounted at the same path.
+Char major 13 is allowed so newly plugged devices can be opened. Hotplug comes
+from kernel uevents (host networking); if the host's /run/udev is mounted
+read-only, udev events are used instead.
 
 USB raw disks for HDD emulation (/dev/sd*): block major 8 is allowed.
 WARNING: this includes any SATA/USB system disk of the host.

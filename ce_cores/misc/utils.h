@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <stdint.h>
+#include <sys/socket.h>
 
 extern "C" volatile sig_atomic_t sigintReceived;
 extern "C" volatile sig_atomic_t fatalErrorOccurred;     // set together with sigintReceived when app terminates because of an error
@@ -19,13 +20,20 @@ extern "C" volatile sig_atomic_t fatalErrorOccurred;     // set together with si
     #define MAX(x, y)   (((x) > (y)) ? (x) : (y))
 #endif
 
+// send() flag: no SIGPIPE when the other side has closed the connection. macOS doesn't have MSG_NOSIGNAL - there
+// Utils::socketCloexec() and Utils::acceptCloexec() set SO_NOSIGPIPE on the socket instead
+#if defined(MSG_NOSIGNAL)
+    #define SEND_NOSIGNAL   MSG_NOSIGNAL
+#else
+    #define SEND_NOSIGNAL   0
+#endif
+
 class Utils {
 public:
     static uint32_t getCurrentMs(void);
     static uint32_t elapsedMs(uint32_t startMs);        // ms since startMs (value of getCurrentMs()), wrap safe
     static void  sleepMs(uint32_t ms);
 
-    static void attributesHostToAtari(bool isReadOnly, bool isDir, uint8_t &attrAtari);
     static void fileDateTimeToHostTime(uint16_t atariDate, uint16_t atariTime, struct tm *ptm);
     static uint16_t fileTimeToAtariTime(struct tm *ptm);
     static uint16_t fileTimeToAtariDate(struct tm *ptm);
@@ -54,7 +62,6 @@ public:
 
     static void getIpAdds(uint8_t *bfrIPs, uint8_t *bfrMasks=NULL);
 
-    static void forceSync(void);
 
     static uint16_t  getWord(uint8_t *bfr);
     static uint32_t getDword(uint8_t *bfr);
@@ -66,7 +73,6 @@ public:
 
     static void createTimezoneString(char *str);
     static void createTimezoneStringFromOffset(float utcOffset, char *str);    // offset in hours, e.g. 5.5 -> "UTC-05:30"
-    static void setTimezoneVariable_inProfileScript(void);
     static void setTimezoneVariable_inThisContext(void);
 
     static std::string getDeviceLabel(const std::string & devicePath);
@@ -74,20 +80,32 @@ public:
 
     static void splitString(const std::string &s, char delim, std::vector<std::string> &elems);
 
-    static bool unZIPfloppyImageAndReturnFirstImage(const char *inZipFilePath, std::string &outImageFilePath);
     static const char *getExtension(const char *fileName);
-    static bool isZIPfile(const char *fileName);
     static void createPathWithOtherExtension(std::string &inPathWithOriginalExt, const char *otherExtension, std::string &outPathWithOtherExtension);
     static bool fileExists(const std::string& path);
     static bool fileExists(const char* path);
     static bool dirExists(std::string& path);
     static bool devExists(std::string& path);
+
+    // socket() / accept() whose fd is not inherited by processes started by system() - atomically where the system can
+    static int socketCloexec(int domain, int type, int protocol);
+    static int acceptCloexec(int fdListen, struct sockaddr *addr, socklen_t *addrLen);
     static void toUpperCaseString(std::string &st);
 
     static int bcdToInt(int bcd);
 
     static std::string dotEnvValue(std::string key, const char* defValue=NULL, bool logOnError=true);
     static void loadDotEnv(void);
+    static std::string defaultDir(const std::string& key);  // per-OS default of LOG_DIR / DATA_DIR / PID_DIR, "" for other keys
+
+    // Paths as the user sees them in the web UI <-> paths ce_cores works with. On Windows (Cygwin) the UI has Windows paths
+    // (C:\Atari\hdd, \\server\share), ce_cores POSIX ones (/cygdrive/c/Atari/hdd, //server/share). Elsewhere both are the same.
+    // Paths which are not of the expected kind (e.g. POSIX path typed in the UI) are returned unchanged.
+    // dotEnvValue() uses pathFromUi() too - the .env is shared with the webserver, a native Windows program.
+    static bool isWindowsPath(const std::string& path);     // C:\..., C:/..., \\server\...
+    static std::string pathFromUi(const std::string& uiPath);
+    static std::string pathToUi(const std::string& hostPath);
+    static void dotEnvAddDefaultDirs(void);                 // add defaultDir() for those dirs which are neither in .env nor real env vars
     static bool loadDotEnvFrom(const char* path);
     static bool parseDotEnvLine(const char* line, std::string& key, std::string& value);   // false if line has no key-value pair
     static int  dotEnvSubstituteVars(void);
@@ -100,6 +118,7 @@ public:
     // write to temp file next to it, fsync, then rename over the original. Keeps permissions of existing file,
     // writes through symlink. Returns false (errno set) on failure - original file is then untouched.
     static bool writeFileAtomically(const char* path, const uint8_t* data, size_t size);         // text to text file
+    static bool atomicWriteInProgress(const std::string& path);    // is writeFileAtomically() of this file running now?
     static void textToFileFromEnv(const char* text, const char* envKeyForFileName); // text to text file specified in .env
 
     static void textFromFile(char* bfr, uint32_t bfrSize, const char* filePath, bool trimTrailing=true); // get one line from text file
@@ -111,7 +130,6 @@ public:
     static void screenShotVblEnabled(bool enabled);
     static void createFloppyTestImage(void);
 
-    static void sendToMounter(const std::string& jsonString);
 
     static void closeFdIfOpen(int& fd);
 

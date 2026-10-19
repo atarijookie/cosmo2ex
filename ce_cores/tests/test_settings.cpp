@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>         // mkdtemp() - macOS has it here, glibc in stdlib.h
 #include <map>
 #include <string>
 #include <thread>
@@ -53,6 +54,11 @@ TEST_CASE_FIXTURE(SettingsDir, "new device prefix dir gets default values")
     CHECK(Utils::fileExists(dir + "/001122334455/DRIVELETTER_CONFDRIVE"));
     CHECK(s.getChar("DRIVELETTER_CONFDRIVE", 'C') == 'O');                  // stored default, not the getter default
     CHECK(s.getInt("ACSI_DEVTYPE_1", DEVTYPE_OFF) == DEVTYPE_TRANSLATED);
+    CHECK(s.getPath("PATH_GEM_C", "") == Settings::defaultTranslatedDrivePath());         // stored as the web UI shows it (Windows path on Windows)
+    CHECK(s.getString("PATH_GEM_C", "") == Utils::pathToUi(Settings::defaultTranslatedDrivePath()));
+#if defined(__linux__)
+    CHECK(Settings::defaultTranslatedDrivePath() == "/mnt/");                // Linux default stays as it was
+#endif
 
     SUBCASE("defaults are not stored again over changed values") {
         s.setChar("DRIVELETTER_CONFDRIVE", 'P');
@@ -127,7 +133,7 @@ static void setAcsiDevTypes(Settings& s, const int types[8])
 {
     char key[32];
     for(int id=0; id<8; id++) {
-        sprintf(key, "ACSI_DEVTYPE_%d", id);
+        snprintf(key, sizeof(key), "ACSI_DEVTYPE_%d", id);
         s.setInt(key, types[id]);
     }
 }
@@ -283,13 +289,16 @@ TEST_CASE_FIXTURE(SettingsDir, "settings: reader never sees an empty or partial 
 
     std::atomic<bool> done(false);
     std::atomic<int> bad(0), reads(0);
+    std::string firstBad;                               // what was read instead - written only by the reader thread
 
     std::thread reader([&]() {
         Settings rs;
         while(!done) {
             std::string v = rs.getString("FLOPPY_IMAGE", "DEFAULT");
             if(v != valueA && v != valueB) {
-                bad++;
+                if(bad++ == 0) {
+                    firstBad = v.substr(0, 40) + " (" + std::to_string(v.length()) + " chars)";
+                }
             }
             reads++;
         }
@@ -302,7 +311,23 @@ TEST_CASE_FIXTURE(SettingsDir, "settings: reader never sees an empty or partial 
     reader.join();
 
     CHECK(reads.load() > 0);
+    CAPTURE(firstBad);                                  // e.g. DEFAULT - file wasn't there, empty - file was empty
     CHECK(bad.load() == 0);
+}
+
+TEST_CASE_FIXTURE(SettingsDir, "atomicWriteInProgress - true only while a temp file of that file exists")
+{
+    std::string file = dir + "/SOME_KEY";
+    CHECK_FALSE(Utils::atomicWriteInProgress(file));
+
+    FILE *f = fopen((file + ".tmp-123-4").c_str(), "w");                // temp file of writeFileAtomically()
+    REQUIRE(f != NULL);
+    fclose(f);
+    CHECK(Utils::atomicWriteInProgress(file));
+    CHECK_FALSE(Utils::atomicWriteInProgress(dir + "/SOME"));           // other key, which is a prefix of this one
+
+    unlink((file + ".tmp-123-4").c_str());
+    CHECK_FALSE(Utils::atomicWriteInProgress(file));
 }
 
 TEST_CASE_FIXTURE(SettingsDir, "settings: atomic write leaves no temp files and keeps permissions")
@@ -339,4 +364,22 @@ TEST_CASE_FIXTURE(SettingsDir, "settings: atomic write leaves no temp files and 
     }
     closedir(d);
     CHECK(tmpFiles == 0);
+}
+
+TEST_CASE_FIXTURE(SettingsDir, "getPath / setPath - paths stored as the web UI shows them")
+{
+    Settings s;
+    s.setPath("FLOPPY_IMAGE", "/data/floppy/game.st");
+    s.setString("PATH_GEM_D", "/mnt/shared");
+
+#if !defined(__CYGWIN__)
+    CHECK(s.getString("FLOPPY_IMAGE", "") == "/data/floppy/game.st");  // same paths for UI and ce_cores here
+    CHECK(s.getPath("PATH_GEM_D", "") == "/mnt/shared");
+#else
+    s.setPath("FLOPPY_IMAGE", "/cygdrive/c/data/floppy/game.st");
+    CHECK(s.getString("FLOPPY_IMAGE", "") == "C:\\data\\floppy\\game.st");      // what the web UI shows
+    s.setString("PATH_GEM_D", "C:\\Atari\\hdd");                       // as typed in the web UI
+    CHECK(s.getPath("PATH_GEM_D", "") == "/cygdrive/c/Atari/hdd");
+#endif
+    CHECK(s.getPath("NOT_THERE", "") == "");
 }

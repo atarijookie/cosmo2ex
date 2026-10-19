@@ -21,7 +21,7 @@ class Scsi;
 class HddClient
 {
 public:
-    HddClient(ChipInterface* cin, ClientInfo* ci, int aSharedMemFd, uint8_t* aSharedMemPointer);
+    HddClient(ChipInterface* cin, ClientInfo* ci);
     virtual ~HddClient();
 
     bool handleHdd(uint8_t* inBuff);

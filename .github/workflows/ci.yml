@@ -23,11 +23,19 @@ jobs:
           go-version: '1.22'                    # same as the toolchain stage in docker/Dockerfile
           cache-dependency-path: webserver/go.sum
 
+      - name: Install libraries for ce_cores
+        run: sudo apt-get install -y --no-install-recommends libudev-dev libevdev-dev      # USB keyboard / mouse / joysticks
+
       - name: libdospath tests
         run: make -C libdospath test
 
       - name: ce_cores tests
         run: make -C ce_cores -j"$(nproc)" test
+
+      - name: libdospath + ce_cores tests, built with clang
+        run: |
+          make -C libdospath clean && make -C libdospath CXX=clang++ CC=clang test
+          make -C ce_cores clean && make -C ce_cores -j"$(nproc)" CXX=clang++ CC=clang test
 
       - name: Pico firmware tests (on host)
         run: make -C ce_pico_tests -j"$(nproc)" test
@@ -37,6 +45,77 @@ jobs:
         run: |
           go vet ./...
           go test ./...
+
+  cygwin-tests:
+    # libdospath + ce_cores unit tests under Cygwin - the Windows desktop build
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: C:\cygwin\bin\bash.exe --noprofile --norc -eo pipefail -o igncr '{0}'
+    steps:
+      - name: Keep LF line endings                # Cygwin's make and sh don't like CRLF
+        shell: pwsh
+        run: git config --global core.autocrlf input
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.22'
+          cache-dependency-path: webserver/go.sum
+
+      - uses: cygwin/cygwin-install-action@v4
+        with:
+          packages: gcc-g++ make curl
+
+      - name: libdospath tests
+        run: make -C libdospath test
+
+      - name: ce_cores tests
+        run: make -C ce_cores -j"$(nproc)" test
+
+      - name: Windows bundle (ce_cores.exe + cygwin1.dll + licenses, webserver.exe)
+        run: release/builder/build_windows.sh . out/windows
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-ci
+          path: out/windows/
+          retention-days: 14
+
+  macos-tests:
+    # libdospath + ce_cores unit tests and the ce_cores build on macOS (Apple clang - 'g++' is clang there)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: libdospath tests
+        run: make -C libdospath test
+
+      - name: Loopback addresses for the chipinterface tests    # Linux answers on all of 127.0.0.0/8, macOS only on 127.0.0.1
+        run: for i in 11 12 21 22 23 31 32; do sudo ifconfig lo0 alias 127.0.0.$i up; done
+
+      - name: ce_cores tests
+        run: make -C ce_cores -j"$(sysctl -n hw.ncpu)" test
+
+      - name: ce_cores build
+        run: make -C ce_cores -j"$(sysctl -n hw.ncpu)"
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.22'
+          cache-dependency-path: webserver/go.sum
+
+      - name: Universal binaries (arm64 + x86_64) - ce_cores, webserver, ce_run
+        run: |
+          release/builder/build_macos.sh . out/macos
+          tar -czf out/ce-macos-ci.tar.gz -C out macos    # artifacts are zipped without file permissions, tar keeps them
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-ci                        # download, unzip, then: tar -xzf ce-macos-ci.tar.gz
+          path: out/ce-macos-ci.tar.gz
+          retention-days: 14
 
   atari:
     # drivers, boot sectors and ce_tests.tos

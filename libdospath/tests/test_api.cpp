@@ -213,11 +213,14 @@ TEST_CASE_FIXTURE(ScratchDir, "ldp_findFirstAndNext")
     }
 }
 
-// count of file descriptors open in this process
+// count of file descriptors open in this process - /proc/self/fd on Linux and Cygwin, /dev/fd on macOS
 static int openFdCount(void)
 {
     int count = 0;
     DIR* dir = opendir("/proc/self/fd");
+    if(!dir) {
+        dir = opendir("/dev/fd");
+    }
 
     while(dir && readdir(dir)) {
         count++;

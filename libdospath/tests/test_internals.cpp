@@ -83,7 +83,7 @@ TEST_CASE("FilenameShortener long to short and back")
 {
     bool res, created;
     std::string shortFn, longFileName;
-    FilenameShortener fs(LDP_TEST_ROOT);
+    FilenameShortener fs(ldpTestRoot());
 
     fs.longToShortFileName("LongFile Name A.extension", shortFn, &created);     // shorten unknown filename
     CHECK(shortFn == "LONGFI~1.EXT");
@@ -193,7 +193,7 @@ TEST_CASE_FIXTURE(ScratchDir, "DirTranslator removes least recently used shorten
     // add 30 items to each shortener, so 90 items, with the 3 items before we should end up with 93 items total
     for(int i=0; i<30; i++) {
         char fn[32];
-        sprintf(fn, "%d.ext", i);       // generate fake file name
+        snprintf(fn, sizeof(fn), "%d.ext", i);       // generate fake file name
         std::string shortFileName;
 
         fs1->longToShortFileName(fn, shortFileName);
@@ -333,7 +333,7 @@ static void checkShortNames(FilenameShortener& fs, const char* names[][2], int c
 
 TEST_CASE("FilenameShortener creates unique 8.3 names when shortened names collide")
 {
-    FilenameShortener fs(LDP_TEST_ROOT);
+    FilenameShortener fs(ldpTestRoot());
 
     SUBCASE("extension cut to 3 chars") {
         const char* names[][2] = { {"index.htm", "INDEX.HTM"}, {"index.html", "INDEX~1.HTM"} };
@@ -368,7 +368,7 @@ TEST_CASE("FilenameShortener creates unique 8.3 names when shortened names colli
 
 TEST_CASE("FilenameShortener special names")
 {
-    FilenameShortener fs(LDP_TEST_ROOT);
+    FilenameShortener fs(ldpTestRoot());
 
     const char* names[][2] = {
         {"12345678.txt",    "12345678.TXT"},    // exactly 8 chars - kept as is
@@ -385,12 +385,12 @@ TEST_CASE("FilenameShortener special names")
 
 TEST_CASE("FilenameShortener numbering gets shorter prefix for longer numbers")
 {
-    FilenameShortener fs(LDP_TEST_ROOT);
+    FilenameShortener fs(ldpTestRoot());
     std::string shortFn[102];
 
     for(int i=0; i<102; i++) {
         char fn[64];
-        sprintf(fn, "LongFile Name %03d.ext", i);
+        snprintf(fn, sizeof(fn), "LongFile Name %03d.ext", i);
         REQUIRE(fs.longToShortFileName(fn, shortFn[i]));
     }
 
@@ -420,18 +420,28 @@ TEST_CASE_FIXTURE(ScratchDir, "FilenameShortener::shortToLongFileName special ca
         CHECK(fs.size() == 1);                          // now cached
     }
 
-    SUBCASE("short names are case sensitive - lowercase version is not translated") {
+    SUBCASE("short names ignore case, like DOS names - lowercase version is translated too") {
         REQUIRE(fs.longToShortFileName("LongFile Name.txt", shortFn));
         REQUIRE(shortFn == "LONGFI~1.TXT");
 
-        CHECK(!fs.shortToLongFileName("longfi~1.txt", longFn));
+        CHECK(fs.shortToLongFileName("longfi~1.txt", longFn));
+        CHECK(longFn == "LongFile Name.txt");
+    }
+
+    SUBCASE("name which exists on disk exactly as given wins over a short name in other case") {
+        sh("touch " + p("readme.txt"));                 // short name of 'Readme.txt' would be README.TXT
+        REQUIRE(fs.longToShortFileName("Readme.txt", shortFn));
+        REQUIRE(shortFn == "README.TXT");
+
+        CHECK(fs.shortToLongFileName("readme.txt", longFn));
+        CHECK(longFn == "readme.txt");
     }
 }
 
 TEST_CASE("FilenameShortener::updateLongFileName onto already known long name")
 {
     // e.g. file A renamed over existing file B - only B exists after that, both short names lead to it
-    FilenameShortener fs(LDP_TEST_ROOT);
+    FilenameShortener fs(ldpTestRoot());
     std::string shortA, shortB, longFn, shortFn;
 
     REQUIRE(fs.longToShortFileName("LongFile Name A.txt", shortA));
@@ -469,7 +479,7 @@ TEST_CASE_FIXTURE(ScratchDir, "DirTranslator assigns short names in sorted order
 
     for(int i=0; i<10; i++) {
         char fn[64];
-        sprintf(fn, "/LongFile Name %d.ext", order[i]);
+        snprintf(fn, sizeof(fn), "/LongFile Name %d.ext", order[i]);
         sh("touch '" + dir + fn + "'");
     }
 
@@ -477,8 +487,8 @@ TEST_CASE_FIXTURE(ScratchDir, "DirTranslator assigns short names in sorted order
 
     for(int i=0; i<10; i++) {
         char fn[64], expected[16];
-        sprintf(fn, "LongFile Name %d.ext", i);
-        sprintf(expected, (i < 9) ? "LONGFI~%d.EXT" : "LONGF~%d.EXT", i + 1);     // from '~10' the number takes one more char
+        snprintf(fn, sizeof(fn), "LongFile Name %d.ext", i);
+        snprintf(expected, sizeof(expected), (i < 9) ? "LONGFI~%d.EXT" : "LONGF~%d.EXT", i + 1);     // from '~10' the number takes one more char
 
         std::string shortFn;
         REQUIRE(T::longToShortFilename(&dt, dir, fn, shortFn));    // first call creates and feeds the shortener with the whole dir

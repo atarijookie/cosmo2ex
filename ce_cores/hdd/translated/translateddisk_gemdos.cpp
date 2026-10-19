@@ -13,9 +13,6 @@
 #include <stdlib.h>
 #include <fcntl.h>
 
-#include <sys/ioctl.h>
-#include <linux/msdos_fs.h>
-
 #include "../../misc/global.h"
 #include "../../misc/debug.h"
 #include "../../misc/utils.h"
@@ -25,6 +22,18 @@
 #include "translatedhelper.h"
 #include "gemdos.h"
 #include "gemdos_errno.h"
+
+// read only for the ST: has the read only attribute (see ldp_getAttributes()) - checked also for root, who could write
+// it anyway - or we just can't write it
+static bool hostFileIsReadOnly(const std::string& hostPath)
+{
+    uint8_t attribs = 0;
+    if(ldp_getAttributes(hostPath, attribs) && (attribs & FA_READONLY)) {
+        return true;
+    }
+
+    return access(hostPath.c_str(), W_OK) != 0;
+}
 
 void TranslatedDisk::onDsetdrv(uint8_t *cmd)
 {
@@ -639,6 +648,20 @@ void TranslatedDisk::onFrename(uint8_t *cmd)
         return;
     }
 
+    // TOS doesn't rename over an existing file / dir, but rename() would silently replace it. Unless it's the same item:
+    // on a case-insensitive filesystem (APFS, FAT, NTFS) a new name differing only in case exists too - that's just
+    // a change of case, and rename() does that.
+    struct stat oldAttr, newAttr;
+    if(lstat(newHostName.c_str(), &newAttr) == 0) {
+        bool sameItem = lstat(oldHostName.c_str(), &oldAttr) == 0 && oldAttr.st_dev == newAttr.st_dev && oldAttr.st_ino == newAttr.st_ino;
+
+        if(!sameItem) {
+            logHdd(LOG_DEBUG, "TranslatedDisk::onFrename - %s already exists, not renaming %s", newHostName.c_str(), oldHostName.c_str());
+            dataTrans->setStatus(EACCDN);
+            return;
+        }
+    }
+
     int ires = rename(oldHostName.c_str(), newHostName.c_str());    // rename host file
 
     if(ires == 0) {                                                 // good
@@ -709,6 +732,13 @@ void TranslatedDisk::onFdelete(uint8_t *cmd)
         return;
     }
 
+    uint8_t attribs = 0;
+    if(ldp_getAttributes(hostPath, attribs) && (attribs & FA_READONLY)) {  // read only file? TOS doesn't delete those
+        logHdd(LOG_ERROR, "TranslatedDisk::onFdelete() -- %s is read only, not deleted", hostPath.c_str());
+        dataTrans->setStatus(EACCDN);
+        return;
+    }
+
     //----------
     res = unlink(hostPath.c_str());
 
@@ -772,72 +802,22 @@ void TranslatedDisk::onFattrib(uint8_t *cmd)
         return;
     }
 
-    uint8_t    oldAttrAtari;
-
     // first read the attributes
-    struct stat attr;
-    res = stat(hostName.c_str(), &attr);                            // get the file status
-
-    if(res != 0) {
-        logHdd(LOG_ERROR, "TranslatedDisk::onFattrib() -- stat(%s) failed", hostName.c_str());
+    uint8_t oldAttrAtari = 0;
+    if(!ldp_getAttributes(hostName, oldAttrAtari)) {
+        logHdd(LOG_ERROR, "TranslatedDisk::onFattrib() -- getting attributes of %s failed : %s", hostName.c_str(), strerror(errno));
         dataTrans->setStatus(EINTRN);
         return;
     }
 
-    bool isDir = (S_ISDIR(attr.st_mode) != 0);                      // check if it's a directory
-
-    bool hostIsFAT = false;
-    bool isReadOnly = false;
-    // TODO: checking of read only for file
-
-    Utils::attributesHostToAtari(isReadOnly, isDir, oldAttrAtari);
-    {
-        int fd = open(hostName.c_str(), O_RDONLY);
-        if(fd >= 0) {
-            __u32 dosattrs = 0;
-            if(ioctl(fd, FAT_IOCTL_GET_ATTRIBUTES, &dosattrs) >= 0) {
-                hostIsFAT = true;   // success, that means the underlying FS is FAT
-                if(dosattrs & ATTR_RO) oldAttrAtari |= FA_READONLY;
-                if(dosattrs & ATTR_HIDDEN) oldAttrAtari |= FA_HIDDEN;
-                if(dosattrs & ATTR_SYS) oldAttrAtari |= FA_SYSTEM;
-                //if(dosattrs & ATTR_ARCH) oldAttrAtari |= FA_ARCHIVE;
-            }
-            close(fd);
+    if(setNotInquire) {     // SET attribs?
+        // what the host can't store (e.g. hidden on ext4) is ignored, and like before, the ST doesn't get an error even
+        // when setting failed - some programs might not expect that
+        if(ldp_setAttributes(hostName, attrAtariNew)) {
+            logHdd(LOG_DEBUG, "TranslatedDisk::onFattrib() -- attributes %x set on %s", (int)attrAtariNew, hostName.c_str());
+        } else {
+            logHdd(LOG_ERROR, "TranslatedDisk::onFattrib() -- setting attributes %x on %s failed : %s", (int)attrAtariNew, hostName.c_str(), strerror(errno));
         }
-    }
-
-    if(setNotInquire) {     // SET attribs? - SET FAT Attributes!
-        if(hostIsFAT) {
-            int fd = open(hostName.c_str(), O_RDWR);
-            if(fd < 0) {
-                logHdd(LOG_ERROR, "TranslatedDisk::onFattrib() -- setting attributes open(%s) failed", hostName.c_str());
-                dataTrans->setStatus(EACCDN);
-                return;
-            }
-            __u32 dosattrs = ATTR_NONE;
-            if(attrAtariNew & FA_READONLY) dosattrs |= ATTR_RO;
-            if(attrAtariNew & FA_HIDDEN) dosattrs |= ATTR_HIDDEN;
-            if(attrAtariNew & FA_SYSTEM) dosattrs |= ATTR_SYS;
-            if(attrAtariNew & FA_VOLUME) dosattrs |= ATTR_VOLUME;
-            if(attrAtariNew & FA_DIR) dosattrs |= ATTR_DIR;
-            if(attrAtariNew & FA_ARCHIVE) dosattrs |= ATTR_ARCH;
-            if(ioctl(fd, FAT_IOCTL_SET_ATTRIBUTES, &dosattrs) < 0) {
-                logHdd(LOG_ERROR, "TranslatedDisk::onFattrib() -- ioctl(%s, FAT_IOCTL_SET_ATTRIBUTES, %x) failed errno %d", hostName.c_str(), (int)dosattrs, errno);
-            } else {
-                logHdd(LOG_DEBUG, "TranslatedDisk::onFattrib() -- FAT attributes %x set %s", (int)dosattrs, hostName.c_str());
-            }
-            close(fd);
-        }
-    /*
-        attributesAtariToHost(attrAtariNew, attrHost);
-
-        res = SetFileAttributesA(hostName.c_str(), attrHost);
-
-        if(!res) {                              // failed to set attribs?
-            dataTrans->setStatus(EACCDN);
-            return;
-        }
-    */
     }
 
     // for GET: returns current attribs, for SET: returns old attribs
@@ -901,6 +881,12 @@ void TranslatedDisk::onFcreate(uint8_t *cmd)
         return;
     }
 
+    if(hostPathExists(hostName, true) && hostFileIsReadOnly(hostName)) {     // TOS doesn't overwrite read only files
+        logHdd(LOG_ERROR, "TranslatedDisk::onFcreate - %s - existing file is read only, fail!", hostName.c_str());
+        dataTrans->setStatus(EACCDN);
+        return;
+    }
+
     // create file and close it
     FILE *f = fopen(hostName.c_str(), "wb+");                       // write/update - create empty / truncate existing
 
@@ -925,37 +911,7 @@ void TranslatedDisk::onFcreate(uint8_t *cmd)
         return;
     }
 
-    // now set it's attributes
-    int fd = fileno(f);
-    if(fd >= 0) {
-        __u32 dosattrs = ATTR_NONE;
-        if(attribs & FA_READONLY) dosattrs |= ATTR_RO;
-        if(attribs & FA_HIDDEN) dosattrs |= ATTR_HIDDEN;
-        if(attribs & FA_SYSTEM) dosattrs |= ATTR_SYS;
-        if(attribs & FA_VOLUME) dosattrs |= ATTR_VOLUME;
-        if(attribs & FA_DIR) dosattrs |= ATTR_DIR;
-        if(attribs & FA_ARCHIVE) dosattrs |= ATTR_ARCH;
-        if(ioctl(fd, FAT_IOCTL_SET_ATTRIBUTES, &dosattrs) < 0) {
-            logHdd(LOG_ERROR, "TranslatedDisk::onFcreate -- failed to set (FAT) files attributes on %s", hostName.c_str());
-        } else {
-            logHdd(LOG_DEBUG, "TranslatedDisk::onFcreate -- attributes %x set on %s", (int)dosattrs, hostName.c_str());
-        }
-    }
-
     fclose(f);
-
-
-/*
-    uint32_t attrHost;
-    attributesAtariToHost(attribs, attrHost);
-
-    res = SetFileAttributesA(hostName.c_str(), attrHost);
-
-    if(!res) {                                                      // failed to set attribs?
-        dataTrans->setStatus(EACCDN);
-        return;
-    }
-*/
 
     // now open the file again
     f = fopen(hostName.c_str(), "rb+");                             // read/update - file must exist
@@ -965,6 +921,12 @@ void TranslatedDisk::onFcreate(uint8_t *cmd)
 
         dataTrans->setStatus(EACCDN);                               // if failed to create, access error
         return;
+    }
+
+    // now set its attributes (also when 0 - an overwritten file gets new ones) - only after reopening,
+    // read only would not let us open it for writing (unless root)
+    if(!ldp_setAttributes(hostName, attribs)) {
+        logHdd(LOG_ERROR, "TranslatedDisk::onFcreate -- setting attributes %x on %s failed : %s", (int)attribs, hostName.c_str(), strerror(errno));
     }
 
     logHdd(LOG_DEBUG, "TranslatedDisk::onFcreate - %s - success, index is: %d", hostName.c_str(), index);
@@ -1048,7 +1010,7 @@ void TranslatedDisk::onFopen(uint8_t *cmd)
         return;
     }
 
-    if(!justRead && access(hostName.c_str(), W_OK) != 0) {     // if it's WRITE mode and the file is read only, quit
+    if(!justRead && hostFileIsReadOnly(hostName)) {         // if it's WRITE mode and the file is read only, quit
         logHdd(LOG_ERROR, "TranslatedDisk::onFopen - %s - fopen mode is write, but file is read only, fail!", hostName.c_str());
 
         dataTrans->setStatus(EACCDN);

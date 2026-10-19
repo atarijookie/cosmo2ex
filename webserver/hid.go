@@ -6,70 +6,35 @@ import (
 	"net/http"
 )
 
-// HID-related handlers.
+// HID-related handlers - mouse and keyboard of the web UI go to the input socket of ce_cores.
 
 func (s *Server) handlePostHIDMouse(w http.ResponseWriter, r *http.Request) {
 	log.Printf("handlePostHIDMouse %s %s", r.Method, r.URL.Path)
-
-	// Parse JSON payload
-	var payload map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Create base command
-	cmd := map[string]interface{}{
-		"module": "ikbd",
-		"action": "mouse",
-	}
-
-	// Extend base command with payload content
-	for key, value := range payload {
-		cmd[key] = value
-	}
-
-	// Send to command socket (log error but don't fail request)
-	cmdJSON, err := json.Marshal(cmd)
-	if err != nil {
-		log.Printf("handlePostHIDMouse - error marshaling command: %v", err)
-	} else {
-		if err := sendToCmdSocket(string(cmdJSON)); err != nil {
-			log.Printf("handlePostHIDMouse - failed to send cmd socket: %v", err)
-		}
-	}
-
-	w.WriteHeader(http.StatusNoContent)
+	s.handleHID(w, r, mousePayloadToEvents)
 }
 
 func (s *Server) handlePostHIDKeyboard(w http.ResponseWriter, r *http.Request) {
 	log.Printf("handlePostHIDKeyboard %s %s", r.Method, r.URL.Path)
+	s.handleHID(w, r, keyboardPayloadToEvents)
+}
 
-	// Parse JSON payload
+func (s *Server) handleHID(w http.ResponseWriter, r *http.Request, toEvents func(map[string]interface{}) ([]byte, error)) {
 	var payload map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Create base command
-	cmd := map[string]interface{}{
-		"module": "ikbd",
-		"action": "keyboard",
-	}
-
-	// Extend base command with payload content
-	for key, value := range payload {
-		cmd[key] = value
-	}
-
-	// Send to command socket (log error but don't fail request)
-	cmdJSON, err := json.Marshal(cmd)
+	events, err := toEvents(payload)
 	if err != nil {
-		log.Printf("handlePostHIDKeyboard - error marshaling command: %v", err)
-	} else {
-		if err := sendToCmdSocket(string(cmdJSON)); err != nil {
-			log.Printf("handlePostHIDKeyboard - failed to send cmd socket: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// send to input socket (log error but don't fail request - like when ce_cores is not running)
+	if len(events) > 0 {
+		if err := s.input.send(events); err != nil {
+			log.Printf("handleHID - failed to send to input socket: %v", err)
 		}
 	}
 

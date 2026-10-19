@@ -127,7 +127,7 @@ void Ikbd::dumpBuffer(bool fromStNotKeyboard)
     while(cb->count > 0) {                      // if there's some data
         uint8_t val = cb->get();                   // get data
 
-        sprintf(bfr, "%02x ", val);             // add hex dump of this data
+        snprintf(bfr, sizeof(bfr), "%02x ", val);             // add hex dump of this data
         text += bfr;
 
         if(!fromStNotKeyboard) {                // if it's from keyboard, send it to ST
@@ -429,7 +429,7 @@ void Ikbd::processStCommands(void)
             char str[256] = "Ikbd::processStCommands -- ignoring ";
             char tmp[16];
             for (int i = 0; i < len; ++i) {
-                sprintf(tmp, "%02x ", bfr[i]);
+                snprintf(tmp, sizeof(tmp), "%02x ", bfr[i]);
                 strcat(str, tmp);
             }
             logIkbd(LOG_DEBUG, str);

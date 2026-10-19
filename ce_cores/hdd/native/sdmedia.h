@@ -25,10 +25,8 @@ public:
     virtual uint32_t maxSectorsForSmallReadWrite(void);    // what will be the maximum value where small transfer is used (single transfer to/from media + single transfer to/from ST) and where the larger transfer is used above that
     virtual uint32_t maxSectorsForSingleReadWrite(void);   // what is the maximum sector count we can use on readSectors() and writeSectors()
 private:
-    bool    isInitialized;
     bool    mediaChangedFlag;
     int64_t capacityInSectors;
-    int64_t capacityInBytes;
     uint8_t    senseKey;
 };
 

@@ -59,7 +59,7 @@ void Scsi::findAttachedDisks(void)
 
     for(int i=0; i<8; i++) {                        // go through all the possible drives
         std::string settingName = std::string("PATH_RAW_") + std::to_string(i);
-        std::string pathRaw = s.getString(settingName.c_str(), "");
+        std::string pathRaw = s.getPath(settingName.c_str(), "");
 
         bool isBoot = (acsiIdInfo.ceddId == i);     // if this ID is used for CE_DD booting
         bool isFile = (pathRaw.length() > 0) ? Utils::fileExists(pathRaw) : false;   // if it's a file, then it's an image

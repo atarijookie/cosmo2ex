@@ -53,7 +53,9 @@ void Version::fromStringWithoutDashes(char *str)
 
 void Version::toString(char *str)
 {
-    sprintf(str, "%04d-%02d-%02d", year, month, day);
+    char tmp[32];
+    snprintf(tmp, sizeof(tmp), "%04d-%02d-%02d", year, month, day);
+    strcpy(str, tmp);
 }
 
 void Version::fromInts(int y, int m, int d)
@@ -100,7 +102,7 @@ void Version::fromFirstLineOfFile(char *filePath, bool withDashes)
 {
     clear();
 
-    FILE *f = fopen(filePath, "rt");            // try to open the file
+    FILE *f = fopen(filePath, "r");            // try to open the file
 
     if(!f) {                                    // failed?
         return;
@@ -162,7 +164,9 @@ void Version::getAppVersion(char *bfr)
     i = sscanf(buildDate + 4, "%d %d", &day, &year);
 
     if(i == 2 && month > 0) {
-        sprintf(bfr, "%04d-%02d-%02d", year, month, day);
+        char tmp[32];
+        snprintf(tmp, sizeof(tmp), "%04d-%02d-%02d", year, month, day);
+        strcpy(bfr, tmp);
     } else {
         strcpy(bfr, "YYYY-MM-DD");
     }
@@ -172,7 +176,7 @@ void Version::readLineFromFile(const char *filename, char *buffer, int maxLen, c
 {
     memset(buffer, 0, maxLen);                  // clear the buffer where the value should be stored
 
-    FILE *f = fopen(filename, "rt");            // open the file
+    FILE *f = fopen(filename, "r");            // open the file
 
     if(!f) {                                    // if failed to open, copy in the default value
         strncpy(buffer, defValue, maxLen - 1);

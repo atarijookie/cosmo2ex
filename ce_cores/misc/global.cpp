@@ -113,7 +113,7 @@ bool checkStartupFilesAndDirs(void)
     }
 
     // dirs specified in .env
-    const char* dirKeys[] = {"CE_DIR", "BIN_DIR", "DATA_DIR", "LOG_DIR", "PID_DIR", "SETTINGS_DIR", "CONFIG_DRIVE_PATH", "IKBD_VIRTUAL_DEVICES_PATH"};
+    const char* dirKeys[] = {"CE_DIR", "BIN_DIR", "DATA_DIR", "LOG_DIR", "PID_DIR", "SETTINGS_DIR", "CONFIG_DRIVE_PATH"};
 
     for(size_t i=0; i<sizeof(dirKeys)/sizeof(dirKeys[0]); i++) {
         std::string dir = Utils::dotEnvValue(dirKeys[i]);

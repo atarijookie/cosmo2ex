@@ -44,6 +44,7 @@ type Server struct {
 	router        *chi.Mux
 	mu            sync.RWMutex
 	authTokens    map[string]struct{}
+	input         *inputClient // connection to input socket of ce_cores, for mouse / keyboard of the web UI
 }
 
 // responseWriter wraps http.ResponseWriter to capture status codes
@@ -60,13 +61,22 @@ func (rw *responseWriter) WriteHeader(code int) {
 func main() {
 	loadEnvFromDotFile(".env")
 
-	// Check if another instance is running and write PID file
-	if otherInstanceIsRunning() {
-		log.Fatalf("Another instance of this application is already running")
+	port := os.Getenv("WEBSERVER_PORT")
+	if port == "" {
+		port = "8080"
+	}
+	addr := ":" + port
+
+	// The listening port is also the single instance lock: only one process can bind it, and the OS releases it
+	// when the process exits or crashes - works the same on Linux, macOS and Windows, nothing stale left behind.
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("Can't listen on %s - another instance of this application (or another program) is already using this port: %v", addr, err)
 	}
 
-	// Set up cleanup of PID file on exit
+	// PID file is just information for humans / scripts (ce_stop.sh), not the lock
 	pidFilePath := getPIDFilePath()
+	writePIDFile(pidFilePath)
 	defer func() {
 		if err := os.Remove(pidFilePath); err != nil && !os.IsNotExist(err) {
 			log.Printf("Failed to remove PID file %s: %v", pidFilePath, err)
@@ -85,10 +95,7 @@ func main() {
 	}()
 
 	// Configure logging to file with optional LOG_DIR override and rotation.
-	logDir := os.Getenv("LOG_DIR")
-	if logDir == "" {
-		logDir = "/var/log/ce"
-	}
+	logDir := envDir("LOG_DIR")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		log.Printf("failed to create log directory %q: %v", logDir, err)
 	} else {
@@ -100,12 +107,6 @@ func main() {
 		}
 	}
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-
-	port := os.Getenv("WEBSERVER_PORT")
-	if port == "" {
-		port = "8080"
-	}
-	addr := ":" + port
 
 	// Get local IP address for URL
 	localIP := getLocalIP()
@@ -134,7 +135,7 @@ func main() {
 		}
 	}()
 
-	if err := listenAndServeHTTPS(addr, s.router, certs); err != nil {
+	if err := serveHTTPS(ln, s.router, certs); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }
@@ -160,6 +161,7 @@ func newServer() *Server {
 	s := &Server{
 		router: r,
 		authTokens: map[string]struct{}{},
+		input:      &inputClient{},
 	}
 
 	// browsers must revalidate pages instead of using cached copies (304 if unchanged), otherwise

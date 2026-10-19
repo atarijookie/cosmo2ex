@@ -49,12 +49,6 @@ typedef struct {
 #define MAX_FIND_STORAGES               32
 
 //---------------------------------------
-#define MAX_ZIP_DIRS                    5
-
-#define ZIPDIR_PATH_PREFIX              "/tmp/zipdir"
-#define ZIPDIR_PATH_LENGTH              12              // length of ZIP DIR path, including the number which is generated in getZipDirMountPoint()
-
-//---------------------------------------
 // Pexec() image stuff
 // whole image size
 #define PEXEC_DRIVE_SIZE_BYTES          (5 * 1024 * 1024)
@@ -70,42 +64,10 @@ typedef struct {
 
 //---------------------------------------
 
-class ZipDirEntry {
-    public:
-
-    ZipDirEntry(int index) {
-        clear(index);
-    }
-
-    std::string realHostPath;           // real path to ZIP file on host dir struct, e.g. /mnt/shared/normal/archive.zip
-    std::string mountPoint;             // contains path, where the ZIP file will be mounted, and where createHostPath() will redirect host path
-    uint32_t       lastAccessTime;         // Utils::getCurrentMs() time which is stored on each access to this folder - will be used to unmount oldest ZIP files, so new ZIP files can be mounted / accessed
-
-    int         mountActionStateId;     // this is TMountActionState.id, which you can use to find out if the mount action did already finish
-    bool        isMounted;              // if this is set to true, don't have to check mount action state, but just consider this to be mounted
-
-    void clear(int index) {
-        realHostPath        = "";
-        lastAccessTime      = 0;
-        mountActionStateId  = 0;
-
-        getZipDirMountPoint(index, mountPoint);
-    }
-
-    void getZipDirMountPoint(int index, std::string &aMountPoint)
-    {
-        char indexNoStr[128];
-        sprintf(indexNoStr, "%d", index);       // generate mount point number string, e.g. "5"
-
-        aMountPoint  = ZIPDIR_PATH_PREFIX;      // e.g. /tmp/zipdir
-        aMountPoint += indexNoStr;
-    }
-};
-
 class TranslatedDisk
 {
 public:
-    TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig, int aSharedMemFd, uint8_t* aSharedMemPointer);
+    TranslatedDisk(AcsiDataTrans *dt, THwConfig* hwConfig);
     virtual ~TranslatedDisk();
 
     void setMac(uint8_t* mac);

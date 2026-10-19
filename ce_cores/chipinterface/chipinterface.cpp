@@ -8,7 +8,6 @@
 #include <unistd.h>
 #include <limits.h>
 #include <sys/select.h>
-#include <sys/inotify.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <netinet/in.h>
@@ -60,7 +59,7 @@ bool ChipInterface::createListeningSocket(void)
     }
 
     // open socket
-    if ((fdListen = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0)) < 0) {     // CLOEXEC - don't let processes started by system() inherit this socket
+    if ((fdListen = Utils::socketCloexec(AF_INET, SOCK_STREAM, 0)) < 0) {      // CLOEXEC - don't let processes started by system() inherit this socket
         Debug::out(whichLog, LOG_ERROR, "ChipInterface::createListeningSocket - failed to open socket: %s", strerror(errno));
         fdListen = FD_EMPTY;
         return false;
@@ -118,7 +117,7 @@ int ChipInterface::acceptSocketIfNeededAndPossible(void)
     struct sockaddr_in addressClient;
     socklen_t addrSize = sizeof(addressClient);
 
-    int newSock = accept4(fdListen, (struct sockaddr *) &addressClient, &addrSize, SOCK_CLOEXEC);  // CLOEXEC - don't let processes started by system() inherit this socket
+    int newSock = Utils::acceptCloexec(fdListen, (struct sockaddr *) &addressClient, &addrSize);  // CLOEXEC - don't let processes started by system() inherit this socket
 
     if(newSock < 0) {       // nothing to accept, would block? quit
         return FD_EMPTY;
@@ -259,7 +258,7 @@ uint8_t ChipInterface::getFWversion(ClientInfo* ci, bool hddNotFdd)
     }
 
     char fwVerStr[64];
-    sprintf(fwVerStr, "%d-%02d-%02d", year, month, day);
+    snprintf(fwVerStr, sizeof(fwVerStr), "%d-%02d-%02d", year, month, day);
     StatusReport::storeIpAndFwVer(ci->mac, ci->ipAddr, fwVerStr, bfr[4]);
 
     // features changed? store it to settings
@@ -511,7 +510,7 @@ bool ChipInterface::sendAll(int& fdClient, const uint8_t* data, uint32_t len)
             return false;
         }
 
-        ssize_t res = send(fdClient, data + sent, len - sent, MSG_NOSIGNAL);
+        ssize_t res = send(fdClient, data + sent, len - sent, SEND_NOSIGNAL);
 
         if(res > 0) {                       // some (or all) bytes sent? continue with the rest
             sent += res;

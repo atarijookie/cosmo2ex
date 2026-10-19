@@ -45,7 +45,7 @@ const char* Debug::getCoreLogFileName(bool forceCreate, int whichLog)
         return coreLogFileName[whichLog].c_str();
     }
 
-    std::string logDir = Utils::dotEnvValue("LOG_DIR", LOG_DIR_DEFAULT, false);
+    std::string logDir = Utils::dotEnvValue("LOG_DIR", Utils::defaultDir("LOG_DIR").c_str(), false);
 
     switch(whichLog) {
         case LOGFILE_DISCOVERY: coreLogFileName[whichLog] = logDir + std::string("/" DISCOVERY_LOG_FILENAME); break;
@@ -182,7 +182,7 @@ void Debug::outV(int whichLog, int aLogLevel, const char *format, va_list args)
     }
     struct tm tm;
     localtime_r(&tv.tv_sec, &tm);           // localtime_r() - thread safe version of localtime()
-    sprintf(humanTime, "%02d:%02d:%02d.%06ld", tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+    snprintf(humanTime, sizeof(humanTime), "%02d:%02d:%02d.%06ld", tm.tm_hour, tm.tm_min, tm.tm_sec, (long) tv.tv_usec);    // suseconds_t: long on Linux, int on macOS
 
     if(aLogLevel == LOG_ERROR && dbgVars.isInHandleAcsiCommand) {    // it's an error, and we're debugging ACSI stuff
         logPrintf(whichLog, f, "%s %4d %s\n", humanTime, diff, ll); // diff in ms, date/time in human readable format

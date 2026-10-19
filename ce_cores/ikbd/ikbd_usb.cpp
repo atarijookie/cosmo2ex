@@ -2,10 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dirent.h>
 #include <fcntl.h>
-#include <linux/input.h>
-#include <linux/joystick.h>
 #include <errno.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -16,6 +13,8 @@
 #include "../misc/settings.h"
 #include "../chipinterface/chipinterface.h"
 #include "ikbd.h"
+#include "linuxinput.h"
+#include "inputdevices.h"
 
 static_assert(sizeof(input_event) <= INPUT_EVENT_MAX_SIZE && sizeof(js_event) <= INPUT_EVENT_MAX_SIZE, "TInputDevice.partial too small");
 
@@ -26,13 +25,16 @@ void Ikbd::initDevs(void)
 {
     int i;
 
-    lastVDevMouseEventTime = 0;
+    gotInputMouseEvent = false;
+    lastInputMouseEventTime = 0;
+    inputJoy[0] = inputJoy[1] = false;
 
     keyboardExclusiveAccess = !noCapture;   // capture mode: grab keyboard & mouse when found (toggled by LCTRL+RCTRL+LALT+RALT)
     memset(keybJoyHeld, 0, sizeof(keybJoyHeld));
 
     for(i=0; i<INTYPE_COUNT; i++) {
         ikbdDevs[i].fd = -1;
+        ikbdDevs[i].evdev = NULL;
 
         deinitDev(i);
     }
@@ -44,15 +46,12 @@ void Ikbd::deinitDev(int index)
         return;
     }
 
-    if(ikbdDevs[index].fd != -1) {            // device was open? close it
-        close(ikbdDevs[index].fd);
-    }
+    inputDevClose(ikbdDevs[index]);          // close device if it was open
 
-    ikbdDevs[index].fd            = -1;       // set vars to default init values
-    ikbdDevs[index].devPath[0]    = 0;
+    ikbdDevs[index].devPath[0]    = 0;        // set vars to default init values
     ikbdDevs[index].partialLen    = 0;
 
-    if(index == INTYPE_KEYBOARD || index == INTYPE_MOUSE || index == INTYPE_VDEVKEYBOARD) {   // key source gone? releases of held keys won't come anymore
+    if(index == INTYPE_KEYBOARD || index == INTYPE_MOUSE) {   // key source gone? releases of held keys won't come anymore
         resetHotkeyState();
     }
 
@@ -82,205 +81,7 @@ void Ikbd::initJoystickState(TJoystickState *joy)
 void Ikbd::closeDevs(void)
 {
     for(int i=0; i<INTYPE_COUNT; i++) {
-        if(ikbdDevs[i].fd != -1) {        // if device is open
-            close(ikbdDevs[i].fd);        // close it
-            ikbdDevs[i].fd = -1;          // mark it as closed
-        }
-    }
-}
-
-void Ikbd::findDevices(void)
-{
-    char linkBuf[PATH_BUFF_SIZE];
-    char devBuf[PATH_BUFF_SIZE];
-
-    DIR *dir = opendir(INPUT_LINKS_PATH);                            // try to open the dir
-
-    if(dir == NULL) {                                                 // not found?
-        return;
-    }
-
-    while(1) {                                                      // while there are more files, store them
-        struct dirent *de = readdir(dir);                            // read the next directory entry
-
-        if(de == NULL) {                                            // no more entries?
-            break;
-        }
-
-        if(de->d_type != DT_LNK) {                                    // if it's not a link, skip it
-            continue;
-        }
-
-        char *pJoystick = strstr(de->d_name, "joystick");           // does the name contain 'joystick'?
-        char *pEvent    = strstr(de->d_name, "event");              // does the name contain 'event'?
-
-        if(pJoystick == NULL && pEvent == NULL) {                   // if it's not joystick and doesn't contain 'event', skip it (non-joystick must have event)
-            continue;
-        }
-
-        if(pJoystick != NULL && pEvent != NULL) {                   // if it's joystick and contains 'event', skip it (joystick must NOT have event)
-            continue;
-        }
-
-        memset(linkBuf,    0, PATH_BUFF_SIZE);
-        memset(devBuf,    0, PATH_BUFF_SIZE);
-
-        strcpy(linkBuf, INPUT_LINKS_PATH);                          // create path to link files, e.g. /dev/input/by-path/usb-kbd-event
-        strcat(linkBuf, HOSTPATH_SEPAR_STRING);
-        strcat(linkBuf, de->d_name);
-
-        int ires = readlink(linkBuf, devBuf, PATH_BUFF_SIZE);        // try to resolve the filename from the link
-        if(ires == -1) {
-            continue;
-        }
-
-        std::string pathAndFile = devBuf;
-        std::string path, file;
-
-        Utils::splitFilenameFromPath(pathAndFile, path, file);        // get only file name, skip the path (which now is something like '../../')
-        file = "/dev/input/" + file;                                // create full path - /dev/input/event0
-
-        processFoundDev(de->d_name, file.c_str());    // and do something with that file
-    }
-
-    closedir(dir);
-}
-
-void Ikbd::findVirtualDevices(void)
-{
-    char devpath[PATH_BUFF_SIZE];
-
-    std::string vdevFolder = Utils::dotEnvValue("IKBD_VIRTUAL_DEVICES_PATH");
-    DIR *dir = opendir(vdevFolder.c_str());     // try to open the dir
-
-    if(dir == NULL) {                                               // not found?
-        return;
-    }
-
-    while(1) {                                                      // while there are more files, store them
-        struct dirent *de = readdir(dir);                           // read the next directory entry
-
-        if(de == NULL) {                                            // no more entries?
-            break;
-        }
-
-        if(de->d_type != DT_FIFO) {                                    // if it's not a fifo, skip it
-            continue;
-        }
-
-        char *pMouse  = strstr(de->d_name, "mouse");            // does the name contain 'mouse'?
-        char *pKbd    = strstr(de->d_name, "kbd");              // does the name contain 'kbd'?
-
-        if(pMouse == NULL && pKbd == NULL) {
-            continue;
-        }
-
-        snprintf(devpath, sizeof(devpath), "%s/%s", vdevFolder.c_str(), de->d_name);
-
-        processFoundDev(devpath, devpath);    // and do something with that file
-    }
-
-    closedir(dir);
-}
-
-void Ikbd::processFoundDev(const char *linkName, const char *fullPath)
-{
-    TInputDevice *in = NULL;
-    const char *what;
-    bool virtualDevice = false;
-
-    std::string vdevMouse = Utils::dotEnvValue("IKBD_VIRTUAL_MOUSE_FILE");
-    std::string vdevKbd = Utils::dotEnvValue("IKBD_VIRTUAL_KEYBOARD_FILE");
-
-    logIkbd(LOG_INFO, "Ikbd::processFoundDev(%s, %s)", linkName, fullPath);
-    if(vdevMouse == linkName) {                         // it's a VIRTUAL mouse
-        if(ikbdDevs[INTYPE_VDEVMOUSE].fd == -1) {       // don't have mouse?
-            in = &ikbdDevs[INTYPE_VDEVMOUSE];
-            what = linkName;
-            virtualDevice = true;
-        } else {                                        // already have a mouse?
-            logIkbd(LOG_INFO, "%s: already have a mouse", fullPath);
-            return;
-        }
-    } else if(vdevKbd == linkName) {                    // it's a VIRTUAL keyboard?
-        if(ikbdDevs[INTYPE_VDEVKEYBOARD].fd == -1) {          // don't have keyboard?
-            in = &ikbdDevs[INTYPE_VDEVKEYBOARD];
-            what = linkName;
-            virtualDevice = true;
-        } else {                                        // already have a keyboard?
-            logIkbd(LOG_INFO, "%s: already have a keyboard", fullPath);
-            return;
-        }
-    } else if(strstr(linkName, "mouse") != NULL) {             // it's a mouse
-        if(ikbdDevs[INTYPE_MOUSE].fd == -1) {             // don't have mouse?
-            in = &ikbdDevs[INTYPE_MOUSE];
-            what = "mouse";
-        } else {                                        // already have a mouse?
-            logIkbd(LOG_INFO, "%s: already have a mouse", fullPath);
-            return;
-        }
-    } else if(strstr(linkName, "kbd") != NULL) {               // it's a keyboard?
-        if(ikbdDevs[INTYPE_KEYBOARD].fd == -1) {          // don't have keyboard?
-            in = &ikbdDevs[INTYPE_KEYBOARD];
-            what = "keyboard";
-        } else {                                        // already have a keyboard?
-            logIkbd(LOG_INFO, "%s: already have a keyboard", fullPath);
-            return;
-        }
-    } else if(strstr(linkName, "joystick") != NULL) {                  // it's a joystick?
-        // fixed slots: 1st stick -> joystick[1] (port 1 by default), 2nd stick -> joystick[0] (port 0 by default);
-        // swapping ports (firstJoyIs0) is done when sending, see joyPort(), so it also applies to already connected sticks
-        const int joy1st = INTYPE_JOYSTICK2;
-        const int joy2nd = INTYPE_JOYSTICK1;
-
-        if(ikbdDevs[joy1st].fd == -1) {                                       // don't have joystick 1?
-            if(strcmp(fullPath, ikbdDevs[joy2nd].devPath) == 0) {             // if this device is already connected as joystick 2, skip it
-                logIkbd(LOG_INFO, "%s: already connected as joystick 2", fullPath);
-                return;
-            }
-
-            in = &ikbdDevs[joy1st];
-            what = "joystick1";
-        } else if(ikbdDevs[joy2nd].fd == -1) {                                // don't have joystick 2?
-            if(strcmp(fullPath, ikbdDevs[joy1st].devPath) == 0) {             // if this device is already connected as joystick 1, skip it
-                logIkbd(LOG_INFO, "%s: already cannected as joystick 1", fullPath);
-                return;
-            }
-
-            in = &ikbdDevs[joy2nd];
-            what = "joystick2";
-        } else {                                                            // already have a joystick?
-            logIkbd(LOG_INFO, "%s: already have both joysticks", fullPath);
-            return;
-        }
-    } else {
-        // this isn't mouse, keyboard or joystick, quit!
-        return;
-    }
-
-    if(strlen(fullPath) >= sizeof(in->devPath)) {      // path wouldn't fit to devPath (virtual device path can be long)
-        logIkbd(LOG_ERROR, "Input device path too long (max %d chars): %s", (int) sizeof(in->devPath) - 1, fullPath);
-        return;
-    }
-
-    int fd = open(fullPath, O_RDONLY | O_NONBLOCK);
-
-    if(fd < 0) {
-        logIkbd(LOG_ERROR, "Failed to open input device %s (%s) : %s ", fullPath, what, strerror(errno));
-        return;
-    }
-
-    // need to EVIOCSREP ?
-
-    in->fd = fd;
-    in->partialLen = 0;
-    snprintf(in->devPath, sizeof(in->devPath), "%s", fullPath);
-    logIkbd(LOG_INFO, "Got device (%s): %s", what, fullPath);
-
-    // grab only real keyboard / mouse (evdev) - joysticks are /dev/input/js* where EVIOCGRAB doesn't work, virtual devices are FIFOs
-    bool isKeybOrMouse = (in == &ikbdDevs[INTYPE_KEYBOARD] || in == &ikbdDevs[INTYPE_MOUSE]);
-    if(!virtualDevice && isKeybOrMouse && keyboardExclusiveAccess) {
-        grabExclusiveAccess(fd);
+        inputDevClose(ikbdDevs[i]);
     }
 }
 
@@ -555,12 +356,9 @@ bool Ikbd::gotUsbMouse(void)
         return true;
     }
 
-    if(ikbdDevs[INTYPE_VDEVMOUSE].fd != -1) {                           // got virtual mouse?
-        uint32_t diff = Utils::getCurrentMs() - lastVDevMouseEventTime;    // calculate how much time has passed since last VDevMouse event
-
-        if(diff < 10000) {                                              // if virtual mouse moved in the last 10 seconds, we got it (otherwise we don't have it)
-            return true;
-        }
+    // mouse of app on input socket (web UI, desktop app) - present if it moved in the last 10 seconds (otherwise we don't have it)
+    if(gotInputMouseEvent && Utils::elapsedMs(lastInputMouseEventTime) < 10000) {
+        return true;
     }
 
     return false;                                   // no mouse present
@@ -577,7 +375,7 @@ bool Ikbd::gotUsbKeyboard(void)
 
 bool Ikbd::gotUsbJoy1(void)
 {
-    if(ikbdDevs[INTYPE_JOYSTICK1].fd != -1) {
+    if(ikbdDevs[INTYPE_JOYSTICK1].fd != -1 || inputJoy[0]) {
         return true;
     }
 
@@ -586,18 +384,25 @@ bool Ikbd::gotUsbJoy1(void)
 
 bool Ikbd::gotUsbJoy2(void)
 {
-    if(ikbdDevs[INTYPE_JOYSTICK2].fd != -1) {
+    if(ikbdDevs[INTYPE_JOYSTICK2].fd != -1 || inputJoy[1]) {
         return true;
     }
 
     return false;
 }
 
-void Ikbd::markVirtualMouseEvenTime(void)
+void Ikbd::setInputJoysticks(bool joy0, bool joy1)
 {
-    // store time when we received VDevMouse event -- for telling that
-    // the virtual mouse is not here when it doesn't move for a longer time
-    lastVDevMouseEventTime = Utils::getCurrentMs();
+    inputJoy[0] = joy0;
+    inputJoy[1] = joy1;
+}
+
+void Ikbd::markInputMouseEventTime(void)
+{
+    // store time when we received mouse event from input socket -- for telling that
+    // that mouse is not here when it doesn't move for a longer time
+    gotInputMouseEvent = true;
+    lastInputMouseEventTime = Utils::getCurrentMs();
 }
 
 void Ikbd::handlePcKeyAsKeybJoy(int joyNumber, int pcKey, int eventValue)
@@ -670,40 +475,11 @@ void Ikbd::toggleKeyboardExclusiveAccess(void)
     keyboardExclusiveAccess = !keyboardExclusiveAccess;     // capture mode - also applies to keyboard / mouse found later
 
     if(keyboardExclusiveAccess) {
-        grabExclusiveAccess(fdKeyb);
-        grabExclusiveAccess(fdMouse);
+        grabExclusiveAccess(INTYPE_KEYBOARD);
+        grabExclusiveAccess(INTYPE_MOUSE);
     } else {
-        releaseExclusiveAccess(fdKeyb);
-        releaseExclusiveAccess(fdMouse);
-    }
-}
-
-bool Ikbd::grabExclusiveAccess(int fd)
-{
-    if(noCapture) {       // if shouldn't do USB keyboard and mouse capture, just quit
-        return false;
-    }
-
-    if(fd < 0) {          // not open (0 is a valid fd)
-        return false;
-    }
-
-    if(ioctl(fd, EVIOCGRAB, (void*)1) < 0) { // grab exclusive
-        logIkbd(LOG_ERROR, "Ikbd::grabExclusiveAccess() ioctl failed : %s", strerror(errno));
-        return false;
-    }
-
-    return true;
-}
-
-void Ikbd::releaseExclusiveAccess(int fd)
-{
-    if(fd < 0) {          // not open (0 is a valid fd)
-        return;
-    }
-
-    if(ioctl(fd, EVIOCGRAB, (void*)0) < 0) { // release
-        logIkbd(LOG_ERROR, "Ikbd::releaseExclusiveAccess() ioctl failed : %s", strerror(errno));
+        releaseExclusiveAccess(INTYPE_KEYBOARD);
+        releaseExclusiveAccess(INTYPE_MOUSE);
     }
 }
 

@@ -13,8 +13,6 @@
 #include <algorithm>    // std::sort
 #include <vector>       // std::vector
 
-#include <sys/ioctl.h>
-#include <linux/msdos_fs.h>
 
 #include "libdospath.h"
 #include "utilslib.h"
@@ -461,10 +459,15 @@ bool DirTranslator::findFirstAndNext(SearchParams& sp, DiskItem& di)
             shortToLongPath(sp.path, longPath, false);
             UtilsLib::out(LDP_LOG_DEBUG, "DirTranslator::findFirstAndNext - translated possible short path: %s to long path: %s", sp.path.c_str(), longPath.c_str());
 
-            if (stat(longPath.c_str(), &attr) == 0) {  // matching just one file and it exists? good! (attr is used below for dir / file detection)
-                std::string justPath, justLongFname;
-                UtilsLib::splitFilenameFromPath(longPath, justPath, justLongFname);       // extract just long filename from the long path
+            std::string justPath, justLongFname;
+            UtilsLib::splitFilenameFromPath(longPath, justPath, justLongFname);           // extract just long filename from the long path
 
+            // Not translated (not known yet, e.g. created on the host after this dir was read)? Then it must exist with
+            // exactly this name - on a case-insensitive filesystem stat() of 'GAMES' finds also 'Games', and the name
+            // from the ST would become the long name. The dir scan below finds the real name then.
+            bool exactName = justLongFname != Internal(sp)->searchString || UtilsLib::existsWithExactName(justPath, justLongFname);
+
+            if (exactName && stat(longPath.c_str(), &attr) == 0) {  // matching just one file and it exists? good! (attr is used below for dir / file detection)
                 // use the translated (long) justPath, the dir part of sp.path might still contain short names
                 setDiskItem(sp, di, justPath, Internal(sp)->searchString, justLongFname, S_ISDIR(attr.st_mode));
                 closeDirSetFlags(sp);
@@ -548,9 +551,6 @@ bool DirTranslator::setDiskItem(SearchParams& sp, DiskItem& di, const std::strin
 {
     bool isUpDir = isDir && (longFname == "." || longFname == "..");    // is this '.' or '..'?
 
-    di.attribs |= (isDir ? FA_DIR : 0);                     // if it's a dir, add dir flag
-    di.attribs |= ((longFname[0] == '.') ? FA_HIDDEN : 0);  // enforce Mac/Unix convention of hidding files startings with '.'
-
     std::string fullEntryPath = hostPath;
     UtilsLib::mergeHostPaths(fullEntryPath, longFname);
 
@@ -591,26 +591,9 @@ bool DirTranslator::setDiskItem(SearchParams& sp, DiskItem& di, const std::strin
         UtilsLib::out(LDP_LOG_DEBUG, "TranslatedDisk::setDiskItem -- %s matches pattern %s", shortFname.c_str(), searchString.c_str());
     }
 
-    // get MS-DOS VFAT attributes if this is a VFAT filesystem
-    if(Internal(sp)->isVFAT) {
-        int fd = open(fullEntryPath.c_str(), O_RDONLY);
-
-        if(fd >= 0) {
-            __u32 dosattrs = 0;
-
-            if (ioctl(fd, FAT_IOCTL_GET_ATTRIBUTES, &dosattrs) >= 0) {      // try to get attributes and set them in disk item
-                if(dosattrs & ATTR_RO)      di.attribs |= FA_READONLY;
-                if(dosattrs & ATTR_HIDDEN)  di.attribs |= FA_HIDDEN;
-                if(dosattrs & ATTR_SYS)     di.attribs |= FA_SYSTEM;
-            } else {    // it will fail if the underlying FileSystem is not FAT, also mark this as not vfat fs, so we won't try on next items
-                Internal(sp)->isVFAT = false;
-            }
-
-            close(fd);
-        } else {
-            UtilsLib::out(LDP_LOG_ERROR, "TranslatedDisk::appendFoundToFindStorage -- open(%s) failed, errno %d", fullEntryPath.c_str(), errno);
-        }
-    }
+    // attributes only now - this method is called for each dir entry until one is accepted, so attributes
+    // of entries rejected above must not get into the one returned
+    di.attribs = UtilsLib::hostAttributes(fullEntryPath, attr, Internal(sp)->isVFAT);
 
     return true;                // success
 }

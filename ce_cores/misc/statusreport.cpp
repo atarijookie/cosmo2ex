@@ -22,10 +22,10 @@ void StatusReport::createSingleReportFile(int i)
     report.clear();
     char tmp[256];
 
-    sprintf(tmp, "IP: %d.%d.%d.%d\n", (statuses[i].ipAddr >> 24) & 0xff, (statuses[i].ipAddr >> 16) & 0xff, (statuses[i].ipAddr >> 8) & 0xff, statuses[i].ipAddr & 0xff);
+    snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d\n", (statuses[i].ipAddr >> 24) & 0xff, (statuses[i].ipAddr >> 16) & 0xff, (statuses[i].ipAddr >> 8) & 0xff, statuses[i].ipAddr & 0xff);
     report += tmp;
 
-    sprintf(tmp, "MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", statuses[i].mac[0], statuses[i].mac[1], statuses[i].mac[2], statuses[i].mac[3], statuses[i].mac[4], statuses[i].mac[5]);
+    snprintf(tmp, sizeof(tmp), "MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", statuses[i].mac[0], statuses[i].mac[1], statuses[i].mac[2], statuses[i].mac[3], statuses[i].mac[4], statuses[i].mac[5]);
     report += tmp;
 
     struct tm tm_info;
@@ -46,11 +46,11 @@ void StatusReport::createSingleReportFile(int i)
         report += std::string("\n");
     }
 
-    sprintf(tmp, "FW version: %s\n", statuses[i].fwVer);
+    snprintf(tmp, sizeof(tmp), "FW version: %s\n", statuses[i].fwVer);
     report += tmp;
 
     if(statuses[i].tosVersion) {
-        sprintf(tmp, "TOS version: %04X\n", statuses[i].tosVersion);
+        snprintf(tmp, sizeof(tmp), "TOS version: %04X\n", statuses[i].tosVersion);
         report += tmp;
     }
 
@@ -59,7 +59,7 @@ void StatusReport::createSingleReportFile(int i)
         mch = (statuses[i].scsiMachine == SCSI_MACHINE_TT) ? "TT" : mch;
         mch = (statuses[i].scsiMachine == SCSI_MACHINE_FALCON) ? "Falcon" : mch;
 
-        sprintf(tmp, "SCSI machine: %s\n", mch);
+        snprintf(tmp, sizeof(tmp), "SCSI machine: %s\n", mch);
         report += tmp;
     }
 
@@ -69,8 +69,8 @@ void StatusReport::createSingleReportFile(int i)
     }
 
     // if changed, write to file
-    std::string logDir = Utils::dotEnvValue("LOG_DIR", LOG_DIR_DEFAULT);  // path to logs dir
-    sprintf(tmp, "%02X%02X%02X%02X%02X%02X.txt", statuses[i].mac[0], statuses[i].mac[1], statuses[i].mac[2], statuses[i].mac[3], statuses[i].mac[4], statuses[i].mac[5]);
+    std::string logDir = Utils::dotEnvValue("LOG_DIR", Utils::defaultDir("LOG_DIR").c_str());  // path to logs dir
+    snprintf(tmp, sizeof(tmp), "%02X%02X%02X%02X%02X%02X.txt", statuses[i].mac[0], statuses[i].mac[1], statuses[i].mac[2], statuses[i].mac[3], statuses[i].mac[4], statuses[i].mac[5]);
     std::string fileAndPath = Utils::mergeHostPaths2(logDir, std::string(tmp));
 
     Utils::textToFile(report.c_str(), fileAndPath.c_str());     // write to file

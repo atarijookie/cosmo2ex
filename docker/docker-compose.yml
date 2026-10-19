@@ -18,10 +18,13 @@
 # port 7200 and the server unicasts the reply to the device on port 7201.
 # Docker bridge NAT (-p 7200:7200/udp) does not deliver LAN broadcasts.
 # Host networking also puts 8080 and 7300-7302 directly on the host.
+# 7310/udp (commands) and 7311/tcp (input app) are bound to 127.0.0.1 only.
 # Linux Docker only; `ports:` cannot be used with host mode.
 #
-# USB mice/keyboards/gamepads: IKBD scans /dev/input/by-path and opens
-# /dev/input/event* and /dev/input/js*. Allow char major 13 (Linux input).
+# USB mice/keyboards/gamepads: IKBD lists input devices with libudev (sysfs) and
+# opens /dev/input/event* and /dev/input/js*. Allow char major 13 (Linux input).
+# Hotplug: kernel uevents (host network namespace); with /run/udev mounted
+# read-only, udev events (after the host udev rules ran) are used instead.
 #
 # USB raw disks for HDD emulation: PATH_RAW_x holds a host device path like
 # /dev/sda, so the host /dev is bind-mounted to /dev (hotplugged disks and

@@ -6,7 +6,6 @@
 #include <string>
 #include <unistd.h>
 #include <sys/select.h>
-#include <sys/inotify.h>
 #include <limits.h>
 #include <signal.h>
 #include <termios.h>
@@ -22,40 +21,12 @@
 #include "../discovery/discovery.h"
 
 #include "ikbd.h"
+#include "inputsocket.h"
+#include "ikbdinputsink.h"
+#include "inputdevices.h"
+
 
 TInputDevice ikbdDevs[INTYPE_COUNT];
-
-void findDevicesFromInotify(int inotifyFd, Ikbd& ikbd, int wd1, int wd2, int wd3)
-{
-    ssize_t res;
-
-    char buf[sizeof(struct inotify_event) + NAME_MAX + 1];
-    res = read(inotifyFd, buf, sizeof(buf));
-    if(res < 0) {
-        logIkbd(LOG_ERROR, "read(inotifyFd) : %s", strerror(errno));
-        return;
-    }
-
-    struct inotify_event *iev = (struct inotify_event *)buf;
-    logIkbd(LOG_DEBUG, "inotify msg %dbytes wd=%d mask=%04x name=%s", (int)res, iev->wd, iev->mask, (iev->len > 0) ? iev->name : "");
-    if(iev->wd == wd1) {
-        if(iev->len > 0 && (0 == strcmp(iev->name, "by-path"))) {
-            wd2 = inotify_add_watch(inotifyFd, "/dev/input/by-path", IN_CREATE | IN_DELETE_SELF);
-            if(wd2 < 0) logIkbd(LOG_ERROR, "inotify_add_watch(/dev/input/by-path, IN_CREATE | IN_DELETE_SELF)");
-        }
-    } else if(iev->wd == wd2) {
-        if(iev->mask & IN_DELETE_SELF) {
-            inotify_rm_watch(inotifyFd, wd2);
-            wd2 = -1;
-        } else {
-            // look for new input devices
-            ikbd.findDevices();
-        }
-    } else if(iev->wd == wd3) {
-        // look for new input devices
-        ikbd.findVirtualDevices();
-    }
-}
 
 void processInputFromAttachedDevices(Ikbd& ikbd, fd_set* pReadfds)
 {
@@ -67,10 +38,9 @@ void processInputFromAttachedDevices(Ikbd& ikbd, fd_set* pReadfds)
         }
 
         bool isJoystick = (i == INTYPE_JOYSTICK1 || i == INTYPE_JOYSTICK2);
-        bool isVirtual  = (i == INTYPE_VDEVMOUSE || i == INTYPE_VDEVKEYBOARD);
         int  eventSize  = isJoystick ? (int) sizeof(js_event) : (int) sizeof(input_event);
 
-        // read the (rest of the) event - a read can return less than a whole event (e.g. from FIFO), then the rest comes later
+        // read the (rest of the) event - a read can return less than a whole event, then the rest comes later
         TInputDevice *dev = &ikbdDevs[i];
         ssize_t res = read(fd, dev->partial + dev->partialLen, eventSize - dev->partialLen);
 
@@ -88,16 +58,8 @@ void processInputFromAttachedDevices(Ikbd& ikbd, fd_set* pReadfds)
         }
 
         if(res == 0) {                                          // EOF
-            if(isVirtual) {
-                // writer closed the virtual device FIFO - reopen it, so the next writer can connect again
-                // (only IN_CREATE is watched in the virtual devices dir, so an existing FIFO would never be reopened)
-                logIkbd(LOG_DEBUG, "ikbdThreadCode() virtual device %d - writer closed, reopening", i);
-                ikbd.deinitDev(i);
-                ikbd.findVirtualDevices();
-            } else {
-                logIkbd(LOG_ERROR, "ikbdThreadCode() read(%d) returned 0 (EOF) closing %d", fd, i);
-                ikbd.deinitDev(i);
-            }
+            logIkbd(LOG_ERROR, "ikbdThreadCode() read(%d) returned 0 (EOF) closing %d", fd, i);
+            ikbd.deinitDev(i);
             continue;
         }
 
@@ -120,14 +82,10 @@ void processInputFromAttachedDevices(Ikbd& ikbd, fd_set* pReadfds)
         memcpy(&ev, dev->partial, sizeof(ev));
 
         switch(i) {
-            case INTYPE_VDEVMOUSE:
-                ikbd.markVirtualMouseEvenTime();                // first mark the event time
-                // fall through
             case INTYPE_MOUSE:
                 ikbd.processMouse(&ev);                         // then process the event
                 break;
             case INTYPE_KEYBOARD:
-            case INTYPE_VDEVKEYBOARD:
                 ikbd.processKeyboard(&ev, false);               // false: don't skip keyboard translation
                 break;
         }
@@ -167,8 +125,6 @@ void *ikbdThreadCode(void *ptr)
     fd_set readfds;
     /*struct timeval timeout;*/
     int i;
-    int inotifyFd;
-    int wd1, wd2, wd3;
 
     logIkbd(LOG_DEBUG, "----------------------------------------------------------");
     logIkbd(LOG_DEBUG, "ikbdThreadCode will enter loop...");
@@ -182,22 +138,13 @@ void *ikbdThreadCode(void *ptr)
 
     Ikbd ikbd(ciIkbd);
 
-    inotifyFd = inotify_init();
-    if(inotifyFd < 0) {
-        logIkbd(LOG_ERROR, "inotify_init() failed");
-    } else {
-        wd1 = inotify_add_watch(inotifyFd, "/dev/input", IN_CREATE);
-        if(wd1 < 0) logIkbd(LOG_ERROR, "inotify_add_watch(/dev/input, IN_CREATE) failed");
-        wd2 = inotify_add_watch(inotifyFd, "/dev/input/by-path", IN_CREATE | IN_DELETE_SELF);
-        if(wd2 < 0) logIkbd(LOG_ERROR, "inotify_add_watch(/dev/input/by-path, IN_CREATE | IN_DELETE_SELF)");
+    InputDevWatch devWatch;                 // USB input devices attached later
+    devWatch.open();
+    ikbd.findDevices();                     // and those attached now
 
-        std::string vdevFolder = Utils::dotEnvValue("IKBD_VIRTUAL_DEVICES_PATH");
-        wd3 = inotify_add_watch(inotifyFd, vdevFolder.c_str(), IN_CREATE);
-        if(wd3 < 0) logIkbd(LOG_ERROR, "inotify_add_watch('%s', IN_CREATE)", vdevFolder.c_str());
-    }
-
-    ikbd.findDevices();
-    ikbd.findVirtualDevices();
+    IkbdInputSink inputSink(ikbd);
+    InputSocket inputSocket(&inputSink);    // keyboard / mouse / joystick events from external app, see inputsocket.h
+    inputSocket.open();                     // failure is logged, the rest works without it
 
     while(sigintReceived == 0) {
         Utils::sleepMs(1);      // intentional sleep to not utilize cpu to max when looping too much before client disconnect
@@ -228,10 +175,8 @@ void *ikbdThreadCode(void *ptr)
         // get all connected client fds, add them to readfds
         max_fd = MAX(max_fd, ciIkbd->setAllClientFds(&readfds));     // all valid client fds will be set to readfds, and highest fd into max_fd
 
-        if(inotifyFd >= 0) {
-            FD_SET(inotifyFd, &readfds);
-            max_fd = MAX(max_fd, inotifyFd);
-        }
+        max_fd = MAX(max_fd, inputSocket.setFds(&readfds));
+        max_fd = MAX(max_fd, devWatch.setFds(&readfds));
 
         // add timeout to select(), so we can check for connection status, settings reload, etc.
         timeval timeout;
@@ -247,9 +192,7 @@ void *ikbdThreadCode(void *ptr)
             }
         }
 
-        if(inotifyFd >= 0 && FD_ISSET(inotifyFd, &readfds)) {
-            findDevicesFromInotify(inotifyFd, ikbd, wd1, wd2, wd3);
-        }
+        devWatch.handle(&readfds, ikbd);
 
         // if listening socket is set, handle it
         if(FD_ISSET(fdListen, &readfds)) {
@@ -265,11 +208,14 @@ void *ikbdThreadCode(void *ptr)
 
         // process events from attached input devices
         processInputFromAttachedDevices(ikbd, &readfds);
+
+        // and from the app on the input socket
+        inputSocket.handle(&readfds);
     }
 
-    if(inotifyFd >= 0) {
-        close(inotifyFd);
-    }
+    inputSocket.close();                    // releases what the app still holds - before ikbd goes away
+
+    devWatch.close();
     ikbd.closeDevs();
 
     ciIkbd->ciClose();

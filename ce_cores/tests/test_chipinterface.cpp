@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <initializer_list>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -121,6 +123,37 @@ TEST_CASE("chipinterface: receiving stops when device closes connection or goes 
 
 void onClientRequest(sockaddr_in *clientAddr, uint8_t *recvData, int len);     // from discovery/discovery.cpp
 
+// Can a socket be bound to this loopback address? Linux answers on the whole 127.0.0.0/8, macOS only on 127.0.0.1 -
+// there the other addresses have to be added first: sudo ifconfig lo0 alias 127.0.0.11 up (CI does that).
+static bool loopbackAddressUsable(const char *ip)
+{
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(fd < 0) {
+        return false;
+    }
+
+    sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    inet_pton(AF_INET, ip, &addr.sin_addr);
+    bool ok = bind(fd, (sockaddr *) &addr, sizeof(addr)) == 0;
+    close(fd);
+    return ok;
+}
+
+// the tests below need the devices to connect from these addresses - false (and a message) if some can't be used
+static bool deviceAddressesUsable(std::initializer_list<const char *> ips)
+{
+    for(const char *ip : ips) {
+        if(!loopbackAddressUsable(ip)) {
+            std::string addr = ip;          // doctest prints a char * as pointer
+            MESSAGE("skipped - can't use loopback address ", addr, " (on macOS: sudo ifconfig lo0 alias ", addr, " up)");
+            return false;
+        }
+    }
+    return true;
+}
+
 // listening ChipInterface on a free local port, devices connect from 127.0.0.x addresses
 struct ChipServerHarness {
     ChipInterface  *ci;
@@ -201,6 +234,9 @@ static bool deviceSeesClosed(int deviceFd)      // server closed connection -> d
 
 TEST_CASE("chipinterface: device reconnecting from the same IP - old connection is closed (HDD / IKBD too)")
 {
+    if(!deviceAddressesUsable({"127.0.0.11", "127.0.0.12"})) {
+        return;
+    }
     ChipServerHarness h(LOGFILE_HDD);                       // used to happen only for FDD
 
     int oldFd, newFd, otherFd;
@@ -217,6 +253,9 @@ TEST_CASE("chipinterface: device reconnecting from the same IP - old connection 
 
 TEST_CASE("chipinterface: device reconnecting with a different IP but same MAC - old connection is closed")
 {
+    if(!deviceAddressesUsable({"127.0.0.21", "127.0.0.22", "127.0.0.23"})) {
+        return;
+    }
     registerMac("127.0.0.21", 0x21);                    // device got IP .21 ...
     registerMac("127.0.0.22", 0x21);                    // ... then (DHCP) .22 - same MAC
     registerMac("127.0.0.23", 0x23);                    // other device
@@ -237,6 +276,9 @@ TEST_CASE("chipinterface: device reconnecting with a different IP but same MAC -
 
 TEST_CASE("chipinterface: reconnecting floppy device keeps its floppy slot, other device gets another one")
 {
+    if(!deviceAddressesUsable({"127.0.0.31", "127.0.0.32"})) {
+        return;
+    }
     ChipServerHarness h(LOGFILE_FDD);
 
     int fdA, fdB, fdA2;

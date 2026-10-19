@@ -6,6 +6,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include <dirent.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "doctest.h"
 
@@ -135,3 +140,106 @@ TEST_CASE("setTimezoneVariable_inThisContext - UTC offset from settings applies 
     std::string cmd = std::string("rm -rf '") + tmpl + "'";
     system(cmd.c_str());
 }
+
+TEST_CASE("getDeviceLabel - empty for non-device path or device without label, label from /dev/disk/by-label (Linux)")
+{
+    CHECK(Utils::getDeviceLabel("/tmp/not-a-device") == "");
+    CHECK(Utils::getDeviceLabel("/dev/ce_test_no_such_disk") == "");
+
+#if defined(__linux__)
+    DIR *d = opendir("/dev/disk/by-label");     // only where udev made some labels - then the 1st one must be found
+    if(d) {
+        struct dirent *de;
+        while((de = readdir(d)) != NULL) {
+            if(de->d_type != DT_LNK) continue;
+
+            char target[256];
+            ssize_t n = readlink((std::string("/dev/disk/by-label/") + de->d_name).c_str(), target, sizeof(target) - 1);
+            if(n <= 0) continue;
+            target[n] = 0;
+
+            const char *dev = strrchr(target, '/');
+            CAPTURE(de->d_name);
+            CHECK(Utils::getDeviceLabel(std::string("/dev/") + (dev ? dev + 1 : target)) == Utils::decodeHexEscapes(de->d_name));
+            break;
+        }
+        closedir(d);
+    }
+#endif
+}
+
+TEST_CASE("socketCloexec / acceptCloexec - fds are not inherited by processes started by system()")
+{
+    int fdListen = Utils::socketCloexec(AF_INET, SOCK_STREAM, 0);
+    REQUIRE(fdListen >= 0);
+    CHECK((fcntl(fdListen, F_GETFD) & FD_CLOEXEC) != 0);
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;                                  // any free port
+    REQUIRE(bind(fdListen, (struct sockaddr *) &addr, sizeof(addr)) == 0);
+    REQUIRE(listen(fdListen, 1) == 0);
+    socklen_t len = sizeof(addr);
+    REQUIRE(getsockname(fdListen, (struct sockaddr *) &addr, &len) == 0);
+
+    int fdClient = socket(AF_INET, SOCK_STREAM, 0);
+    REQUIRE(connect(fdClient, (struct sockaddr *) &addr, sizeof(addr)) == 0);
+
+    struct sockaddr_in peer;
+    socklen_t peerLen = sizeof(peer);
+    int fdAccepted = Utils::acceptCloexec(fdListen, (struct sockaddr *) &peer, &peerLen);
+    REQUIRE(fdAccepted >= 0);
+    CHECK((fcntl(fdAccepted, F_GETFD) & FD_CLOEXEC) != 0);
+    CHECK(peer.sin_addr.s_addr == htonl(INADDR_LOOPBACK));
+
+    close(fdAccepted);
+    close(fdClient);
+    close(fdListen);
+}
+
+TEST_CASE("isWindowsPath / pathFromUi / pathToUi - Windows paths detected, other systems use paths unchanged")
+{
+    CHECK(Utils::isWindowsPath("C:\\Atari\\hdd"));
+    CHECK(Utils::isWindowsPath("d:/games"));
+    CHECK(Utils::isWindowsPath("\\\\server\\share"));
+    CHECK_FALSE(Utils::isWindowsPath("/mnt/hdd"));
+    CHECK_FALSE(Utils::isWindowsPath("relative\\path"));
+    CHECK_FALSE(Utils::isWindowsPath(""));
+    CHECK_FALSE(Utils::isWindowsPath("C"));
+
+#if !defined(__CYGWIN__)
+    CHECK(Utils::pathFromUi("/mnt/hdd") == "/mnt/hdd");
+    CHECK(Utils::pathFromUi("C:\\Atari") == "C:\\Atari");     // not converted - only Cygwin knows how
+    CHECK(Utils::pathToUi("/mnt/hdd") == "/mnt/hdd");
+#else
+    CHECK(Utils::pathFromUi("C:\\Atari\\hdd") == "/cygdrive/c/Atari/hdd");
+    CHECK(Utils::pathToUi("/cygdrive/c/Atari/hdd") == "C:\\Atari\\hdd");
+    CHECK(Utils::pathFromUi("/home/x") == "/home/x");             // POSIX path typed in the UI stays
+    CHECK(Utils::pathFromUi("C:\\Atari\\") == "/cygdrive/c/Atari/");   // trailing separator kept - Cygwin drops it
+    CHECK(Utils::pathFromUi("C:/Atari/") == "/cygdrive/c/Atari/");
+    CHECK(Utils::pathToUi("/cygdrive/c/Atari/") == "C:\\Atari\\");
+    CHECK(Utils::pathFromUi(Utils::pathToUi("/cygdrive/c/Atari/")) == "/cygdrive/c/Atari/");    // round trip, like setPath() + getPath()
+#endif
+}
+
+TEST_CASE("dotEnvValue - Windows paths from .env and real env vars are converted like paths from the UI")
+{
+    dotEnv["TEST_WIN_DIR"] = "C:\\Users\\atari\\AppData\\Local/cosmo2ex";     // e.g. ${LOCALAPPDATA}/cosmo2ex expanded
+    dotEnv["TEST_PORT"] = "7311";
+    setenv("TEST_ENV_WIN_DIR", "C:\\CosmosEx", 1);                              // e.g. BIN_DIR from the ce_run launcher
+
+    CHECK(Utils::dotEnvValue("TEST_PORT") == "7311");                          // not a path - unchanged everywhere
+    CHECK(Utils::dotEnvValue("TEST_WIN_DIR") == Utils::pathFromUi(dotEnv["TEST_WIN_DIR"]));
+    CHECK(Utils::dotEnvValue("TEST_ENV_WIN_DIR") == Utils::pathFromUi("C:\\CosmosEx"));
+#if defined(__CYGWIN__)
+    CHECK(Utils::dotEnvValue("TEST_WIN_DIR") == "/cygdrive/c/Users/atari/AppData/Local/cosmo2ex");
+    CHECK(Utils::dotEnvValue("TEST_ENV_WIN_DIR") == "/cygdrive/c/CosmosEx");
+#endif
+
+    dotEnv.erase("TEST_WIN_DIR");
+    dotEnv.erase("TEST_PORT");
+    unsetenv("TEST_ENV_WIN_DIR");
+}
+

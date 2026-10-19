@@ -56,15 +56,21 @@ RUN printf '%s\n' \
     && printf '%s\n' 'Acquire::Check-Valid-Until "false";' 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/99archive
 
 # native g++ plus cross compilers for the other architectures - the ones Debian has for this
-# build machine (all of them on amd64)
+# build machine (all of them on amd64). Plus libudev + libevdev (USB keyboard / mouse / joysticks in ce_cores)
+# for each of them - multiarch packages, which the Debian cross compilers find on their own.
+# Not for armhf, that one links against the Raspbian sysroot (below): Debian's armhf libevdev.a is ARMv7.
 RUN set -e; \
     apt-get update; \
     native=$(dpkg --print-architecture); \
-    pkgs="make g++ ca-certificates curl"; \
+    pkgs="make g++ ca-certificates curl libudev-dev libevdev-dev"; \
+    libarchs=""; \
     for p in amd64:g++-x86-64-linux-gnu arm64:g++-aarch64-linux-gnu armhf:g++-arm-linux-gnueabihf i386:g++-i686-linux-gnu; do \
         [ "${p%%:*}" = "$native" ] && continue; \
-        if apt-cache show "${p#*:}" >/dev/null 2>&1; then pkgs="$pkgs ${p#*:}"; else echo "no ${p#*:} for $native, skipped"; fi; \
+        if apt-cache show "${p#*:}" >/dev/null 2>&1; then pkgs="$pkgs ${p#*:}"; else echo "no ${p#*:} for $native, skipped"; continue; fi; \
+        if [ "${p%%:*}" != armhf ]; then libarchs="$libarchs ${p%%:*}"; fi; \
     done; \
+    for a in $libarchs; do dpkg --add-architecture "$a"; pkgs="$pkgs libudev-dev:$a libevdev-dev:$a"; done; \
+    if [ -n "$libarchs" ]; then apt-get update; fi; \
     apt-get install -y --no-install-recommends $pkgs; \
     rm -rf /var/lib/apt/lists/*
 
@@ -93,7 +99,8 @@ RUN set -e; \
     chmod +x /usr/local/bin/rpi-apt-get; \
     mkdir -p /tmp/debs; cd /tmp/debs; \
     rpi-apt-get update; \
-    rpi-apt-get download libc6 libc6-dev linux-libc-dev libgcc-s1 libgcc-10-dev libstdc++6 libstdc++-10-dev; \
+    rpi-apt-get download libc6 libc6-dev linux-libc-dev libgcc-s1 libgcc-10-dev libstdc++6 libstdc++-10-dev \
+        libudev1 libudev-dev libevdev-dev; \
     for deb in /tmp/debs/*.deb; do dpkg-deb -x "$deb" /opt/rpi-sysroot; done; \
     rm -rf /tmp/debs /etc/rpi-apt/lists/* /etc/rpi-apt/cache/*.bin; \
     mkdir -p /etc/rpi-apt/lists/partial; \
@@ -158,10 +165,10 @@ RUN set -e; \
     chmod 755 /overlay/usr/bin/tini; \
     if [ "$TARGETARCH$TARGETVARIANT" = armv6 ]; then \
         # what entrypoint.sh needs: sh, coreutils (incl. stdbuf), sed - and their libraries.
-        # Plus timezone data, which the Debian base images already have.
+        # Plus timezone data and libudev (for ce_cores), which the Debian base images already have.
         rm -f /debs/*.deb; \
         rpi-apt-get download libc6 libgcc-s1 dash coreutils sed \
-            libacl1 libattr1 libselinux1 libpcre2-8-0 libgmp10 tzdata; \
+            libacl1 libattr1 libselinux1 libpcre2-8-0 libgmp10 tzdata libudev1; \
         for deb in /debs/*.deb; do dpkg-deb -x "$deb" /rootfs; done; \
         ln -sf dash /rootfs/bin/sh; \
         mkdir -p /rootfs/etc /rootfs/tmp /rootfs/root /rootfs/proc /rootfs/sys /rootfs/dev /rootfs/run; \

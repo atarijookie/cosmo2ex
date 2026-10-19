@@ -1,78 +1,102 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
-	"golang.org/x/sys/unix"
 )
 
 // Screen-related handlers.
 
+// Screencast frame from ce_cores: resolution (1) + palette (32) + screen data (32000).
+// It's requested by 'get_frame' on the command socket and comes back as chunk datagrams of
+// offset (2 bytes, big endian) + frame size (2 bytes, big endian) + data - see SCREENCAST_CHUNK_* in ce_cores.
+const (
+	screenFrameSize    = 1 + 32 + 32000
+	screenChunkHeader  = 4
+	screenFrameTimeout = 500 * time.Millisecond
+)
+
+func requestScreenFrame() ([]byte, error) {
+	conn, err := writeToCmdSocket(`{"module":"screencast","action":"get_frame"}`)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	if err := conn.SetReadDeadline(time.Now().Add(screenFrameTimeout)); err != nil {
+		return nil, err
+	}
+
+	return readScreenFrame(conn)
+}
+
+// readScreenFrame reassembles the frame from chunk datagrams read from conn, until all bytes arrived.
+func readScreenFrame(conn net.Conn) ([]byte, error) {
+	frame := make([]byte, screenFrameSize)
+	gotOffsets := make(map[int]bool)
+	received := 0
+	buf := make([]byte, 64*1024)
+
+	for received < screenFrameSize {
+		n, err := conn.Read(buf)
+		if err != nil {
+			return nil, fmt.Errorf("read frame chunk (got %d of %d bytes): %w", received, screenFrameSize, err)
+		}
+
+		if n < screenChunkHeader {
+			return nil, fmt.Errorf("frame chunk too short: %d bytes", n)
+		}
+
+		offset := int(binary.BigEndian.Uint16(buf[0:2]))
+		total := int(binary.BigEndian.Uint16(buf[2:4]))
+		data := buf[screenChunkHeader:n]
+
+		if total != screenFrameSize || offset+len(data) > screenFrameSize {
+			return nil, fmt.Errorf("invalid frame chunk: offset %d, size %d, total %d", offset, len(data), total)
+		}
+
+		if gotOffsets[offset] { // duplicate - don't count it twice
+			continue
+		}
+		gotOffsets[offset] = true
+
+		copy(frame[offset:], data)
+		received += len(data)
+	}
+
+	return frame, nil
+}
+
 func (s *Server) handleGetScreen(w http.ResponseWriter, r *http.Request) {
 	log.Printf("handleGetScreen %s %s", r.Method, r.URL.Path)
 
-	// data_size = 1 + 32 + 32000 (resolution + palette + screen data)
-	dataSize := 1 + 32 + 32000
-	fd := -1
-
-	// Get shared memory name from environment
-	memName := os.Getenv("SCREENCAST_MEMORY_NAME")
-	if memName == "" {
-		log.Printf("handleGetScreen - SCREENCAST_MEMORY_NAME not set")
-		http.Error(w, "shared memory access failed", http.StatusBadRequest)
-		return
-	}
-
-	// Strip leading slashes from memName to avoid double slashes
-	memName = strings.TrimLeft(memName, "/")
-
-	// Open shared memory file using shm_open equivalent
-	// On Linux, shm_open creates files in /dev/shm/
-	shmPath := "/dev/shm/" + memName
-	f, err := os.OpenFile(shmPath, os.O_RDONLY, 0)
+	data, err := requestScreenFrame()
 	if err != nil {
-		// Check if file exists and provide more detailed error information
-		if _, statErr := os.Stat(shmPath); os.IsNotExist(statErr) {
-			log.Printf("handleGetScreen - shared memory file does not exist: %s (SCREENCAST_MEMORY_NAME=%s)", shmPath, os.Getenv("SCREENCAST_MEMORY_NAME"))
-		} else if statErr != nil {
-			log.Printf("handleGetScreen - failed to stat shared memory %s: %v", shmPath, statErr)
-		} else {
-			log.Printf("handleGetScreen - shared memory file exists but cannot be opened: %s (permission denied or other error: %v)", shmPath, err)
-		}
-		log.Printf("handleGetScreen - failed to open shared memory %s: %v", shmPath, err)
-		http.Error(w, "shared memory access failed", http.StatusBadRequest)
+		log.Printf("handleGetScreen - failed to get frame from core: %v", err)
+		http.Error(w, "screen frame not available", http.StatusServiceUnavailable)
 		return
 	}
-	defer f.Close()
-	fd = int(f.Fd())
-
-	// Map the shared memory for reading
-	data, err := unix.Mmap(fd, 0, dataSize, unix.PROT_READ, unix.MAP_SHARED)
-	if err != nil {
-		log.Printf("handleGetScreen - failed to mmap shared memory: %v", err)
-		http.Error(w, "shared memory access failed", http.StatusBadRequest)
-		return
-	}
-	defer unix.Munmap(data)
 
 	// Set response headers
 	w.Header().Set("Content-Type", "application/binary")
 	w.Header().Set("Cache-Control", "no-cache, no-store")
 	w.Header().Set("Pragma", "no-cache")
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", dataSize))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
 
 	// Write the data
 	w.WriteHeader(http.StatusOK)
-	_, err = w.Write(data)
-	if err != nil {
+	if _, err := w.Write(data); err != nil {
 		log.Printf("handleGetScreen - failed to write response: %v", err)
 	}
 }

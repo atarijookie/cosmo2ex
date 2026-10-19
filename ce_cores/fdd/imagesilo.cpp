@@ -80,8 +80,8 @@ std::string ImageSilo::getImageFilePathFromSlotNo(int slotNo)
     Settings s;
 
     char key[32];
-    sprintf(key, "FLOPPY_IMAGE_%d", slotNo);      // create settings key
-    res = s.getString(key, "");       // get the value
+    snprintf(key, sizeof(key), "FLOPPY_IMAGE_%d", slotNo);      // create settings key
+    res = s.getPath(key, "");         // get the value
 
     return res;
 }
@@ -96,9 +96,9 @@ void ImageSilo::saveImageFilepathToSlot(int slotNo, const char* pathAndFile)
     Settings s;
 
     char key[32];
-    sprintf(key, "FLOPPY_IMAGE_%d", slotNo);      // create settings key
+    snprintf(key, sizeof(key), "FLOPPY_IMAGE_%d", slotNo);      // create settings key
 
-    s.setString(key, pathAndFile);     // store the value
+    s.setPath(key, pathAndFile);       // store the value
     logFdd(LOG_DEBUG, "ImageSilo::saveImageFilepathToSlot -- slotNo: %d, file: %s", slotNo, pathAndFile);
 }
 
@@ -117,7 +117,7 @@ void ImageSilo::saveImageFilepathToClient(int slotNo, const char* pathAndFile)
 
     Settings s;
     s.setPrefix(client->mac, 6);                // mac as prefix to settings
-    s.setString("FLOPPY_IMAGE", pathAndFile);   // store the value
+    s.setPath("FLOPPY_IMAGE", pathAndFile);     // store the value - shown in the web UI
 
     logFdd(LOG_DEBUG, "ImageSilo::saveImageFilepathToClient -- slotNo: %d, file: %s", slotNo, pathAndFile);
 }

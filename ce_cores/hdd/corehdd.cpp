@@ -8,7 +8,6 @@
 #include <dirent.h>
 #include <errno.h>
 #include <net/if.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -53,14 +52,12 @@ void CoreHdd::run(void)
         sigintReceived = 1;
     }
 
-    int sharedMemFd;
-    uint8_t* sharedMemPointer;
-    ScreencastAcsiCommand::sharedMemoryOpen(sharedMemFd, &sharedMemPointer);
+    ScreencastAcsiCommand::frameInit();
 
     // create hdd clients, 1 hdd client per each tcp client
     for(int i=0; i<MAX_CLIENTS; i++) {
         ClientInfo* ci = ciHdd->clientGetByIndex(i);
-        hddClients[i] = new HddClient(ciHdd, ci, sharedMemFd, sharedMemPointer);
+        hddClients[i] = new HddClient(ciHdd, ci);
     }
 
     //------------------------------
@@ -143,8 +140,6 @@ void CoreHdd::run(void)
     for(int i=0; i<MAX_CLIENTS; i++) {
         delete hddClients[i];
     }
-
-    ScreencastAcsiCommand::sharedMemoryClose(sharedMemFd, &sharedMemPointer);
 
     // destroy chip interface
     ciHdd->ciClose();

@@ -2,9 +2,13 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <unistd.h>
 #include <errno.h>
 #include <stdlib.h>
 
+#if defined(__CYGWIN__)
+#include <sys/cygwin.h>     // cygwin_create_path()
+#endif
 #include "settings.h"
 #include "global.h"
 #include "debug.h"
@@ -64,13 +68,41 @@ void Settings::setPrefix(uint8_t* bytes, int len)
     settingsDir = settingsDirPath();    // prefix doesn't change often, so don't build the path on every get / set
 }
 
+// default host path of translated drive C:
+//  - Linux: /mnt/ - where disks get mounted (in docker the host filesystem is in /mnt/hostdrive)
+//  - macOS: home dir, Windows (Cygwin): user profile dir (e.g. C:\Users\x as /cygdrive/c/Users/x) - no /mnt on desktops
+std::string Settings::defaultTranslatedDrivePath(void)
+{
+#if defined(__APPLE__)
+    const char* home = getenv("HOME");
+
+    if(home && home[0]) {
+        return std::string(home) + "/";
+    }
+#elif defined(__CYGWIN__)
+    const char* userProfile = getenv("USERPROFILE");      // Windows path, e.g. C:\Users\x
+
+    if(userProfile && userProfile[0]) {
+        char* posixPath = (char*) cygwin_create_path(CCP_WIN_A_TO_POSIX, userProfile);
+
+        if(posixPath) {
+            std::string path = std::string(posixPath) + "/";
+            free(posixPath);
+            return path;
+        }
+    }
+#endif
+
+    return "/mnt/";     // Linux - and fallback if the dir can't be found on other OS
+}
+
 void Settings::storeDefaultValues(void)
 {
     logHdd(LOG_DEBUG, "Settings::storeDefaultValues() - storing default settings, because it seems we miss those setting...");
 
     char key[32];
     for(int id=0; id<8; id++) {                         // read the list of device types from settings
-        sprintf(key, "ACSI_DEVTYPE_%d", id);            // create settings KEY, e.g. ACSI_DEVTYPE_0
+        snprintf(key, sizeof(key), "ACSI_DEVTYPE_%d", id);            // create settings KEY, e.g. ACSI_DEVTYPE_0
 
         if(id == 1) {                                   // ACSI id 1 enaled by default
             setInt(key, DEVTYPE_TRANSLATED);
@@ -79,8 +111,18 @@ void Settings::storeDefaultValues(void)
         }
     }
 
-    setString("PATH_GEM_C", "/mnt/");
+    setPath("PATH_GEM_C", defaultTranslatedDrivePath());       // shown in the web UI - e.g. C:\Users\x\ on Windows
     setChar("DRIVELETTER_CONFDRIVE", 'O');
+}
+
+std::string Settings::getPath(const char *key, const char *defValue)
+{
+    return Utils::pathFromUi(getString(key, defValue));
+}
+
+void Settings::setPath(const char *key, const std::string& path)
+{
+    setString(key, Utils::pathToUi(path).c_str());
 }
 
 bool Settings::getBool(const char *key, bool defValue)
@@ -250,7 +292,7 @@ void Settings::binToHex(uint8_t *inBfr, int len, char *outBfr)
     char tmp[16];
 
     for(int i=0; i<len; i++) {
-        sprintf(tmp, "%02X", inBfr[i]);     // get value from inBfr, convert to HEX into tmp
+        snprintf(tmp, sizeof(tmp), "%02X", inBfr[i]);     // get value from inBfr, convert to HEX into tmp
         strcat(outBfr, tmp);                // append to existing content
     }
 }
@@ -300,7 +342,7 @@ void Settings::loadAcsiIDs(AcsiIDinfo *aii, bool useDefaultsIfNoSettings)
 
     char key[32];
     for(int id=0; id<8; id++) {                         // read the list of device types from settings
-        sprintf(key, "ACSI_DEVTYPE_%d", id);            // create settings KEY, e.g. ACSI_DEVTYPE_0
+        snprintf(key, sizeof(key), "ACSI_DEVTYPE_%d", id);            // create settings KEY, e.g. ACSI_DEVTYPE_0
 
         int devType = getInt(key, DEVTYPE_OFF);
 
@@ -363,7 +405,26 @@ FILE *Settings::sOpen(const char *key, bool readNotWrite)
     std::string path = Utils::mergeHostPaths2(settingsDir, std::string(key));  // add key at the end of settings + prefix path
 
     // only for reading - writes go through sWrite(); dir doesn't exist? just fail (getter returns default value)
-    return fopen(path.c_str(), readNotWrite ? "r" : "w");
+    FILE *f = fopen(path.c_str(), readNotWrite ? "r" : "w");
+
+#if defined(__CYGWIN__)
+    // Windows: replacing a file which is open (e.g. by a reader in another thread) isn't atomic for other readers -
+    // there can be a moment without the file. While a write of this key is in progress (its temp file exists), wait
+    // for it and try again; then once more, in case the write finished just before the check. A key which really
+    // doesn't exist costs just that check and one more fopen().
+    if(!f && readNotWrite) {
+        for(int i=0; i<100 && Utils::atomicWriteInProgress(path); i++) {
+            usleep(1000);
+            f = fopen(path.c_str(), "r");
+            if(f) {
+                return f;
+            }
+        }
+        f = fopen(path.c_str(), "r");
+    }
+#endif
+
+    return f;
 }
 
 // Store setting value atomically (temp file + rename): a reader in another thread or process (webserver) never sees

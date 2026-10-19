@@ -1,0 +1,3 @@
+# test binary on macOS / Cygwin (on Linux it is *.elf)
+tests/run_tests
+tests/run_tests.exe

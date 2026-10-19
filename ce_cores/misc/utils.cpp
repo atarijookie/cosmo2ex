@@ -21,11 +21,13 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <sys/select.h>
-#include <sys/un.h>
 #include <sys/socket.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <atomic>
+#if defined(__CYGWIN__)
+#include <sys/cygwin.h>     // cygwin_create_path()
+#endif
 
 //--------
 // following includes are here for the code for getting IP address of interfaces
@@ -33,7 +35,6 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <ifaddrs.h>
-#include <linux/if_link.h>
 //--------
 
 #include "../hdd/translated/translatedhelper.h"
@@ -63,33 +64,6 @@ uint32_t Utils::getCurrentMs(void)
 uint32_t Utils::elapsedMs(uint32_t startMs)
 {
     return getCurrentMs() - startMs;    // unsigned subtraction - correct even when ms counter wraps around
-}
-
-void Utils::attributesHostToAtari(bool isReadOnly, bool isDir, uint8_t &attrAtari)
-{
-    attrAtari = 0;
-
-    if(isReadOnly)
-        attrAtari |= FA_READONLY;
-
-/*
-    if(attrHost & FILE_ATTRIBUTE_HIDDEN)
-        attrAtari |= FA_HIDDEN;
-
-    if(attrHost & FILE_ATTRIBUTE_SYSTEM)
-        attrAtari |= FA_SYSTEM;
-
-    if(attrHost &                      )
-        attrAtari |= FA_VOLUME;
-*/
-
-    if(isDir)
-        attrAtari |= FA_DIR;
-
-/*
-    if(attrHost & FILE_ATTRIBUTE_ARCHIVE)
-        attrAtari |= FA_ARCHIVE;
-*/
 }
 
 uint16_t Utils::fileTimeToAtariDate(struct tm *ptm)
@@ -464,11 +438,6 @@ void Utils::getIpAdds(uint8_t *bfrIPs, uint8_t *bfrMasks)
     freeifaddrs(ifaddr);
 }
 
-void Utils::forceSync(void)
-{
-    printf("TODO: forceSync\n");
-}
-
 uint16_t Utils::getWord(uint8_t *bfr)
 {
     uint16_t val = 0;
@@ -559,30 +528,15 @@ void Utils::createTimezoneStringFromOffset(float utcOffset, char *str)
     int ofsHours        = ofsTotalMinutes / 60;
     int ofsMinutes      = ofsTotalMinutes % 60;
 
+    char tmp[32];
     if(ofsTotalMinutes == 0) {                                  // no offset?
-        sprintf(str, "UTC");
+        snprintf(tmp, sizeof(tmp), "UTC");
     } else if(ofsMinutes != 0) {                                // got offset with minutes? (also when hours are 0, e.g. 0.5)
-        sprintf(str, "UTC%c%02d:%02d", signChar, ofsHours, ofsMinutes);
+        snprintf(tmp, sizeof(tmp), "UTC%c%02d:%02d", signChar, ofsHours, ofsMinutes);
     } else {                                                    // got offset - only hours (no minutes)
-        sprintf(str, "UTC%c%02d", signChar, ofsHours);
+        snprintf(tmp, sizeof(tmp), "UTC%c%02d", signChar, ofsHours);
     }
-}
-
-void Utils::setTimezoneVariable_inProfileScript(void)
-{
-    char utcOfsset[64];
-    createTimezoneString(utcOfsset);
-
-    char tzString[128];
-    sprintf(tzString, "echo 'export TZ=\"%s\"' > /etc/profile.d/set_timezone.sh", utcOfsset);
-
-    logHdd(LOG_DEBUG, "Utils::setTimezoneVariable_inProfileScript() -- creating timezone setting script like this: %s\n", tzString);
-
-    system("mkdir -p /etc/profile.d");                          // if this dir doesn't exist, create it
-    system(tzString);                                           // now create the script in the dir above
-    system("chmod 755 /etc/profile.d/set_timezone.sh");         // make it executable
-
-    forceSync();                                                // make sure it does to disk
+    strcpy(str, tmp);
 }
 
 void Utils::setTimezoneVariable_inThisContext(void)
@@ -596,6 +550,9 @@ void Utils::setTimezoneVariable_inThisContext(void)
     tzset();                    // apply it now (localtime_r() doesn't call tzset() itself)
 }
 
+#if defined(__linux__)
+
+// label of a disk / partition, e.g. "/dev/sda1" -> "MY DISK", from the links in /dev/disk/by-label (made by udev)
 std::string Utils::getDeviceLabel(const std::string & devicePath)
 {
 #define DEV_BY_LABEL_PATH "/dev/disk/by-label/"
@@ -606,8 +563,6 @@ std::string Utils::getDeviceLabel(const std::string & devicePath)
 
     DIR *d = opendir(DEV_BY_LABEL_PATH);
     if(d != NULL) {
-        //FILE *f = fopen("/tmp/labels.txt", "w");
-        //fprintf(f, "%s\n", devShort.c_str());
         struct dirent * de;
         char link_path[288];
         char link_target[256];
@@ -615,23 +570,29 @@ std::string Utils::getDeviceLabel(const std::string & devicePath)
             if(de->d_type == DT_LNK) {  // symbolic link
                 snprintf(link_path, sizeof(link_path), "%s%s", DEV_BY_LABEL_PATH, de->d_name);
                 ssize_t n = readlink(link_path, link_target, sizeof(link_target) - 1);
-                //fprintf(f, "%s %d\n", link_path, (int)n);
                 if(n >= 0) {
                     link_target[n] = '\0';
                     char * target_short = strrchr(link_target, '/');
                     if(target_short != NULL) {
                         target_short++;
                         if(devShort == target_short) label = de->d_name;
-                        //fprintf(f, "%x %s %s\n", de->d_type, de->d_name, target_short);
                     }
                 }
             }
         }
-        //fclose(f);
         closedir(d);
     }
     return decodeHexEscapes(label);
 }
+
+#else
+
+std::string Utils::getDeviceLabel(const std::string & devicePath)
+{
+    return "";      // no /dev/disk/by-label here - no label
+}
+
+#endif
 
 std::string Utils::decodeHexEscapes(const std::string& in)
 {
@@ -684,86 +645,6 @@ int Utils::mkpath(const char *dir, int mode)
     return mkdir(dir, mode);    // create directory itself, once all parents are created
 }
 
-bool Utils::unZIPfloppyImageAndReturnFirstImage(const char *inZipFilePath, std::string &outImageFilePath)
-{
-    outImageFilePath.clear();                       // out path doesn't contain anything yet
-
-    system("rm    -rf /tmp/zipedfloppy");           // delete this dir, if it exists
-    system("mkdir -p  /tmp/zipedfloppy");           // create that dir
-
-    // put path in single quotes, and replace each ' in path with '\'' (end quote, escaped quote, start quote), so the path can't break out of quotes
-    std::string quotedPath = "'";
-    for(const char *p = inZipFilePath; *p; p++) {
-        if(*p == '\'') {
-            quotedPath += "'\\''";
-        } else {
-            quotedPath += *p;
-        }
-    }
-    quotedPath += "'";
-
-    std::string unzipCommand = "unzip -o " + quotedPath + " -d /tmp/zipedfloppy > /dev/null 2> /dev/null";
-    system(unzipCommand.c_str());                   // unzip the downloaded ZIP file into that tmp directory
-
-    // find the first usable floppy image
-    DIR *dir = opendir("/tmp/zipedfloppy");         // try to open the dir
-
-    if(dir == NULL) {                               // not found?
-        logHdd(LOG_DEBUG, "Utils::unZIPfloppyImageAndReturnFirstImage -- opendir() failed");
-        return false;
-    }
-
-    bool found          = false;
-    struct dirent *de   = NULL;
-    std::string foundFileName;                      // copy of found name - de points into dir, which is freed by closedir()
-
-    const char *pExt = NULL;
-
-    while(1) {                                      // avoid buffer overflow
-        de = readdir(dir);                          // read the next directory entry
-
-        if(de == NULL) {                            // no more entries?
-            break;
-        }
-
-        if(de->d_type != DT_REG) {                  // not a file? skip it
-            continue;
-        }
-
-        int fileNameLen = strlen(de->d_name);       // get length of filename
-
-        if(fileNameLen < 3) {                       // if it's too short, skip it
-            continue;
-        }
-
-        pExt = getExtension(de->d_name);            // get where the extension starts
-
-        if(pExt == NULL) {                          // extension not found? skip it
-            continue;
-        }
-
-        if(strcasecmp(pExt, "st") == 0 || strcasecmp(pExt, "msa") == 0) {  // the extension of the file is valid for a floppy image?
-            found = true;
-            foundFileName = de->d_name;
-            break;
-        }
-    }
-
-    closedir(dir);                                  // close the dir
-
-    if(!found) {                                    // not found? return with a fail
-        logHdd(LOG_DEBUG, "Utils::unZIPfloppyImageAndReturnFirstImage -- couldn't find an image inside of %s", inZipFilePath);
-        return false;
-    }
-
-    // construct path to unZIPed image
-    outImageFilePath = "/tmp/zipedfloppy/";
-    outImageFilePath.append(foundFileName);
-
-    logHdd(LOG_DEBUG, "Utils::unZIPfloppyImageAndReturnFirstImage -- this ZIP file: %s contains this floppy image file: %s", inZipFilePath, outImageFilePath.c_str());
-    return true;
-}
-
 const char *Utils::getExtension(const char *fileName)
 {
     const char *pExt;
@@ -775,17 +656,6 @@ const char *Utils::getExtension(const char *fileName)
 
     pExt++;                         // move beyond '.'
     return pExt;
-}
-
-bool Utils::isZIPfile(const char *fileName)
-{
-    const char *ext = Utils::getExtension(fileName);     // find extension
-
-    if(ext == NULL) {                       // no extension? not a ZIP file then
-        return false;
-    }
-
-    return (strcasecmp(ext, "zip") == 0);   // it's a ZIP file when the extension is this
 }
 
 void Utils::createPathWithOtherExtension(std::string &inPathWithOriginalExt, const char *otherExtension, std::string &outPathWithOtherExtension)
@@ -848,6 +718,47 @@ bool Utils::devExists(std::string& path)
     return false;
 }
 
+// without MSG_NOSIGNAL (macOS) the socket itself must be told not to raise SIGPIPE - see SEND_NOSIGNAL
+static void socketNoSigpipe(int fd)
+{
+#if !defined(MSG_NOSIGNAL) && defined(SO_NOSIGPIPE)
+    if(fd >= 0) {
+        int one = 1;
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+    }
+#else
+    (void) fd;
+#endif
+}
+
+int Utils::socketCloexec(int domain, int type, int protocol)
+{
+#if defined(SOCK_CLOEXEC)       // Linux, BSDs, Cygwin
+    int fd = socket(domain, type | SOCK_CLOEXEC, protocol);
+#else                           // e.g. macOS - set it right after creating, there's a short window when a fork() would inherit it
+    int fd = socket(domain, type, protocol);
+    if(fd >= 0) {
+        fcntl(fd, F_SETFD, FD_CLOEXEC);
+    }
+#endif
+    socketNoSigpipe(fd);
+    return fd;
+}
+
+int Utils::acceptCloexec(int fdListen, struct sockaddr *addr, socklen_t *addrLen)
+{
+#if defined(SOCK_CLOEXEC)       // where there's SOCK_CLOEXEC, there's also accept4()
+    int fd = accept4(fdListen, addr, addrLen, SOCK_CLOEXEC);
+#else
+    int fd = accept(fdListen, addr, addrLen);
+    if(fd >= 0) {
+        fcntl(fd, F_SETFD, FD_CLOEXEC);
+    }
+#endif
+    socketNoSigpipe(fd);        // accepted socket doesn't inherit it from the listening one
+    return fd;
+}
+
 int Utils::bcdToInt(int bcd)
 {
     int a,b;
@@ -872,18 +783,138 @@ void Utils::loadDotEnv(void)
 {
     bool good = loadDotEnvFrom("./.env");
 
+    dotEnvAddDefaultDirs();     // before substitution, so e.g. ${DATA_DIR}/core_cmd.token works even without DATA_DIR in .env
+
     if(good) {      // if something was loaded, do the vars subtitution
         dotEnvSubstituteVars();
     }
 }
 
+bool Utils::isWindowsPath(const std::string& path)
+{
+    bool driveLetter = path.length() >= 2 && isalpha((unsigned char) path[0]) && path[1] == ':';    // C:\ or C:/
+    bool unc         = path.length() >= 2 && path[0] == '\\' && path[1] == '\\';                  // \\server\share
+    return driveLetter || unc;
+}
+
+#if defined(__CYGWIN__)
+// cygwin_create_path() - cygwin_conv_path() which allocates the result; on failure returns the path unchanged
+static std::string cygwinConvertPath(cygwin_conv_path_t what, const std::string& path)
+{
+    char* converted = (char*) cygwin_create_path(what, path.c_str());
+
+    if(!converted) {
+        logHdd(LOG_WARNING, "Utils - converting path '%s' failed : %s", path.c_str(), strerror(errno));
+        return path;
+    }
+
+    std::string result = converted;
+    free(converted);
+    return result;
+}
+#endif
+
+std::string Utils::pathFromUi(const std::string& uiPath)
+{
+#if defined(__CYGWIN__)
+    if(isWindowsPath(uiPath)) {
+        std::string posixPath = cygwinConvertPath(CCP_WIN_A_TO_POSIX, uiPath);
+
+        // Cygwin drops the trailing separator (C:\Atari\ -> /cygdrive/c/Atari) - keep it, it marks a dir and paths are
+        // merged / compared with it
+        char last = uiPath[uiPath.length() - 1];
+        if((last == '\\' || last == '/') && !posixPath.empty() && posixPath[posixPath.length() - 1] != '/') {
+            posixPath += '/';
+        }
+        return posixPath;
+    }
+#endif
+    return uiPath;
+}
+
+std::string Utils::pathToUi(const std::string& hostPath)
+{
+#if defined(__CYGWIN__)
+    if(!hostPath.empty() && hostPath[0] == '/') {           // absolute POSIX path - relative / empty ones stay as they are
+        std::string winPath = cygwinConvertPath(CCP_POSIX_TO_WIN_A, hostPath);
+
+        // Cygwin drops the trailing separator here too (/cygdrive/c/Atari/ -> C:\Atari) - keep it, see pathFromUi()
+        if(hostPath[hostPath.length() - 1] == '/' && !winPath.empty() && winPath[winPath.length() - 1] != '\\') {
+            winPath += '\\';
+        }
+        return winPath;
+    }
+#endif
+    return hostPath;
+}
+
+std::string Utils::defaultDir(const std::string& key)
+{
+    /* Linux: system dirs, as the .env shipped for Linux / docker has them.
+       macOS: ~/Library/Application Support/cosmo2ex/..., Windows (Cygwin): %LOCALAPPDATA%\cosmo2ex\...
+       - desktop users run it as regular user, without access to /var and /run */
+
+    const char* sub = (key == "LOG_DIR") ? "log" : ((key == "DATA_DIR") ? "data" : ((key == "PID_DIR") ? "run" : NULL));
+
+    if(!sub) {
+        return "";
+    }
+
+#if defined(__APPLE__)
+    const char* home = getenv("HOME");
+
+    if(home && home[0]) {
+        return std::string(home) + "/Library/Application Support/cosmo2ex/" + sub;
+    }
+#elif defined(__CYGWIN__)
+    const char* localAppData = getenv("LOCALAPPDATA");      // Windows path, e.g. C:\Users\x\AppData\Local
+
+    if(localAppData && localAppData[0]) {
+        char* posixPath = (char*) cygwin_create_path(CCP_WIN_A_TO_POSIX, localAppData);   // -> /cygdrive/c/Users/x/AppData/Local
+
+        if(posixPath) {
+            std::string dir = std::string(posixPath) + "/cosmo2ex/" + sub;
+            free(posixPath);
+            return dir;
+        }
+    }
+#endif
+
+    // Linux - and fallback if the per-user dir can't be found on other OS
+    if(key == "LOG_DIR") {
+        return "/var/log/ce";
+    }
+
+    if(key == "DATA_DIR") {
+        return "/var/lib/ce";
+    }
+
+    return "/run/ce";
+}
+
+void Utils::dotEnvAddDefaultDirs(void)
+{
+    const char* keys[] = {"LOG_DIR", "DATA_DIR", "PID_DIR"};
+
+    for(size_t i=0; i<sizeof(keys)/sizeof(keys[0]); i++) {
+        if(dotEnv.find(keys[i]) != dotEnv.end() || getenv(keys[i]) != NULL) {     // set in .env or as real env var? keep that
+            continue;
+        }
+
+        dotEnv[keys[i]] = defaultDir(keys[i]);
+        logHdd(LOG_DEBUG, "Utils::dotEnvAddDefaultDirs - %s not set, using default %s", keys[i], dotEnv[keys[i]].c_str());
+    }
+}
+
 std::string Utils::dotEnvValue(std::string key, const char* defValue, bool logOnError)
 {
-    /* get value from dotEnv map for specified key */
+    /* get value from dotEnv map for specified key
+       Windows paths (C:\...) - e.g. ${LOCALAPPDATA}/cosmo2ex in the .env for Windows - are converted to POSIX paths for Cygwin,
+       the .env is shared with the webserver, which is a native Windows program */
 
     try {
         std::string& value = dotEnv.at(key);             // get value and return it (if found in map)
-        return value;
+        return pathFromUi(value);
     }
     catch (const std::out_of_range&) {
         if(logOnError) {
@@ -900,7 +931,7 @@ std::string Utils::dotEnvValue(std::string key, const char* defValue, bool logOn
         if(logOnError) {
             logHdd(LOG_DEBUG, "Utils::dotEnvValue - ...but found env var '%s' with value '%s'", key.c_str(), retValueFromEnv.c_str());
         }
-        return retValueFromEnv;
+        return pathFromUi(retValueFromEnv);     // e.g. BIN_DIR set by the ce_run launcher on Windows
     }
 
     // if value not found and default value was provided, use it; otherwise return empty string
@@ -1099,7 +1130,7 @@ bool Utils::loadDotEnvFrom(const char* path)
 {
     /* try to load .env file from the specified path */
 
-    FILE *f = fopen(path, "rt");        // try to open file
+    FILE *f = fopen(path, "r");        // try to open file
 
     if(!f) {
         logHdd(LOG_ERROR, "Utils::loadDotEnv - failed to open file %s", path);
@@ -1153,7 +1184,7 @@ void Utils::textToFile(const char* text, const char* filePath)
         return;
     }
 
-    FILE *f = fopen(filePath, "wt");    // open file
+    FILE *f = fopen(filePath, "w");    // open file
 
     if(!f) {                            // could not open file? quit
         return;
@@ -1173,7 +1204,7 @@ void Utils::textFromFile(char* bfr, uint32_t bfrSize, const char* filePath, bool
         return;
     }
 
-    FILE *f = fopen(filePath, "rt");    // open file
+    FILE *f = fopen(filePath, "r");    // open file
 
     if(!f) {                            // could not open file? quit
         return;
@@ -1207,42 +1238,6 @@ void Utils::screenShotVblEnabled(bool enabled)
 {
     events.screenShotVblEnabled = enabled;
     Utils::intToFileFromEnv((int) enabled, "SCREENSHOT_VBL_ENABLED_FILE");        // new value to file
-}
-
-void Utils::sendToMounter(const std::string& jsonString)
-{
-    std::string sockPath = Utils::dotEnvValue("MOUNT_SOCK_PATH");    // path to mounter socket
-
-	// create a UNIX DGRAM socket
-	int sockFd = socket(AF_UNIX, SOCK_DGRAM, 0);
-
-	if (sockFd < 0) {   // if failed to create socket
-	    logHdd(LOG_ERROR, "sendToMounter: failed to create socket - errno: %d", errno);
-	    return;
-	}
-
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-
-    if(sockPath.empty() || sockPath.length() >= sizeof(addr.sun_path)) {     // no path or path too long for sun_path?
-        logHdd(LOG_ERROR, "sendToMounter: socket path '%s' is empty or longer than %d chars", sockPath.c_str(), (int) sizeof(addr.sun_path) - 1);
-        close(sockFd);
-        return;
-    }
-
-    strcpy(addr.sun_path, sockPath.c_str());    // fits, length checked above
-    addr.sun_family = AF_UNIX;
-
-    // try to send to mounter socket
-    int res = sendto(sockFd, jsonString.c_str(), jsonString.length() + 1, 0, (struct sockaddr *) &addr, sizeof(struct sockaddr_un));
-
-    if(res < 0) {       // if failed to send
-	    logHdd(LOG_ERROR, "sendToMounter: sendto failed - errno: %d", errno);
-    } else {
-        logHdd(LOG_DEBUG, "sendToMounter: sent to mounter: %s", jsonString.c_str());
-    }
-
-    close(sockFd);
 }
 
 void Utils::createFloppyTestImage(void)
@@ -1323,7 +1318,9 @@ void handlePthreadCreate(const char* threadName, pthread_t* pThreadInfo, ThreadF
         sigintReceived = 1;
     } else {
         logHdd(LOG_DEBUG, "%s thread created", threadName);
+#if !defined(__APPLE__)      // macOS can only name the calling thread - there the thread stays unnamed
         pthread_setname_np(*pThreadInfo, threadName);
+#endif
 
         pthread_mutex_lock(&createdThreadsMutex);
         createdThreads.push_back(*pThreadInfo);         // remember it, so pthread_kill_join() knows it can kill and join it
@@ -1354,6 +1351,31 @@ void pthread_kill_join(const char* threadName, pthread_t& threadInfo)
     printf("Stoping %s thread\n", threadName);
     pthread_kill(threadInfo, SIGINT);           // stop the select()
     pthread_join(threadInfo, NULL);             // wait until thread finishes
+}
+
+// Is writeFileAtomically() of this file running now (in this or another process)? Its temp file exists then.
+bool Utils::atomicWriteInProgress(const std::string& path)
+{
+    std::string dir, file;
+    splitFilenameFromPath(path, dir, file);
+    std::string tmpPrefix = file + ".tmp-";             // see the temp file name in writeFileAtomically()
+
+    DIR *d = opendir(dir.empty() ? "." : dir.c_str());
+    if(!d) {
+        return false;
+    }
+
+    bool found = false;
+    struct dirent *de;
+    while((de = readdir(d)) != NULL) {
+        if(strncmp(de->d_name, tmpPrefix.c_str(), tmpPrefix.length()) == 0) {
+            found = true;
+            break;
+        }
+    }
+
+    closedir(d);
+    return found;
 }
 
 bool Utils::writeFileAtomically(const char* path, const uint8_t* data, size_t size)
