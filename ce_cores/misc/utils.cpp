@@ -836,7 +836,13 @@ std::string Utils::pathToUi(const std::string& hostPath)
 {
 #if defined(__CYGWIN__)
     if(!hostPath.empty() && hostPath[0] == '/') {           // absolute POSIX path - relative / empty ones stay as they are
-        return cygwinConvertPath(CCP_POSIX_TO_WIN_A, hostPath);
+        std::string winPath = cygwinConvertPath(CCP_POSIX_TO_WIN_A, hostPath);
+
+        // Cygwin drops the trailing separator here too (/cygdrive/c/Atari/ -> C:\Atari) - keep it, see pathFromUi()
+        if(hostPath[hostPath.length() - 1] == '/' && !winPath.empty() && winPath[winPath.length() - 1] != '\\') {
+            winPath += '\\';
+        }
+        return winPath;
     }
 #endif
     return hostPath;
