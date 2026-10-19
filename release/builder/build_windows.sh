@@ -41,7 +41,7 @@ trap 'rm -rf "$BUILD"' EXIT
 
 echo "[windows] copying sources"
 for d in libdospath ce_cores webserver third_party; do
-    cp -a "$SRC/$d" "$BUILD/"
+    cp -R "$SRC/$d" "$BUILD/"       # not cp -a: setting the checkout's Windows ACLs / owner on the copy fails in Cygwin
 done
 
 # drop build outputs of the checkout
