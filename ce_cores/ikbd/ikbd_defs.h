@@ -5,9 +5,7 @@
 #define INTYPE_KEYBOARD             1
 #define INTYPE_JOYSTICK1            2
 #define INTYPE_JOYSTICK2            3
-#define INTYPE_VDEVMOUSE            4 //virtual device for Web API
-#define INTYPE_VDEVKEYBOARD         5 //virtual device for Web API
-#define INTYPE_MAX                  5
+#define INTYPE_MAX                  3
 #define INTYPE_COUNT                (INTYPE_MAX + 1)
 
 #define JOYDIR_UP                   0x01

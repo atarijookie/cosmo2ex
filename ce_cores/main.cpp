@@ -6,7 +6,6 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <queue>
-#include <pty.h>
 #include <sys/file.h>
 #include <errno.h>
 #include <limits.h>

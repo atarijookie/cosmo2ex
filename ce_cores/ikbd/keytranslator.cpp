@@ -1,5 +1,6 @@
 #include <string.h>
-#include <linux/input.h>
+
+#include "linuxinput.h"
 
 #include "../misc/debug.h"
 #include "keytranslator.h"

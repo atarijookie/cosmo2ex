@@ -31,7 +31,7 @@ Needed on the build machine:
   are built once, on the build machine, and go into every tarball
 - `docker` - `ce_cores` and `webserver` are built in the toolchain stage of `docker/Dockerfile`, which cross compiles for all
   the architectures (no QEMU needed)
-- for `--native` instead of docker: `make`, `g++`, `go`
+- for `--native` instead of docker: `make`, `g++`, `go`, `libudev-dev`, `libevdev-dev`
 
 The builder image is Debian bullseye, so the binaries need glibc 2.28 or newer: Raspberry Pi OS / Debian 10+,
 Ubuntu 20.04+ and most other current distros. `libstdc++` is linked in statically, the webserver is a static Go binary.

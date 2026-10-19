@@ -11,5 +11,6 @@ class ImageStorage;
 bool cmdSockOpen(int& err);     // false + errno-like err on failure, EADDRINUSE = other instance is running
 void *cmdSockThreadCode(void *ptr);
 const char* cmdSockStripToken(const char* msg, const std::string& token);
+const std::string& cmdSockToken(void);     // valid after cmdSockOpen() - set before other threads start, read-only after that
 
 #endif

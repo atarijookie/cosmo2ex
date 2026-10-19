@@ -10,8 +10,6 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <linux/input.h>
-#include <linux/joystick.h>
 
 #include <signal.h>
 #include <pthread.h>
@@ -31,7 +29,6 @@ void handleSceencastAction(std::string& action, json& data, int sock, const stru
 void handleDisksAction(std::string& action, json& data);
 void handleFloppyAction(std::string& action, json& data);
 void handleIkbdAction(std::string& action, json& data);
-void closeFifo(bool keybNotMouse);
 
 // Commands come from the webserver as UDP datagrams on 127.0.0.1:CMD_UDP_PORT (portable, unlike UNIX dgram sockets).
 // Loopback is reachable by every local user, so each datagram starts with a secret token line: "<token>\n<json>".
@@ -73,6 +70,11 @@ static bool createCmdToken(void)
 
     cmdToken = hex;
     return true;
+}
+
+const std::string& cmdSockToken(void)
+{
+    return cmdToken;
 }
 
 // If msg starts with the valid token line, returns pointer to the json part after it, otherwise NULL.
@@ -242,9 +244,6 @@ void *cmdSockThreadCode(void *ptr)
 
     // sock is not closed here - it's the instance lock, released by the OS when the process exits
 
-    closeFifo(true);
-    closeFifo(false);
-
     logHdd(LOG_INFO, "Command Socket thread terminated.");
     return 0;
 }
@@ -267,208 +266,11 @@ void handleGenericAction(std::string& action, json& data)
     }
 }
 
-int fdVirtKeyboard = FD_EMPTY;
-int fdVirtMouse = FD_EMPTY;
-
-int openFifo(bool keybNotMouse)
-{
-    int& fd = keybNotMouse ? fdVirtKeyboard : fdVirtMouse;
-    std::string devpath = keybNotMouse ? Utils::dotEnvValue("IKBD_VIRTUAL_KEYBOARD_FILE") : Utils::dotEnvValue("IKBD_VIRTUAL_MOUSE_FILE");
-
-    if(fd >= 0) {       // already got fd? just return it
-        return fd;
-    }
-
-    std::string vdevFolder = Utils::dotEnvValue("IKBD_VIRTUAL_DEVICES_PATH");
-    Utils::mkpath(vdevFolder.c_str(), S_IRWXU);     // make dir where the virtual devs will be - owner only
-
-    // create fifo only if it's not there yet - don't recreate existing fifo, ikbd core might have it open already
-    struct stat sb;
-    bool isFifo = (stat(devpath.c_str(), &sb) == 0 && S_ISFIFO(sb.st_mode));
-
-    if(!isFifo) {
-        logIkbd(LOG_DEBUG, "Creating %s", devpath.c_str());
-
-        unlink(devpath.c_str());            // try to remove if it's a file
-
-        int err = mkfifo(devpath.c_str(), 0600);    // owner only - only ce_cores writes and reads it
-
-        if(err < 0) {
-            logIkbd(LOG_ERROR, "Could not create %s: %s", devpath.c_str(), strerror(errno));
-        }
-    }
-
-    chmod(devpath.c_str(), 0600);           // also fix mode of fifo created earlier with other mode
-
-    fd = open(devpath.c_str(), O_RDWR | O_NONBLOCK);    // we open Read/Write in order to initialize the fifo
-
-    if(fd < 0) {
-        logIkbd(LOG_ERROR, "openFifo(): open(%s) : %s", devpath.c_str(), strerror(errno));
-    }
-
-    return fd;
-}
-
-void closeFifo(bool keybNotMouse)
-{
-    int& fd = keybNotMouse ? fdVirtKeyboard : fdVirtMouse;
-
-    Utils::closeFdIfOpen(fd);
-}
-
-void sendKeyboardPacket(int iKeyCode, int iState)
-{
-    int fd = openFifo(true);
-
-    if(fd < 0) {                // no fifo? can't send, openFifo() logged why
-        return;
-    }
-
-    input_event xEvent;
-    gettimeofday(&xEvent.time, NULL);
-    xEvent.type = EV_KEY;
-    xEvent.code = iKeyCode;
-    xEvent.value = iState;        // ev->value -- 1: down, 2: auto repeat, 0: up
-
-    ssize_t res = write(fd, &xEvent, sizeof(xEvent));
-    if(res < 0) {
-        logIkbd(LOG_ERROR, "sendKeyboardPacket() write: %s", strerror(errno));
-    }
-}
-
-void sendMouseButton(int iButton,int iState)
-{
-    if(iButton != 0 && iButton != 1) {      // only left and right buttons supported
-        logIkbd(LOG_WARNING, "sendMouseButton() - unsupported button %d, ignoring", iButton);
-        return;
-    }
-
-    int fd = openFifo(false);
-
-    if(fd < 0) {                // no fifo? can't send, openFifo() logged why
-        return;
-    }
-
-	ssize_t res;
-    input_event xEvent;
-    gettimeofday(&xEvent.time, NULL);
-    xEvent.type = EV_KEY;
-    xEvent.code = (iButton == 0) ? BTN_LEFT : BTN_RIGHT;
-
-    xEvent.value = iState;
-
-    res = write(fd, &xEvent, sizeof(xEvent));
-	if(res < 0 ) {
-		logIkbd(LOG_ERROR, "sendMouseButton() write: %s", strerror(errno));
-	}
-}
-
-void sendMousePacket(int iX, int iY)
-{
-    int fd = openFifo(false);
-
-    if(fd < 0) {                // no fifo? can't send, openFifo() logged why
-        return;
-    }
-
-	ssize_t res;
-
-    input_event ev[2];
-    gettimeofday(&ev[0].time, NULL);
-	memcpy(&ev[1].time, &ev[0].time, sizeof(ev[0].time));
-    ev[0].type = EV_REL;
-    ev[0].code = REL_X;
-    ev[0].value = iX;
-    ev[1].type = EV_REL;
-    ev[1].code = REL_Y;
-    ev[1].value = iY;
-    res = write(fd, ev, sizeof(ev));
-
-	if(res < 0) {
-		logIkbd(LOG_ERROR, "sendMousePacket() write: %s", strerror(errno));
-	}
-}
-
 void handleIkbdAction(std::string& action, json& data)
 {
     // on ikbd settings reload
     if(action == "reload") {
         events.ikbdReloadConfig = true;
-        return;
-    }
-
-    // on mouse
-    if(action == "mouse") {
-        /*
-        example data:
-            {'module': 'ikbd', 'action': 'mouse', 'type': 'relative', 'x': -1, 'y': 11}
-            {'module': 'ikbd', 'action': 'mouse', 'type': 'relative', 'x': 0, 'y': 6}
-            {'module': 'ikbd', 'action': 'mouse', 'type': 'buttonleft', 'state': 'down'}
-            {'module': 'ikbd', 'action': 'mouse', 'type': 'buttonleft', 'state': 'up'}
-            {'module': 'ikbd', 'action': 'mouse', 'type': 'buttonright', 'state': 'down'}
-            {'module': 'ikbd', 'action': 'mouse', 'type': 'buttonright', 'state': 'up'}
-        */
-
-        if(data.contains("type")) {
-            std::string type = data["type"].get<std::string>();
-
-            if(type == "relative") {
-                if(data.contains("x") && data.contains("y")) {
-                    int x = data["x"].get<int>();
-                    int y = data["y"].get<int>();
-
-                    sendMousePacket(x, y);      // send mouse packet now
-                } else {
-                    logIkbd(LOG_WARNING, "handleIkbdAction: mouse - relative - missing 'x' or 'y' in message, ignoring message!");
-                }
-            } else if(type == "buttonleft" || type == "buttonright") {
-                if(data.contains("state")) {
-                    std::string stateStr = data["state"].get<std::string>();
-                    int state = (stateStr == "down") ? 1 : ((stateStr == "up") ? 0 : -1);           // down -> 1, up -> 0, others: -1
-                    int button = (type == "buttonright") ? 1 : ((type == "buttonleft") ? 0 : -1);   // right -> 1, left -> 0, others: -1
-
-                    if(button == -1) {              // invalid mouse button
-                        logIkbd(LOG_WARNING, "handleIkbdAction: mouse - button - invalid type in message, ignoring message!");
-                    } else if(state == -1) {        // invalid state
-                        logIkbd(LOG_WARNING, "handleIkbdAction: mouse - button - invalid state '%s', ignoring message!", stateStr.c_str());
-                    } else {                        // valid button and state? ship it
-                        sendMouseButton(button, state);
-                    }
-                } else {
-                    logIkbd(LOG_WARNING, "handleIkbdAction: mouse - button - missing 'state' in message, ignoring message!");
-                }
-            } else {
-                logIkbd(LOG_WARNING, "handleIkbdAction: mouse - unknown type '%s', ignoring message!", type.c_str());
-            }
-        } else {
-            logIkbd(LOG_WARNING, "handleIkbdAction: mouse - missing 'type' in message, ignoring message!");
-        }
-
-        return;
-    }
-
-    // on keyboard
-    if(action == "keyboard") {
-        /*
-        example data:
-            {'module': 'ikbd', 'action': 'keyboard', 'type': 'pc', 'code': 35, 'state': 'down'}
-            {'module': 'ikbd', 'action': 'keyboard', 'type': 'pc', 'code': 35, 'state': 'up'}
-        */
-
-        if(data.contains("code") && data.contains("state")) {
-            int code = data["code"].get<int>();
-            std::string stateStr = data["state"].get<std::string>();
-            int state = (stateStr == "down") ? 1 : ((stateStr == "up") ? 0 : -1);   // down -> 1, up -> 0, others: -1
-
-            if(state == -1) {       // invalid state?
-                logIkbd(LOG_WARNING, "handleIkbdAction: keyboard - invalid state '%s', ignoring message!", stateStr.c_str());
-            } else {                // goot state? ship it
-                sendKeyboardPacket(code, state);
-            }
-        } else {
-            logIkbd(LOG_WARNING, "handleIkbdAction: keyboard - missing 'code' or 'state' in message, ignoring message!");
-        }
-
         return;
     }
 

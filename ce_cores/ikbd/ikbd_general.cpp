@@ -6,7 +6,6 @@
 #include <string>
 #include <unistd.h>
 #include <sys/select.h>
-#include <sys/inotify.h>
 #include <limits.h>
 #include <signal.h>
 #include <termios.h>

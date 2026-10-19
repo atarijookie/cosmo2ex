@@ -13,8 +13,6 @@
 #include <algorithm>    // std::sort
 #include <vector>       // std::vector
 
-#include <sys/ioctl.h>
-#include <linux/msdos_fs.h>
 
 #include "libdospath.h"
 #include "utilslib.h"
@@ -548,9 +546,6 @@ bool DirTranslator::setDiskItem(SearchParams& sp, DiskItem& di, const std::strin
 {
     bool isUpDir = isDir && (longFname == "." || longFname == "..");    // is this '.' or '..'?
 
-    di.attribs |= (isDir ? FA_DIR : 0);                     // if it's a dir, add dir flag
-    di.attribs |= ((longFname[0] == '.') ? FA_HIDDEN : 0);  // enforce Mac/Unix convention of hidding files startings with '.'
-
     std::string fullEntryPath = hostPath;
     UtilsLib::mergeHostPaths(fullEntryPath, longFname);
 
@@ -591,26 +586,9 @@ bool DirTranslator::setDiskItem(SearchParams& sp, DiskItem& di, const std::strin
         UtilsLib::out(LDP_LOG_DEBUG, "TranslatedDisk::setDiskItem -- %s matches pattern %s", shortFname.c_str(), searchString.c_str());
     }
 
-    // get MS-DOS VFAT attributes if this is a VFAT filesystem
-    if(Internal(sp)->isVFAT) {
-        int fd = open(fullEntryPath.c_str(), O_RDONLY);
-
-        if(fd >= 0) {
-            __u32 dosattrs = 0;
-
-            if (ioctl(fd, FAT_IOCTL_GET_ATTRIBUTES, &dosattrs) >= 0) {      // try to get attributes and set them in disk item
-                if(dosattrs & ATTR_RO)      di.attribs |= FA_READONLY;
-                if(dosattrs & ATTR_HIDDEN)  di.attribs |= FA_HIDDEN;
-                if(dosattrs & ATTR_SYS)     di.attribs |= FA_SYSTEM;
-            } else {    // it will fail if the underlying FileSystem is not FAT, also mark this as not vfat fs, so we won't try on next items
-                Internal(sp)->isVFAT = false;
-            }
-
-            close(fd);
-        } else {
-            UtilsLib::out(LDP_LOG_ERROR, "TranslatedDisk::appendFoundToFindStorage -- open(%s) failed, errno %d", fullEntryPath.c_str(), errno);
-        }
-    }
+    // attributes only now - this method is called for each dir entry until one is accepted, so attributes
+    // of entries rejected above must not get into the one returned
+    di.attribs = UtilsLib::hostAttributes(fullEntryPath, attr, Internal(sp)->isVFAT);
 
     return true;                // success
 }

@@ -10,8 +10,6 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <linux/joystick.h>
-#include <linux/input.h>
 #include <map>
 #include <string>
 #include <vector>
@@ -22,7 +20,15 @@
 #include "misc/settings.h"
 #include "misc/debug.h"
 #include "chipinterface/chipinterface.h"
+#include "ikbd/linuxinput.h"
 #include "ikbd/ikbd.h"
+#include "ikbd/inputsocket.h"
+#include "ikbd/ikbdinputsink.h"
+#include "ikbd/inputdevices.h"
+
+#if defined(__linux__)
+#include <libevdev/libevdev.h>
+#endif
 
 extern std::map<std::string, std::string> dotEnv;   // the loaded .env values, defined in utils.cpp
 
@@ -460,35 +466,6 @@ TEST_CASE("ikbd: hotkey key counters don't drift")
     }
 }
 
-// virtual devices dir with FIFOs, like the one for the web API (IKBD_VIRTUAL_DEVICES_PATH)
-struct VdevDir {
-    std::string dir;
-
-    VdevDir(const std::string &subdir = "") {
-        char tmpl[] = "/tmp/ce_test_vdev_XXXXXX";
-        REQUIRE(mkdtemp(tmpl) != NULL);
-        dir = tmpl;
-        if(!subdir.empty()) {
-            dir += "/" + subdir;
-            REQUIRE(mkdir(dir.c_str(), 0700) == 0);
-        }
-        REQUIRE(mkfifo((dir + "/kbd").c_str(), 0600) == 0);
-
-        dotEnv["IKBD_VIRTUAL_DEVICES_PATH"]  = dir;
-        dotEnv["IKBD_VIRTUAL_MOUSE_FILE"]    = dir + "/mouse";
-        dotEnv["IKBD_VIRTUAL_KEYBOARD_FILE"] = dir + "/kbd";
-    }
-
-    ~VdevDir() {
-        dotEnv.erase("IKBD_VIRTUAL_DEVICES_PATH");
-        dotEnv.erase("IKBD_VIRTUAL_MOUSE_FILE");
-        dotEnv.erase("IKBD_VIRTUAL_KEYBOARD_FILE");
-        std::string top = dir.substr(0, strlen("/tmp/ce_test_vdev_XXXXXX"));
-        std::string cmd = "rm -rf '" + top + "'";
-        system(cmd.c_str());
-    }
-};
-
 static void processDeviceInput(IkbdHarness &h, int index)
 {
     fd_set readfds;
@@ -499,13 +476,15 @@ static void processDeviceInput(IkbdHarness &h, int index)
     processInputFromAttachedDevices(*h.ikbd, &readfds);
 }
 
-TEST_CASE("ikbd: virtual keyboard - split events are put together, FIFO is reopened after writer closes")
+TEST_CASE("ikbd: input device - split events are put together, device is closed on EOF")
 {
-    VdevDir vdev;
     IkbdHarness h;
-    h.ikbd->findVirtualDevices();
-    REQUIRE(h.ikbd->getFdByIndex(INTYPE_VDEVKEYBOARD) >= 0);
     h.sentToSt();
+
+    int p[2];
+    REQUIRE(pipe(p) == 0);
+    ikbdDevs[INTYPE_KEYBOARD].fd = p[0];                // pipe in place of evdev keyboard
+    ikbdDevs[INTYPE_KEYBOARD].partialLen = 0;
 
     input_event ev;
     memset(&ev, 0, sizeof(ev));
@@ -515,41 +494,43 @@ TEST_CASE("ikbd: virtual keyboard - split events are put together, FIFO is reope
     const uint8_t *raw = (const uint8_t *) &ev;
     int half = sizeof(ev) / 2;
 
-    int writer = open((vdev.dir + "/kbd").c_str(), O_WRONLY);
-    REQUIRE(writer >= 0);
-
-    REQUIRE(write(writer, raw, half) == half);          // first half of event only
-    processDeviceInput(h, INTYPE_VDEVKEYBOARD);
+    REQUIRE(write(p[1], raw, half) == half);            // first half of event only
+    processDeviceInput(h, INTYPE_KEYBOARD);
     CHECK(h.sentToSt().empty());                        // used to be processed as a whole (garbage) event
 
-    REQUIRE(write(writer, raw + half, sizeof(ev) - half) == (ssize_t) (sizeof(ev) - half));
-    processDeviceInput(h, INTYPE_VDEVKEYBOARD);
+    REQUIRE(write(p[1], raw + half, sizeof(ev) - half) == (ssize_t) (sizeof(ev) - half));
+    processDeviceInput(h, INTYPE_KEYBOARD);
     CHECK(h.sentToSt() == Bytes({0x1e}));               // whole event now - key A pressed
 
-    close(writer);                                      // web server closes its end
-    processDeviceInput(h, INTYPE_VDEVKEYBOARD);         // EOF
-    REQUIRE(h.ikbd->getFdByIndex(INTYPE_VDEVKEYBOARD) >= 0);    // reopened (used to stay closed forever)
-
-    writer = open((vdev.dir + "/kbd").c_str(), O_WRONLY);       // next writer works again
-    REQUIRE(writer >= 0);
-    ev.value = 0;
-    REQUIRE(write(writer, raw, sizeof(ev)) == (ssize_t) sizeof(ev));
-    processDeviceInput(h, INTYPE_VDEVKEYBOARD);
-    CHECK(h.sentToSt() == Bytes({0x9e}));               // key A released
-
-    close(writer);
+    close(p[1]);                                        // device gone
+    processDeviceInput(h, INTYPE_KEYBOARD);             // EOF
+    CHECK(h.ikbd->getFdByIndex(INTYPE_KEYBOARD) == -1);
     h.ikbd->closeDevs();
 }
 
-TEST_CASE("ikbd: device path longer than devPath is refused, not overflowing")
+TEST_CASE("ikbd: input socket events reach the ST like evdev events, held keys released on disconnect")
 {
-    VdevDir vdev(std::string(250, 'x'));                // whole path to FIFO > 255 chars
-    REQUIRE(vdev.dir.size() + 4 > 255);
-
     IkbdHarness h;
-    h.ikbd->findVirtualDevices();
-    CHECK(h.ikbd->getFdByIndex(INTYPE_VDEVKEYBOARD) == -1);
-    h.ikbd->closeDevs();
+    h.sentToSt();
+
+    IkbdInputSink sink(*h.ikbd);
+    InputSocket is(&sink);
+    InputClient client;
+    client.clear();
+
+    uint8_t keyA[INPUT_EVENT_SIZE]      = {INPUT_EV_KEY, 0, 0, KEY_A, 0, 0, 0, 1};
+    uint8_t keyAup[INPUT_EVENT_SIZE]    = {INPUT_EV_KEY, 0, 0, KEY_A, 0, 0, 0, 0};
+    uint8_t lshift[INPUT_EVENT_SIZE]    = {INPUT_EV_KEY, 0, 0, KEY_LEFTSHIFT, 0, 0, 0, 1};
+
+    is.processEvent(client, keyA);
+    CHECK(h.sentToSt() == Bytes({0x1e}));               // A make
+    is.processEvent(client, keyAup);
+    CHECK(h.sentToSt() == Bytes({0x9e}));               // A break
+
+    is.processEvent(client, lshift);
+    CHECK(h.sentToSt() == Bytes({0x2a}));               // LSHIFT make
+    is.releaseAll(client);                              // app disconnected while holding it
+    CHECK(h.sentToSt() == Bytes({0xaa}));               // LSHIFT break - not stuck on ST
 }
 
 TEST_CASE("ikbd: keyboard joystick - releasing one of two opposite keys keeps the other direction")
@@ -634,3 +615,56 @@ TEST_CASE("ikbd: joystick fire as mouse button follows the port swap")
         CHECK(h.sentToSt() == Bytes({(uint8_t) (swapped ? 0xfa : 0xf9), 0, 0}));
     }
 }
+
+#if defined(__linux__)
+
+// evdev device with just these capabilities (no real device behind it)
+static struct libevdev *fakeEvdev(std::vector<std::pair<int, int>> codes)
+{
+    struct libevdev *dev = libevdev_new();
+    for(auto &c : codes) {
+        libevdev_enable_event_code(dev, c.first, c.second, NULL);
+    }
+    return dev;
+}
+
+TEST_CASE("ikbd: evdev devices are classified by what they can do")
+{
+    struct {
+        const char                          *what;
+        std::vector<std::pair<int, int>>    codes;
+        int                                 type;
+    } cases[] = {
+        {"keyboard",            {{EV_KEY, KEY_ESC}, {EV_KEY, KEY_A}, {EV_KEY, KEY_Z}, {EV_KEY, KEY_SPACE}, {EV_KEY, KEY_ENTER}},     INTYPE_KEYBOARD},
+        {"mouse",               {{EV_REL, REL_X}, {EV_REL, REL_Y}, {EV_KEY, BTN_LEFT}, {EV_KEY, BTN_RIGHT}},                        INTYPE_MOUSE},
+        {"keyboard + touchpad", {{EV_KEY, KEY_ESC}, {EV_KEY, KEY_A}, {EV_KEY, KEY_Z}, {EV_KEY, KEY_SPACE}, {EV_KEY, KEY_ENTER},
+                                 {EV_REL, REL_X}, {EV_REL, REL_Y}, {EV_KEY, BTN_LEFT}},                                             INTYPE_MOUSE},  // keys go through processMouse()
+        {"power button",        {{EV_KEY, KEY_POWER}},                                                                              -1},
+        {"media keys",          {{EV_KEY, KEY_ENTER}, {EV_KEY, KEY_VOLUMEUP}, {EV_KEY, KEY_VOLUMEDOWN}},                            -1},
+        {"wheel only",          {{EV_REL, REL_WHEEL}, {EV_KEY, BTN_LEFT}},                                                          -1},
+        {"touchscreen",         {{EV_ABS, ABS_X}, {EV_ABS, ABS_Y}, {EV_KEY, BTN_TOUCH}},                                            -1},
+    };
+
+    for(auto &c : cases) {
+        CAPTURE(c.what);
+        struct libevdev *dev = fakeEvdev(c.codes);
+        CHECK(evdevInputType(dev) == c.type);
+        libevdev_free(dev);
+    }
+}
+
+TEST_CASE("ikbd: attached device which is not evdev / joystick, or can't be opened, is not used")
+{
+    IkbdHarness h;
+
+    h.ikbd->deviceAttached("/dev/input/mouse0");            // old mousedev format of an evdev mouse - not used
+    h.ikbd->deviceAttached("/dev/input/mice");
+    h.ikbd->deviceAttached("/dev/input/event-not-there");   // open fails
+    h.ikbd->deviceAttached("/dev/input/js-not-there");
+
+    for(int i=0; i<INTYPE_COUNT; i++) {
+        CHECK(h.ikbd->getFdByIndex(i) == -1);
+    }
+}
+
+#endif

@@ -16,6 +16,11 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <stdarg.h>
+#include <fcntl.h>
+#if defined(__linux__)
+#include <sys/ioctl.h>
+#include <linux/msdos_fs.h>     // FAT_IOCTL_GET_ATTRIBUTES, FAT_IOCTL_SET_ATTRIBUTES
+#endif
 
 #include "utilslib.h"
 #include "libdospath.h"
@@ -39,31 +44,131 @@ uint32_t UtilsLib::getCurrentMs(void)
     return val;
 }
 
-void UtilsLib::attributesHostToAtari(bool isReadOnly, bool isDir, uint8_t &attrAtari)
+// FAT attributes - only Linux has a way to get / set them (vfat ioctl)
+enum { FAT_OK, FAT_NOT_FAT, FAT_ERROR };
+
+// FAT attribute bits - fixed by the FAT format (ATTR_* in linux/msdos_fs.h), here for systems without that header
+#define FAT_ATTR_RO         0x01
+#define FAT_ATTR_HIDDEN     0x02
+#define FAT_ATTR_SYS        0x04
+#define FAT_ATTR_ARCH       0x20
+
+static int fatAttributesGet(const std::string &hostPath, uint32_t &dosattrs)
 {
-    attrAtari = 0;
+#if defined(__linux__)
+    int fd = open(hostPath.c_str(), O_RDONLY | O_NONBLOCK);     // O_RDONLY works for dirs too
+    if(fd < 0) {
+        return FAT_ERROR;
+    }
 
-    if(isReadOnly)
-        attrAtari |= FA_READONLY;
+    __u32 attrs = 0;
+    int res = ioctl(fd, FAT_IOCTL_GET_ATTRIBUTES, &attrs);      // fails if the file is not on FAT
+    close(fd);
 
-/*
-    if(attrHost & FILE_ATTRIBUTE_HIDDEN)
-        attrAtari |= FA_HIDDEN;
+    dosattrs = attrs;
+    return (res == 0) ? FAT_OK : FAT_NOT_FAT;
+#else
+    return FAT_NOT_FAT;
+#endif
+}
 
-    if(attrHost & FILE_ATTRIBUTE_SYSTEM)
-        attrAtari |= FA_SYSTEM;
+static int fatAttributesSet(const std::string &hostPath, uint8_t attribs)
+{
+#if defined(__linux__)
+    int fd = open(hostPath.c_str(), O_RDONLY | O_NONBLOCK);     // setting doesn't need write access to the fd
+    if(fd < 0) {
+        return FAT_ERROR;
+    }
 
-    if(attrHost &                      )
-        attrAtari |= FA_VOLUME;
-*/
+    __u32 attrs = 0;
+    if(ioctl(fd, FAT_IOCTL_GET_ATTRIBUTES, &attrs) < 0) {       // not on FAT
+        close(fd);
+        return FAT_NOT_FAT;
+    }
 
-    if(isDir)
-        attrAtari |= FA_DIR;
+    // only these - the kernel takes care of ATTR_DIR, and ATTR_VOLUME on a file would turn it into a volume label
+    attrs = 0;
+    if(attribs & FA_READONLY)   attrs |= FAT_ATTR_RO;
+    if(attribs & FA_HIDDEN)     attrs |= FAT_ATTR_HIDDEN;
+    if(attribs & FA_SYSTEM)     attrs |= FAT_ATTR_SYS;
+    if(attribs & FA_ARCHIVE)    attrs |= FAT_ATTR_ARCH;
 
-/*
-    if(attrHost & FILE_ATTRIBUTE_ARCHIVE)
-        attrAtari |= FA_ARCHIVE;
-*/
+    int res = ioctl(fd, FAT_IOCTL_SET_ATTRIBUTES, &attrs);
+    int err = errno;
+    close(fd);
+    errno = err;
+    return (res == 0) ? FAT_OK : FAT_ERROR;
+#else
+    return FAT_NOT_FAT;
+#endif
+}
+
+uint8_t UtilsLib::hostAttributes(const std::string &hostPath, const struct stat &st, bool &tryFat)
+{
+    uint8_t attribs = 0;
+    bool isDir = S_ISDIR(st.st_mode);
+
+    if(isDir) {
+        attribs |= FA_DIR;
+    }
+
+    if(!(st.st_mode & S_IWUSR)) {           // no write permission (on FAT the mode comes from its read only attribute)
+        attribs |= FA_READONLY;
+    }
+
+    std::string path = hostPath;
+    removeTrailingSeparator(path);
+    size_t sep = path.rfind(HOSTPATH_SEPAR_CHAR);
+    std::string name = (sep == std::string::npos) ? path : path.substr(sep + 1);
+
+    if(name.length() > 1 && name[0] == '.' && name != "..") {   // Mac / Unix convention of hiding files starting with '.' ('.' and '..' are not hidden)
+        attribs |= FA_HIDDEN;
+    }
+
+    if(tryFat && (isDir || S_ISREG(st.st_mode))) {   // not on devices, FIFOs - open() could block or have side effects
+        uint32_t dosattrs = 0;
+        int res = fatAttributesGet(hostPath, dosattrs);
+
+        if(res == FAT_OK) {
+            if(dosattrs & FAT_ATTR_RO)      attribs |= FA_READONLY;
+            if(dosattrs & FAT_ATTR_HIDDEN)  attribs |= FA_HIDDEN;
+            if(dosattrs & FAT_ATTR_SYS)     attribs |= FA_SYSTEM;
+        } else if(res == FAT_NOT_FAT) {
+            tryFat = false;
+        }
+    }
+
+    return attribs;
+}
+
+bool UtilsLib::setHostAttributes(const std::string &hostPath, uint8_t attribs)
+{
+    struct stat st;
+    if(stat(hostPath.c_str(), &st) != 0) {
+        return false;
+    }
+
+    if(S_ISDIR(st.st_mode) || S_ISREG(st.st_mode)) {
+        int res = fatAttributesSet(hostPath, attribs);
+
+        if(res == FAT_OK) {
+            return true;
+        }
+
+        if(res == FAT_ERROR) {
+            return false;
+        }
+    }
+
+    // not on FAT: read only is the write permission, hidden (name starting with '.') and system are ignored
+    mode_t mode    = st.st_mode & 07777;
+    mode_t newMode = (attribs & FA_READONLY) ? (mode & ~(S_IWUSR | S_IWGRP | S_IWOTH)) : (mode | S_IWUSR);
+
+    if(newMode == mode) {                   // nothing to change
+        return true;
+    }
+
+    return chmod(hostPath.c_str(), newMode) == 0;
 }
 
 uint16_t UtilsLib::fileTimeToAtariDate(struct tm *ptm)

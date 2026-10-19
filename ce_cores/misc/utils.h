@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <stdint.h>
+#include <sys/socket.h>
 
 extern "C" volatile sig_atomic_t sigintReceived;
 extern "C" volatile sig_atomic_t fatalErrorOccurred;     // set together with sigintReceived when app terminates because of an error
@@ -25,7 +26,6 @@ public:
     static uint32_t elapsedMs(uint32_t startMs);        // ms since startMs (value of getCurrentMs()), wrap safe
     static void  sleepMs(uint32_t ms);
 
-    static void attributesHostToAtari(bool isReadOnly, bool isDir, uint8_t &attrAtari);
     static void fileDateTimeToHostTime(uint16_t atariDate, uint16_t atariTime, struct tm *ptm);
     static uint16_t fileTimeToAtariTime(struct tm *ptm);
     static uint16_t fileTimeToAtariDate(struct tm *ptm);
@@ -78,6 +78,10 @@ public:
     static bool fileExists(const char* path);
     static bool dirExists(std::string& path);
     static bool devExists(std::string& path);
+
+    // socket() / accept() whose fd is not inherited by processes started by system() - atomically where the system can
+    static int socketCloexec(int domain, int type, int protocol);
+    static int acceptCloexec(int fdListen, struct sockaddr *addr, socklen_t *addrLen);
     static void toUpperCaseString(std::string &st);
 
     static int bcdToInt(int bcd);

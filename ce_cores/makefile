@@ -4,19 +4,31 @@ V = 0
 CXX	    = g++
 CC	    = gcc
 #STRIP	= strip
-CFLAGS	= -Wall -g -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE $(CPU_FLAGS)
+CFLAGS	= -Wall -g -D_FILE_OFFSET_BITS=64 $(CPU_FLAGS)
 CXXFLAGS = $(CFLAGS)
 DEPFLAGS = -MM -MT $(patsubst %.d,%.o,$@) -MT $@
 # -M : with system headers, -MM : without
 
 VPATH = ./lib
 LDFLAGS	= -Llib $(CPU_FLAGS)
-LDLIBS = -ldospath -lrt -lanl -lpthread -ldl -lutil
+# -lpthread: glibc before 2.34 (e.g. Debian bullseye, Raspberry Pi OS bullseye) has pthreads in a separate library
+LDLIBS = -ldospath -lpthread
 OBJDIR = obj
 TARGET = ce_cores.elf
 
 CFLAGS += -I./
-LDLIBS += -ldl
+
+# USB keyboard / mouse / joysticks (ikbd/inputdevices.cpp): found with libudev, inspected with libevdev - Linux only.
+# Needs libudev-dev + libevdev-dev. libevdev is linked statically (it's not installed on every system), libudev.so.1
+# is part of systemd / udev, so it's everywhere where udev is. Headers are taken from the sysroot of the compiler
+# (empty for native builds, the Raspbian one for armhf). Not in LDLIBS - that is also a prerequisite list,
+# where -l:libevdev.a doesn't work.
+ifeq ($(shell uname -s),Linux)
+CXX_SYSROOT := $(shell $(CXX) -print-sysroot)
+CFLAGS += -I$(CXX_SYSROOT)/usr/include/libevdev-1.0
+LIBEVDEV ?= -l:libevdev.a
+INPUT_LIBS = -ludev $(LIBEVDEV)
+endif
 
 # uncomment following line to get map file (ce.map)
 #LDFLAGS += -Wl,-Map,ce.map
@@ -87,14 +99,14 @@ $(TEST_OBJS) $(TEST_DEPS): CXXFLAGS += -I../third_party/doctest
 all:	$(TARGET)
 
 $(TARGET): $(LDLIBS) $(OBJS) $(HDRS)
-	$(CXX_LINK) $(CFLAGS) $(OBJS) $(LDFLAGS) -o $@ $(LDLIBS)
+	$(CXX_LINK) $(CFLAGS) $(OBJS) $(LDFLAGS) -o $@ $(LDLIBS) $(INPUT_LIBS)
 #	$(STRIP) -s $@
 	@ln -sf $(CURDIR)/$(TARGET) ./core/cosmosex.elf		# create symlink from whatever the output target is to just cosmosex.elf
 
 print-%:	; @echo $* = $($*)
 
 $(TEST_BIN): $(LDLIBS) $(APP_OBJS_NO_MAIN) $(TEST_OBJS)
-	$(CXX_LINK) $(CFLAGS) $(APP_OBJS_NO_MAIN) $(TEST_OBJS) $(LDFLAGS) -o $@ $(LDLIBS)
+	$(CXX_LINK) $(CFLAGS) $(APP_OBJS_NO_MAIN) $(TEST_OBJS) $(LDFLAGS) -o $@ $(LDLIBS) $(INPUT_LIBS)
 
 # build and run unit tests, pass extra doctest options via TEST_ARGS, e.g.: make test TEST_ARGS="-tc=*substitution* -s"
 test:	$(TEST_BIN)

@@ -143,6 +143,44 @@ extern "C" bool ldp_gotSymlink(const std::string& longPathSource)
 }
 
 /*
+    Get GEMDOS attributes of host file or dir - the same as ldp_findFirstAndNext() reports for it:
+        FA_DIR      - it's a directory
+        FA_READONLY - owner has no write permission (on FAT the FAT read only attribute)
+        FA_HIDDEN   - name starts with '.' (except '.' and '..'), on FAT also the FAT hidden attribute
+        FA_SYSTEM   - only on FAT, the FAT system attribute (Linux only)
+
+    :param hostPath: full host path to file or dir
+    :param attribs: attributes are returned here
+    :return: true on success, false if the file / dir doesn't exist (errno set)
+*/
+extern "C" bool ldp_getAttributes(const std::string& hostPath, uint8_t& attribs)
+{
+    struct stat st;
+    if(stat(hostPath.c_str(), &st) != 0) {
+        return false;
+    }
+
+    bool tryFat = true;
+    attribs = UtilsLib::hostAttributes(hostPath, st, tryFat);
+    return true;
+}
+
+/*
+    Set GEMDOS attributes of host file or dir:
+        FA_READONLY - removes / adds write permission, on FAT the FAT read only attribute
+        FA_HIDDEN, FA_SYSTEM, FA_ARCHIVE - only on FAT (Linux only), elsewhere ignored
+        FA_DIR, FA_VOLUME - ignored
+
+    :param hostPath: full host path to file or dir
+    :param attribs: new attributes
+    :return: true on success (also when some attributes were ignored), false on failure (errno set)
+*/
+extern "C" bool ldp_setAttributes(const std::string& hostPath, uint8_t attribs)
+{
+    return UtilsLib::setHostAttributes(hostPath, attribs);
+}
+
+/*
     You should call this function to release memory at the program exit.
 */
 extern "C" void ldp_cleanup(void)

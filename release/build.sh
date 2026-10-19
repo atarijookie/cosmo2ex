@@ -8,7 +8,7 @@
 #   - m68k-atari-mint-gcc toolchain, for the Atari programs on the config drive (these are
 #     the same for every architecture, so they are built once, on this machine)
 #   - docker (not for --native) - ce_cores and webserver are built in the toolchain stage of docker/Dockerfile
-#   - g++, make, go (only for --native)
+#   - g++, make, go, libudev-dev, libevdev-dev (only for --native)
 #
 # VERSION env var overrides the version used in the tarball names (default: date + git hash).
 

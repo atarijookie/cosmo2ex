@@ -67,33 +67,6 @@ uint32_t Utils::elapsedMs(uint32_t startMs)
     return getCurrentMs() - startMs;    // unsigned subtraction - correct even when ms counter wraps around
 }
 
-void Utils::attributesHostToAtari(bool isReadOnly, bool isDir, uint8_t &attrAtari)
-{
-    attrAtari = 0;
-
-    if(isReadOnly)
-        attrAtari |= FA_READONLY;
-
-/*
-    if(attrHost & FILE_ATTRIBUTE_HIDDEN)
-        attrAtari |= FA_HIDDEN;
-
-    if(attrHost & FILE_ATTRIBUTE_SYSTEM)
-        attrAtari |= FA_SYSTEM;
-
-    if(attrHost &                      )
-        attrAtari |= FA_VOLUME;
-*/
-
-    if(isDir)
-        attrAtari |= FA_DIR;
-
-/*
-    if(attrHost & FILE_ATTRIBUTE_ARCHIVE)
-        attrAtari |= FA_ARCHIVE;
-*/
-}
-
 uint16_t Utils::fileTimeToAtariDate(struct tm *ptm)
 {
     uint16_t atariDate = 0;
@@ -576,6 +549,9 @@ void Utils::setTimezoneVariable_inThisContext(void)
     tzset();                    // apply it now (localtime_r() doesn't call tzset() itself)
 }
 
+#if defined(__linux__)
+
+// label of a disk / partition, e.g. "/dev/sda1" -> "MY DISK", from the links in /dev/disk/by-label (made by udev)
 std::string Utils::getDeviceLabel(const std::string & devicePath)
 {
 #define DEV_BY_LABEL_PATH "/dev/disk/by-label/"
@@ -586,8 +562,6 @@ std::string Utils::getDeviceLabel(const std::string & devicePath)
 
     DIR *d = opendir(DEV_BY_LABEL_PATH);
     if(d != NULL) {
-        //FILE *f = fopen("/tmp/labels.txt", "w");
-        //fprintf(f, "%s\n", devShort.c_str());
         struct dirent * de;
         char link_path[288];
         char link_target[256];
@@ -595,23 +569,29 @@ std::string Utils::getDeviceLabel(const std::string & devicePath)
             if(de->d_type == DT_LNK) {  // symbolic link
                 snprintf(link_path, sizeof(link_path), "%s%s", DEV_BY_LABEL_PATH, de->d_name);
                 ssize_t n = readlink(link_path, link_target, sizeof(link_target) - 1);
-                //fprintf(f, "%s %d\n", link_path, (int)n);
                 if(n >= 0) {
                     link_target[n] = '\0';
                     char * target_short = strrchr(link_target, '/');
                     if(target_short != NULL) {
                         target_short++;
                         if(devShort == target_short) label = de->d_name;
-                        //fprintf(f, "%x %s %s\n", de->d_type, de->d_name, target_short);
                     }
                 }
             }
         }
-        //fclose(f);
         closedir(d);
     }
     return decodeHexEscapes(label);
 }
+
+#else
+
+std::string Utils::getDeviceLabel(const std::string & devicePath)
+{
+    return "";      // no /dev/disk/by-label here - no label
+}
+
+#endif
 
 std::string Utils::decodeHexEscapes(const std::string& in)
 {
@@ -735,6 +715,32 @@ bool Utils::devExists(std::string& path)
     }
 
     return false;
+}
+
+int Utils::socketCloexec(int domain, int type, int protocol)
+{
+#if defined(SOCK_CLOEXEC)       // Linux, BSDs, Cygwin
+    return socket(domain, type | SOCK_CLOEXEC, protocol);
+#else                           // e.g. macOS - set it right after creating, there's a short window when a fork() would inherit it
+    int fd = socket(domain, type, protocol);
+    if(fd >= 0) {
+        fcntl(fd, F_SETFD, FD_CLOEXEC);
+    }
+    return fd;
+#endif
+}
+
+int Utils::acceptCloexec(int fdListen, struct sockaddr *addr, socklen_t *addrLen)
+{
+#if defined(SOCK_CLOEXEC)       // where there's SOCK_CLOEXEC, there's also accept4()
+    return accept4(fdListen, addr, addrLen, SOCK_CLOEXEC);
+#else
+    int fd = accept(fdListen, addr, addrLen);
+    if(fd >= 0) {
+        fcntl(fd, F_SETFD, FD_CLOEXEC);
+    }
+    return fd;
+#endif
 }
 
 int Utils::bcdToInt(int bcd)

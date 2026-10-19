@@ -14,11 +14,10 @@ fi
 
 # create the log and data dirs if they don't exist
 mkdir -p "$DATA_DIR"
-chmod 0700 "$DATA_DIR"      # owner only - holds command token and virtual ikbd devices
+chmod 0700 "$DATA_DIR"      # owner only - holds command token
 mkdir -p "$LOG_DIR"
 mkdir -p "$SETTINGS_DIR"
 mkdir -p "$PID_DIR"
-mkdir -p -m 0700 "$IKBD_VIRTUAL_DEVICES_PATH"
 
 # make a copy of config drive into the expected destination
 cp -rf "${BIN_DIR}/configdrive" "$CONFIG_DRIVE_PATH"

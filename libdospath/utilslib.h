@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <stdint.h>
+#include <sys/stat.h>
 
 extern "C" volatile sig_atomic_t sigintReceived;
 
@@ -26,7 +27,13 @@ public:
     static void toHostSeparators(std::string &path);
     static void removeTrailingSeparator(std::string& path);
 
-    static void attributesHostToAtari(bool isReadOnly, bool isDir, uint8_t &attrAtari);
+    // GEMDOS attributes of host file / dir (st = its stat): FA_DIR, FA_READONLY (owner has no write permission),
+    // FA_HIDDEN (name starts with '.'), and on FAT (Linux) also its read only / hidden / system attributes.
+    // tryFat: in - try to get FAT attributes, out - false when not on FAT (so it's not tried again for the rest of the dir)
+    static uint8_t hostAttributes(const std::string &hostPath, const struct stat &st, bool &tryFat);
+    // FA_READONLY is stored as write permission, on FAT (Linux) also hidden / system / archive go to FAT attributes.
+    // What the host can't store (e.g. hidden on ext4 - would mean rename) is ignored. False on failure, errno set.
+    static bool setHostAttributes(const std::string &hostPath, uint8_t attribs);
     static void fileDateTimeToHostTime(uint16_t atariDate, uint16_t atariTime, struct tm *ptm);
     static uint16_t fileTimeToAtariTime(struct tm *ptm);
     static uint16_t fileTimeToAtariDate(struct tm *ptm);

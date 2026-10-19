@@ -5,7 +5,6 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <queue>
-#include <pty.h>
 #include <sys/file.h>
 #include <errno.h>
 #include <sys/types.h>
@@ -36,7 +35,7 @@ int discoveryServerOpenSocket(void)
     struct sockaddr_in servaddr;
 
     // create socket fd
-    if ((sockfd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0)) < 0 ) {
+    if ((sockfd = Utils::socketCloexec(AF_INET, SOCK_DGRAM, 0)) < 0 ) {        // CLOEXEC - don't let processes started by system() inherit this socket
         logDiscovery(LOG_ERROR, "Failed to create main server socket: %s", strerror(errno));
         return -1;
     }

@@ -44,6 +44,7 @@ type Server struct {
 	router        *chi.Mux
 	mu            sync.RWMutex
 	authTokens    map[string]struct{}
+	input         *inputClient // connection to input socket of ce_cores, for mouse / keyboard of the web UI
 }
 
 // responseWriter wraps http.ResponseWriter to capture status codes
@@ -160,6 +161,7 @@ func newServer() *Server {
 	s := &Server{
 		router: r,
 		authTokens: map[string]struct{}{},
+		input:      &inputClient{},
 	}
 
 	// browsers must revalidate pages instead of using cached copies (304 if unchanged), otherwise

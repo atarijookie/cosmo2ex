@@ -3,7 +3,7 @@
 #define _IKBD_H_
 
 #include <termios.h>
-#include <linux/joystick.h>
+#include "linuxinput.h"
 
 #include <bitset>
 
@@ -15,19 +15,21 @@
 
 //#define SPYIKBD
 
-#define INPUT_LINKS_PATH        "/dev/input/by-path"
-#define HOSTPATH_SEPAR_STRING   "/"
-#define PATH_BUFF_SIZE            1024
-
 #define INPUT_EVENT_MAX_SIZE    32          // >= sizeof(input_event) and sizeof(js_event)
 
+struct libevdev;
+
+// USB keyboard / mouse / joystick attached to this machine, see inputdevices.h
 typedef struct {
     char    devPath[256];
     int     fd;
+    struct libevdev *evdev;                 // keyboard / mouse: libevdev of fd (for grab), NULL otherwise
 
-    uint8_t partial[INPUT_EVENT_MAX_SIZE];  // part of event received so far - a read can return less than whole event (e.g. from FIFO)
+    uint8_t partial[INPUT_EVENT_MAX_SIZE];  // part of event received so far - a read can return less than whole event
     int     partialLen;
 } TInputDevice;
+
+void inputDevClose(TInputDevice& dev);      // close the device (fd and libevdev), see inputdevices.cpp
 
 #define JOYAXIS             8
 #define JOYBUTTONS          12
@@ -81,8 +83,9 @@ public:
 
     void loadSettings(void);
 
-    void findDevices(void);
-    void findVirtualDevices();
+    void findDevices(void);                         // open all attached keyboard / mouse / joysticks we don't have yet
+    void deviceAttached(const char *devNode);       // use this device if it's keyboard / mouse / joystick we don't have yet
+    void deviceRemoved(const char *devNode);        // close it if it's ours, and look for another one instead
     void closeDevs(void);
 
     int getFdByIndex(int index);
@@ -91,7 +94,8 @@ public:
     void processMouse(input_event *ev);
     void processKeyboard(input_event *ev, bool skipKeyboardTranslation);
     void processJoystick(js_event *jse, int joyNumber);
-    void markVirtualMouseEvenTime(void);
+    void markInputMouseEventTime(void);                     // mouse event came from the input socket (see inputsocket.h)
+    void setInputJoysticks(bool joy0, bool joy1);           // joysticks of apps on the input socket
 
     int processReceivedCommands(bool skipKeyboardTranslation, int fdUartRead);     // returns bytes read, 0 = nothing now, -1 = connection closed / broken
 
@@ -154,7 +158,9 @@ private:
         int     accX, accY;             // movement not turned into cursor keys yet
     } keycodeMouse;
 
-    uint32_t           lastVDevMouseEventTime;
+    bool            gotInputMouseEvent;         // some mouse event came from the input socket...
+    uint32_t        lastInputMouseEventTime;    // ...at this time - mouse counts as present for 10 s after that
+    bool            inputJoy[2];                // apps on the input socket send events of joystick 0 / 1
 
     int             joystickMode;
     TJoystickState  joystick[2];
@@ -177,8 +183,6 @@ private:
     void addToTable(int pcKey, int stKey, int humanKey=0);
     void fillSpecialCodeLengthTable(void);
     void fillStCommandsLengthTable(void);
-
-    void processFoundDev(const char *linkName, const char *fullPath);
 
     void resetInternalIkbdVars(void);
     void sendJoyButtonsInMouseMode(void);
@@ -208,8 +212,8 @@ private:
     bool handleHotkeys(int pcKey, bool pressed, bool skipKeyboardTranslation);
 
     void toggleKeyboardExclusiveAccess(void);
-    bool grabExclusiveAccess(int fd);       // true if grabbed
-    void releaseExclusiveAccess(int fd);
+    bool grabExclusiveAccess(int index);    // index: INTYPE_KEYBOARD / INTYPE_MOUSE, true if grabbed
+    void releaseExclusiveAccess(int index);
 
     void dumpBuffer(bool fromStNotKeyboard);
 
