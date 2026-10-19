@@ -16,6 +16,7 @@ else ifeq ($(UNAME_S),Darwin)
 BIN_EXT	=
 else ifneq ($(filter CYGWIN_NT%,$(UNAME_S)),)
 BIN_EXT	= .exe
+CFLAGS	+= -D_GNU_SOURCE	# like g++ on Linux - see ce_cores/makefile
 else
 $(error Unsupported platform '$(UNAME_S)' - expected Linux, Darwin or CYGWIN_NT*)
 endif

@@ -92,6 +92,9 @@ jobs:
       - name: libdospath tests
         run: make -C libdospath test
 
+      - name: Loopback addresses for the chipinterface tests    # Linux answers on all of 127.0.0.0/8, macOS only on 127.0.0.1
+        run: for i in 11 12 21 22 23 31 32; do sudo ifconfig lo0 alias 127.0.0.$i up; done
+
       - name: ce_cores tests
         run: make -C ce_cores -j"$(sysctl -n hw.ncpu)" test
 
