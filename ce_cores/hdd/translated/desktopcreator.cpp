@@ -37,10 +37,10 @@ void DesktopCreator::createToFile(DesktopConfig *dc)
     FILE *f;
     if(dc->tosVersion < TOSVER205) {            // for TOS 1.xx
         logHdd(LOG_DEBUG, "DesktopCreator::createToFile() -- will create %s", desktopInf.c_str());
-        f = fopen(desktopInf.c_str(), "wt");
+        f = fopen(desktopInf.c_str(), "w");
     } else {                                    // for TOS 2.xx and up
         logHdd(LOG_DEBUG, "DesktopCreator::createToFile() -- will create %s", newdeskInf.c_str());
-        f = fopen(newdeskInf.c_str(), "wt");
+        f = fopen(newdeskInf.c_str(), "w");
     }
 
     if(!f) {                                    // if failed to create file, quit

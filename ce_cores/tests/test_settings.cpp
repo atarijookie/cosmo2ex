@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>         // mkdtemp() - macOS has it here, glibc in stdlib.h
 #include <map>
 #include <string>
 #include <thread>

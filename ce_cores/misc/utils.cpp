@@ -1116,7 +1116,7 @@ bool Utils::loadDotEnvFrom(const char* path)
 {
     /* try to load .env file from the specified path */
 
-    FILE *f = fopen(path, "rt");        // try to open file
+    FILE *f = fopen(path, "r");        // try to open file
 
     if(!f) {
         logHdd(LOG_ERROR, "Utils::loadDotEnv - failed to open file %s", path);
@@ -1170,7 +1170,7 @@ void Utils::textToFile(const char* text, const char* filePath)
         return;
     }
 
-    FILE *f = fopen(filePath, "wt");    // open file
+    FILE *f = fopen(filePath, "w");    // open file
 
     if(!f) {                            // could not open file? quit
         return;
@@ -1190,7 +1190,7 @@ void Utils::textFromFile(char* bfr, uint32_t bfrSize, const char* filePath, bool
         return;
     }
 
-    FILE *f = fopen(filePath, "rt");    // open file
+    FILE *f = fopen(filePath, "r");    // open file
 
     if(!f) {                            // could not open file? quit
         return;

@@ -102,7 +102,7 @@ void Version::fromFirstLineOfFile(char *filePath, bool withDashes)
 {
     clear();
 
-    FILE *f = fopen(filePath, "rt");            // try to open the file
+    FILE *f = fopen(filePath, "r");            // try to open the file
 
     if(!f) {                                    // failed?
         return;
@@ -176,7 +176,7 @@ void Version::readLineFromFile(const char *filename, char *buffer, int maxLen, c
 {
     memset(buffer, 0, maxLen);                  // clear the buffer where the value should be stored
 
-    FILE *f = fopen(filename, "rt");            // open the file
+    FILE *f = fopen(filename, "r");            // open the file
 
     if(!f) {                                    // if failed to open, copy in the default value
         strncpy(buffer, defValue, maxLen - 1);

@@ -377,7 +377,7 @@ void UtilsLib::out(int logLevel, const char *format, ...)
     if(logLevel <= logLevelFile) {      // log level equal or below allowed file value? log to file
         logRotateIfNeeded();
 
-        FILE *f = fopen(logFilePath.c_str(), "a+t");        // try to open the file
+        FILE *f = fopen(logFilePath.c_str(), "a+");        // try to open the file
 
         va_copy(argsCopy, args);
         if(f) {                         // file opened? write to file

@@ -313,7 +313,7 @@ void MfmCachedImage::log(char *str)
     std::string logFilePath = Utils::dotEnvValue("LOG_DIR", Utils::defaultDir("LOG_DIR").c_str());     // path to logs dir
     Utils::mergeHostPaths(logFilePath, "mfmcached.log");             // full path = dir + filename
 
-    FILE *f = fopen(logFilePath.c_str(), "a+t");
+    FILE *f = fopen(logFilePath.c_str(), "a+");
     if(!f) {
         return;
     }
