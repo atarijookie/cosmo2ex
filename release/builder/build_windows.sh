@@ -31,7 +31,8 @@ case "$(uname -s)" in
     *)  echo "run this in a Cygwin shell" >&2; exit 1 ;;
 esac
 
-CYGWIN_MIRROR="${CYGWIN_MIRROR:-https://mirrors.kernel.org/sourceware/cygwin}"
+# mirrors tried in this order (a mirror can be down or not have the newest package yet), CYGWIN_MIRROR=<url> uses only that one
+CYGWIN_MIRRORS="${CYGWIN_MIRROR:-https://mirrors.kernel.org/sourceware/cygwin https://cygwin.mirror.constant.com https://mirrors.dotsrc.org/cygwin https://ftp.fau.de/cygwin}"
 
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)
@@ -90,11 +91,20 @@ fi
 
 # source package of exactly this cygwin1.dll, checked against the SHA-512 in the mirror's package list (setup.ini)
 CYGWIN_SRC="cygwin-$CYGWIN_VERSION-src.tar.xz"
-curl -fsSL -o "$OUT/licenses/$CYGWIN_SRC" "$CYGWIN_MIRROR/src/release/cygwin/$CYGWIN_SRC"
-
-CYGWIN_SRC_SHA512=$(curl -fsSL "$CYGWIN_MIRROR/x86_64/setup.ini" | awk -v f="src/release/cygwin/$CYGWIN_SRC" '$1 == "source:" && $2 == f { print $4 }')
-if [ -z "$CYGWIN_SRC_SHA512" ] || ! echo "$CYGWIN_SRC_SHA512  $OUT/licenses/$CYGWIN_SRC" | sha512sum -c - >/dev/null; then
-    echo "$CYGWIN_SRC doesn't match the checksum in setup.ini (or it's not listed there)" >&2
+CYGWIN_SRC_OK=
+for mirror in $CYGWIN_MIRRORS; do
+    echo "[windows] $CYGWIN_SRC from $mirror"
+    SETUP_INI=$(curl -fsSL --retry 3 --connect-timeout 20 "$mirror/x86_64/setup.ini") || { echo "  cannot download setup.ini" >&2; continue; }
+    CYGWIN_SRC_SHA512=$(echo "$SETUP_INI" | awk -v f="src/release/cygwin/$CYGWIN_SRC" '$1 == "source:" && $2 == f { print $4; exit }')
+    [ -n "$CYGWIN_SRC_SHA512" ] || { echo "  not listed in setup.ini" >&2; continue; }
+    curl -fsSL --retry 3 --connect-timeout 20 -o "$OUT/licenses/$CYGWIN_SRC" "$mirror/src/release/cygwin/$CYGWIN_SRC" || { echo "  cannot download it" >&2; continue; }
+    echo "$CYGWIN_SRC_SHA512  $OUT/licenses/$CYGWIN_SRC" | sha512sum -c - >/dev/null || { echo "  doesn't match the checksum in setup.ini" >&2; continue; }
+    CYGWIN_SRC_OK=1
+    break
+done
+if [ -z "$CYGWIN_SRC_OK" ]; then
+    rm -f "$OUT/licenses/$CYGWIN_SRC"
+    echo "cannot get $CYGWIN_SRC with a matching checksum from any mirror: $CYGWIN_MIRRORS" >&2
     exit 1
 fi
 
