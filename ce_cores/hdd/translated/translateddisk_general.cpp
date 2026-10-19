@@ -282,12 +282,12 @@ void TranslatedDisk::onGetMounts(uint8_t *cmd)
 
         if(conf[i].enabled) {
             if(conf[i].label.empty()) {             // no label directly in this drive? don't show it
-                sprintf(tmp, "%c: %s\n", ('A' + i), mountStr);
+                snprintf(tmp, sizeof(tmp), "%c: %s\n", ('A' + i), mountStr);
             } else {                                // got label from this drive? use it
-                sprintf(tmp, "%c: %s (%s)\n", ('A' + i), conf[i].label.c_str(), mountStr);
+                snprintf(tmp, sizeof(tmp), "%c: %s (%s)\n", ('A' + i), conf[i].label.c_str(), mountStr);
             }
         } else {
-            sprintf(tmp, "%c:\n", ('A' + i));
+            snprintf(tmp, sizeof(tmp), "%c:\n", ('A' + i));
         }
 
         mounts += tmp;

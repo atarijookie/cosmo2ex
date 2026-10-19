@@ -2,7 +2,7 @@ CXX	= g++
 CC	= gcc
 
 CFLAGS	= -Wall -g -D_FILE_OFFSET_BITS=64
-CXXFLAGS	= $(CFLAGS) -std=c++17
+CXXFLAGS	= $(CFLAGS) -std=gnu++17	# not c++17 - in that strict mode Cygwin's headers hide e.g. DT_DIR (see ce_cores/makefile)
 
 TARGET	= libdospath.a
 OBJS	= dirtranslator.o filenameshortener.o libexports.o utilslib.o

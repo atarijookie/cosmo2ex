@@ -2,11 +2,26 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 #include "../../misc/global.h"
 #include "../../misc/debug.h"
 #include "../../misc/utils.h"
 #include "desktopcreator.h"
+
+// append formatted text at bfr, return the end of it - the DESKTOP.INF buffer is big enough for these few lines
+__attribute__((format(printf, 2, 3)))
+static char *appendFormatted(char *bfr, const char *format, ...)
+{
+    char tmp[256];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(tmp, sizeof(tmp), format, args);
+    va_end(args);
+
+    strcpy(bfr, tmp);
+    return bfr + strlen(tmp);
+}
 
 void DesktopCreator::createToFile(DesktopConfig *dc)
 {
@@ -98,7 +113,7 @@ char *DesktopCreator::storeWindowPositions(char *bfr, DesktopConfig *dc)
     }
 
     for(int i=0; i<n; i++) {
-        sprintf(tmp, "#W 00 00 08 01 1E 15 00 @\r\n");
+        snprintf(tmp, sizeof(tmp), "#W 00 00 08 01 1E 15 00 @\r\n");
         strcpy(bfr, tmp);
         bfr += strlen(tmp);
     }
@@ -133,29 +148,29 @@ char *DesktopCreator::storeExecutables(char *bfr, DesktopConfig *dc)
 char *DesktopCreator::storeFloppyImageLauncher(char *bfr, DesktopConfig *dc)
 {
     // add app for opening .ST images
-    bfr += sprintf(bfr, "#G 03 04   %c:\\%s@ *.ST@ \r\n", 'A' + dc->configDrive, PATH_ATARI_CE_FDD_TTP);
+    bfr = appendFormatted(bfr, "#G 03 04   %c:\\%s@ *.ST@ \r\n", 'A' + dc->configDrive, PATH_ATARI_CE_FDD_TTP);
 
     // add app for opening .MSA images
-    bfr += sprintf(bfr, "#G 03 04   %c:\\%s@ *.MSA@ \r\n", 'A' + dc->configDrive, PATH_ATARI_CE_FDD_TTP);
+    bfr = appendFormatted(bfr, "#G 03 04   %c:\\%s@ *.MSA@ \r\n", 'A' + dc->configDrive, PATH_ATARI_CE_FDD_TTP);
 
 	// add app for mounting .IMG hard disk images
-	bfr += sprintf(bfr, "#G 03 04   %c:\\%s@ *.IMG@ \r\n", 'A' + dc->configDrive, PATH_ATARI_CE_HDIMG_TTP);
+	bfr = appendFormatted(bfr, "#G 03 04   %c:\\%s@ *.IMG@ \r\n", 'A' + dc->configDrive, PATH_ATARI_CE_HDIMG_TTP);
 
     return bfr;
 }
 
 char *DesktopCreator::storeMediaPlayers(char *bfr, DesktopConfig *dc)
 {
-	bfr += sprintf(bfr,
+	bfr = appendFormatted(bfr,
 	               "#P 03 04   %c:\\%s@ *.AU@ \r\n", 'A' + dc->configDrive, PATH_ATARI_CE_MEDIAPLAY);
 
-	bfr += sprintf(bfr,
+	bfr = appendFormatted(bfr,
 	               "#P 03 04   %c:\\%s@ *.MP3@ \r\n", 'A' + dc->configDrive, PATH_ATARI_CE_MEDIAPLAY);
 
-	bfr += sprintf(bfr,
+	bfr = appendFormatted(bfr,
 	               "#P 03 04   %c:\\%s@ *.WMA@ \r\n", 'A' + dc->configDrive, PATH_ATARI_CE_MEDIAPLAY);
 
-	bfr += sprintf(bfr,
+	bfr = appendFormatted(bfr,
 	               "#P 03 04   %c:\\%s@ *.OGG@ \r\n", 'A' + dc->configDrive, PATH_ATARI_CE_MEDIAPLAY);
 	return bfr;
 }
@@ -208,7 +223,7 @@ char *DesktopCreator::storeExistingDrives(char *bfr, DesktopConfig *dc)
             driveIcon = 0;
         }
 
-        sprintf(tmp, "#M %02X %02X %02X FF %c %s@ @ \r\n", x, y, driveIcon, driveLetter, driveName);
+        snprintf(tmp, sizeof(tmp), "#M %02X %02X %02X FF %c %s@ @ \r\n", x, y, driveIcon, driveLetter, driveName);
         strcpy(bfr, tmp);
         bfr += strlen(tmp);
 
@@ -221,7 +236,7 @@ char *DesktopCreator::storeExistingDrives(char *bfr, DesktopConfig *dc)
 
     //---------
     // now place trash can on the desktop
-    sprintf(tmp, "#T 00 %02X 02 FF   TRASH@ @ \r\n", rows - 1);
+    snprintf(tmp, sizeof(tmp), "#T 00 %02X 02 FF   TRASH@ @ \r\n", rows - 1);
     strcpy(bfr, tmp);
     bfr += strlen(tmp);
 

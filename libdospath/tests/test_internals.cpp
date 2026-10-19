@@ -193,7 +193,7 @@ TEST_CASE_FIXTURE(ScratchDir, "DirTranslator removes least recently used shorten
     // add 30 items to each shortener, so 90 items, with the 3 items before we should end up with 93 items total
     for(int i=0; i<30; i++) {
         char fn[32];
-        sprintf(fn, "%d.ext", i);       // generate fake file name
+        snprintf(fn, sizeof(fn), "%d.ext", i);       // generate fake file name
         std::string shortFileName;
 
         fs1->longToShortFileName(fn, shortFileName);
@@ -390,7 +390,7 @@ TEST_CASE("FilenameShortener numbering gets shorter prefix for longer numbers")
 
     for(int i=0; i<102; i++) {
         char fn[64];
-        sprintf(fn, "LongFile Name %03d.ext", i);
+        snprintf(fn, sizeof(fn), "LongFile Name %03d.ext", i);
         REQUIRE(fs.longToShortFileName(fn, shortFn[i]));
     }
 
@@ -479,7 +479,7 @@ TEST_CASE_FIXTURE(ScratchDir, "DirTranslator assigns short names in sorted order
 
     for(int i=0; i<10; i++) {
         char fn[64];
-        sprintf(fn, "/LongFile Name %d.ext", order[i]);
+        snprintf(fn, sizeof(fn), "/LongFile Name %d.ext", order[i]);
         sh("touch '" + dir + fn + "'");
     }
 
@@ -487,8 +487,8 @@ TEST_CASE_FIXTURE(ScratchDir, "DirTranslator assigns short names in sorted order
 
     for(int i=0; i<10; i++) {
         char fn[64], expected[16];
-        sprintf(fn, "LongFile Name %d.ext", i);
-        sprintf(expected, (i < 9) ? "LONGFI~%d.EXT" : "LONGF~%d.EXT", i + 1);     // from '~10' the number takes one more char
+        snprintf(fn, sizeof(fn), "LongFile Name %d.ext", i);
+        snprintf(expected, sizeof(expected), (i < 9) ? "LONGFI~%d.EXT" : "LONGF~%d.EXT", i + 1);     // from '~10' the number takes one more char
 
         std::string shortFn;
         REQUIRE(T::longToShortFilename(&dt, dir, fn, shortFn));    // first call creates and feeds the shortener with the whole dir

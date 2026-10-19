@@ -528,13 +528,15 @@ void Utils::createTimezoneStringFromOffset(float utcOffset, char *str)
     int ofsHours        = ofsTotalMinutes / 60;
     int ofsMinutes      = ofsTotalMinutes % 60;
 
+    char tmp[32];
     if(ofsTotalMinutes == 0) {                                  // no offset?
-        sprintf(str, "UTC");
+        snprintf(tmp, sizeof(tmp), "UTC");
     } else if(ofsMinutes != 0) {                                // got offset with minutes? (also when hours are 0, e.g. 0.5)
-        sprintf(str, "UTC%c%02d:%02d", signChar, ofsHours, ofsMinutes);
+        snprintf(tmp, sizeof(tmp), "UTC%c%02d:%02d", signChar, ofsHours, ofsMinutes);
     } else {                                                    // got offset - only hours (no minutes)
-        sprintf(str, "UTC%c%02d", signChar, ofsHours);
+        snprintf(tmp, sizeof(tmp), "UTC%c%02d", signChar, ofsHours);
     }
+    strcpy(str, tmp);
 }
 
 void Utils::setTimezoneVariable_inThisContext(void)

@@ -56,7 +56,7 @@ static bool createCmdToken(void)
 
     char hex[2 * sizeof(rnd) + 1];
     for(size_t i = 0; i < sizeof(rnd); i++) {
-        sprintf(hex + 2 * i, "%02x", rnd[i]);
+        snprintf(hex + 2 * i, sizeof(hex) - 2 * i, "%02x", rnd[i]);
     }
 
     Utils::mkpath(Utils::dotEnvValue("DATA_DIR").c_str(), S_IRWXU);    // the token file lives there - owner only

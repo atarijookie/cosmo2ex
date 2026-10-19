@@ -258,7 +258,7 @@ uint8_t ChipInterface::getFWversion(ClientInfo* ci, bool hddNotFdd)
     }
 
     char fwVerStr[64];
-    sprintf(fwVerStr, "%d-%02d-%02d", year, month, day);
+    snprintf(fwVerStr, sizeof(fwVerStr), "%d-%02d-%02d", year, month, day);
     StatusReport::storeIpAndFwVer(ci->mac, ci->ipAddr, fwVerStr, bfr[4]);
 
     // features changed? store it to settings

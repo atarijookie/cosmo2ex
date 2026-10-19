@@ -187,7 +187,7 @@ bool FilenameShortener::shortenName(const std::string& nLong, const std::string&
     char num[16];                                       // fits "~" + any int + nul
 
     while(ind < 1000) {
-        sprintf(num, "~%d", ind);                       // create numerical end, e.g. '~1'
+        snprintf(num, sizeof(num), "~%d", ind);                       // create numerical end, e.g. '~1'
         int remainingSize = 8 - strlen(num);            // what is the remaining size of name, if we'll use 'num' at the end
         
         std::string newName = nLong.substr(0, remainingSize);  // shorten to remaining size (substr - nLong can be shorter than that)

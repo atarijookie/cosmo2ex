@@ -53,7 +53,9 @@ void Version::fromStringWithoutDashes(char *str)
 
 void Version::toString(char *str)
 {
-    sprintf(str, "%04d-%02d-%02d", year, month, day);
+    char tmp[32];
+    snprintf(tmp, sizeof(tmp), "%04d-%02d-%02d", year, month, day);
+    strcpy(str, tmp);
 }
 
 void Version::fromInts(int y, int m, int d)
@@ -162,7 +164,9 @@ void Version::getAppVersion(char *bfr)
     i = sscanf(buildDate + 4, "%d %d", &day, &year);
 
     if(i == 2 && month > 0) {
-        sprintf(bfr, "%04d-%02d-%02d", year, month, day);
+        char tmp[32];
+        snprintf(tmp, sizeof(tmp), "%04d-%02d-%02d", year, month, day);
+        strcpy(bfr, tmp);
     } else {
         strcpy(bfr, "YYYY-MM-DD");
     }

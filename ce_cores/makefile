@@ -5,7 +5,9 @@ CXX	    = g++
 CC	    = gcc
 #STRIP	= strip
 CFLAGS	= -Wall -g -D_FILE_OFFSET_BITS=64 $(CPU_FLAGS)
-CXXFLAGS = $(CFLAGS) -std=c++17
+# gnu++17, not c++17: the strict mode defines __STRICT_ANSI__, and then Cygwin's headers hide POSIX / BSD parts,
+# e.g. DT_DIR in <dirent.h> (glibc doesn't - g++ always defines _GNU_SOURCE there)
+CXXFLAGS = $(CFLAGS) -std=gnu++17
 DEPFLAGS = -MM -MT $(patsubst %.d,%.o,$@) -MT $@
 # -M : with system headers, -MM : without
 

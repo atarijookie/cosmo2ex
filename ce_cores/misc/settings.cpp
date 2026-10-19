@@ -101,7 +101,7 @@ void Settings::storeDefaultValues(void)
 
     char key[32];
     for(int id=0; id<8; id++) {                         // read the list of device types from settings
-        sprintf(key, "ACSI_DEVTYPE_%d", id);            // create settings KEY, e.g. ACSI_DEVTYPE_0
+        snprintf(key, sizeof(key), "ACSI_DEVTYPE_%d", id);            // create settings KEY, e.g. ACSI_DEVTYPE_0
 
         if(id == 1) {                                   // ACSI id 1 enaled by default
             setInt(key, DEVTYPE_TRANSLATED);
@@ -291,7 +291,7 @@ void Settings::binToHex(uint8_t *inBfr, int len, char *outBfr)
     char tmp[16];
 
     for(int i=0; i<len; i++) {
-        sprintf(tmp, "%02X", inBfr[i]);     // get value from inBfr, convert to HEX into tmp
+        snprintf(tmp, sizeof(tmp), "%02X", inBfr[i]);     // get value from inBfr, convert to HEX into tmp
         strcat(outBfr, tmp);                // append to existing content
     }
 }
@@ -341,7 +341,7 @@ void Settings::loadAcsiIDs(AcsiIDinfo *aii, bool useDefaultsIfNoSettings)
 
     char key[32];
     for(int id=0; id<8; id++) {                         // read the list of device types from settings
-        sprintf(key, "ACSI_DEVTYPE_%d", id);            // create settings KEY, e.g. ACSI_DEVTYPE_0
+        snprintf(key, sizeof(key), "ACSI_DEVTYPE_%d", id);            // create settings KEY, e.g. ACSI_DEVTYPE_0
 
         int devType = getInt(key, DEVTYPE_OFF);
 

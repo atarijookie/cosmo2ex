@@ -80,7 +80,7 @@ std::string ImageSilo::getImageFilePathFromSlotNo(int slotNo)
     Settings s;
 
     char key[32];
-    sprintf(key, "FLOPPY_IMAGE_%d", slotNo);      // create settings key
+    snprintf(key, sizeof(key), "FLOPPY_IMAGE_%d", slotNo);      // create settings key
     res = s.getPath(key, "");         // get the value
 
     return res;
@@ -96,7 +96,7 @@ void ImageSilo::saveImageFilepathToSlot(int slotNo, const char* pathAndFile)
     Settings s;
 
     char key[32];
-    sprintf(key, "FLOPPY_IMAGE_%d", slotNo);      // create settings key
+    snprintf(key, sizeof(key), "FLOPPY_IMAGE_%d", slotNo);      // create settings key
 
     s.setPath(key, pathAndFile);       // store the value
     logFdd(LOG_DEBUG, "ImageSilo::saveImageFilepathToSlot -- slotNo: %d, file: %s", slotNo, pathAndFile);

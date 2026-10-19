@@ -132,7 +132,7 @@ static void setAcsiDevTypes(Settings& s, const int types[8])
 {
     char key[32];
     for(int id=0; id<8; id++) {
-        sprintf(key, "ACSI_DEVTYPE_%d", id);
+        snprintf(key, sizeof(key), "ACSI_DEVTYPE_%d", id);
         s.setInt(key, types[id]);
     }
 }
