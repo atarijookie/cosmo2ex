@@ -5,6 +5,7 @@
 //   - makes the runtime copy of the config drive (CONFIG_DRIVE_PATH)
 //   - runs both programs in its folder, their output prefixed with [cores] / [web]
 //   - Ctrl+C or closing the console / Terminal window stops both; when one of them exits, the other one is stopped too
+//   - except when ce_cores fails (exits with error or crashes) - then it's restarted, unless it fails too often
 //
 // Double-click it (on macOS: CosmosEx.command, which runs it in Terminal), or run it from a console.
 // Only one instance can run (lock file in DATA_DIR).
@@ -31,6 +32,15 @@ import (
 
 // how long the programs get to quit after being told to, before they are killed
 const stopTimeout = 10 * time.Second
+
+// ce_cores is restarted when it fails (exits with error or crashes) - like Restart=on-failure + RestartSec=3 of the
+// systemd service on Linux. Unless it fails too often: then something is wrong (e.g. a missing file), and restarting
+// it again and again wouldn't help.
+const (
+	restartDelay  = 3 * time.Second
+	maxRestarts   = 5
+	restartWindow = time.Minute
+)
 
 func main() {
 	err := run()
@@ -76,11 +86,14 @@ func run() error {
 
 	coresName, webName := programNames(runtime.GOOS)
 	l := &launcher{
-		dir:         binDir,
-		cores:       []string{filepath.Join(binDir, coresName)},
-		web:         []string{filepath.Join(binDir, webName)},
-		out:         os.Stdout,
-		stopTimeout: stopTimeout,
+		dir:           binDir,
+		cores:         []string{filepath.Join(binDir, coresName)},
+		web:           []string{filepath.Join(binDir, webName)},
+		out:           os.Stdout,
+		stopTimeout:   stopTimeout,
+		restartDelay:  restartDelay,
+		maxRestarts:   maxRestarts,
+		restartWindow: restartWindow,
 	}
 
 	sig := make(chan os.Signal, 1)
@@ -228,6 +241,11 @@ type launcher struct {
 	cores, web  []string // command lines
 	out         io.Writer
 	stopTimeout time.Duration
+
+	restartDelay  time.Duration // failed ce_cores is started again after this time
+	maxRestarts   int           // ...but at most this many times within restartWindow
+	restartWindow time.Duration
+	restarts      []time.Time // when ce_cores was restarted
 }
 
 type exited struct {
@@ -240,43 +258,103 @@ func (l *launcher) run(sig <-chan os.Signal) error {
 	var outMu sync.Mutex // the programs' lines are written whole, not mixed
 	coresOut := &prefixWriter{w: l.out, mu: &outMu, prefix: "[cores] ", filter: true}
 	webOut := &prefixWriter{w: l.out, mu: &outMu, prefix: "[web]   "}
+	defer coresOut.Flush()
+	defer webOut.Flush()
+
+	done := make(chan exited, 2) // each started program reports here when it exits - at most 2 run at the same time
+	running := map[string]*proc{}
 
 	cores, err := start("ce_cores", l.cores, l.dir, coresOut)
 	if err != nil {
 		return err
 	}
+	watch(cores, done)
+	running[cores.name] = cores
+
 	web, err := start("webserver", l.web, l.dir, webOut)
 	if err != nil {
-		interrupt([]*exec.Cmd{cores.cmd}, false)
-		wait(l.out, []*proc{cores}, waitAll([]*proc{cores}), l.stopTimeout)
+		l.stopAll(running, done, false)
 		return err
 	}
+	watch(web, done)
+	running[web.name] = web
 
-	done := waitAll([]*proc{cores, web})
-	remaining := []*proc{cores, web}
+	for {
+		select {
+		case <-sig: // the programs got it too when it came from the console, interrupt() does the rest
+			fmt.Fprintln(l.out, "stopping")
+			l.stopAll(running, done, true)
+			return nil
 
-	var result error
-	select {
-	case <-sig: // the programs got it too when it came from the console, interrupt() does the rest
-		fmt.Fprintln(l.out, "stopping")
-		interrupt([]*exec.Cmd{cores.cmd, web.cmd}, true)
+		case e := <-done:
+			delete(running, e.name)
 
-	case e := <-done:
-		other := cores
-		if e.name == cores.name {
-			other = web
+			if e.name == "ce_cores" && e.err != nil { // failed - restart it, if it doesn't happen too often
+				if !l.mayRestart(time.Now()) {
+					fmt.Fprintf(l.out, "ce_cores has failed %d times within %v, stopping\n", l.maxRestarts+1, l.restartWindow)
+					l.stopAll(running, done, false)
+					return fmt.Errorf("ce_cores keeps failing (last time: %s), not restarting it anymore", describe(e.err))
+				}
+
+				fmt.Fprintf(l.out, "ce_cores has failed (%s), restarting it in %v\n", describe(e.err), l.restartDelay)
+				select {
+				case <-sig:
+					fmt.Fprintln(l.out, "stopping")
+					l.stopAll(running, done, true)
+					return nil
+				case e2 := <-done: // the webserver exited meanwhile - nothing to restart for
+					delete(running, e2.name)
+					return fmt.Errorf("%s has exited (%s) while ce_cores was being restarted", e2.name, describe(e2.err))
+				case <-time.After(l.restartDelay):
+				}
+
+				cores, err := start("ce_cores", l.cores, l.dir, coresOut)
+				if err != nil {
+					l.stopAll(running, done, false)
+					return err
+				}
+				watch(cores, done)
+				running[cores.name] = cores
+				continue
+			}
+
+			fmt.Fprintf(l.out, "%s has exited, stopping\n", e.name)
+			l.stopAll(running, done, false)
+			return fmt.Errorf("%s has exited (%s), stopped the other one too", e.name, describe(e.err))
 		}
-		remaining = []*proc{other}
-		result = fmt.Errorf("%s has exited (%s), stopped %s too", e.name, describe(e.err), other.name)
-		fmt.Fprintf(l.out, "%s has exited, stopping\n", e.name)
-		interrupt([]*exec.Cmd{other.cmd}, false)
 	}
+}
 
-	wait(l.out, remaining, done, l.stopTimeout)
+// mayRestart tells if ce_cores can be restarted now - not more than maxRestarts times within restartWindow
+func (l *launcher) mayRestart(now time.Time) bool {
+	recent := l.restarts[:0]
+	for _, t := range l.restarts {
+		if now.Sub(t) < l.restartWindow {
+			recent = append(recent, t)
+		}
+	}
+	l.restarts = recent
 
-	coresOut.Flush()
-	webOut.Flush()
-	return result
+	if len(l.restarts) >= l.maxRestarts {
+		return false
+	}
+	l.restarts = append(l.restarts, now)
+	return true
+}
+
+// stopAll tells the running programs to quit and waits for them (kills them after stopTimeout)
+func (l *launcher) stopAll(running map[string]*proc, done <-chan exited, fromSignal bool) {
+	procs := make([]*proc, 0, len(running))
+	cmds := make([]*exec.Cmd, 0, len(running))
+	for _, p := range running {
+		procs = append(procs, p)
+		cmds = append(cmds, p.cmd)
+	}
+	if len(procs) == 0 {
+		return
+	}
+	interrupt(cmds, fromSignal)
+	wait(l.out, procs, done, l.stopTimeout)
 }
 
 // proc is a started program, its output is copied from outRead in the background
@@ -314,21 +392,17 @@ func start(name string, cmdLine []string, dir string, out io.Writer) (*proc, err
 	return p, nil
 }
 
-// waitAll waits for each of the programs in the background, reports them in the order they exit
-func waitAll(procs []*proc) <-chan exited {
-	done := make(chan exited, len(procs))
-	for _, p := range procs {
-		go func(p *proc) {
-			err := p.cmd.Wait()
-			select { // the rest of its output - unless someone else keeps the pipe open
-			case <-p.outCopied:
-			case <-time.After(2 * time.Second):
-			}
-			p.outRead.Close()
-			done <- exited{p.name, err}
-		}(p)
-	}
-	return done
+// watch waits for the program in the background, reports to done when it exits
+func watch(p *proc, done chan<- exited) {
+	go func() {
+		err := p.cmd.Wait()
+		select { // the rest of its output - unless someone else keeps the pipe open
+		case <-p.outCopied:
+		case <-time.After(2 * time.Second):
+		}
+		p.outRead.Close()
+		done <- exited{p.name, err}
+	}()
 }
 
 // wait waits until the remaining programs exit - those which don't, get killed after the timeout

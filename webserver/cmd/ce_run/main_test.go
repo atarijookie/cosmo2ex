@@ -26,6 +26,9 @@ func TestMain(m *testing.M) {
 //   - "wait"         prints a line, exits cleanly on interrupt
 //   - "exit3"        prints a line and exits with code 3
 //   - "ignore"       prints a line, ignores interrupts (has to be killed)
+//   - "exit0"        prints a line and exits with code 0
+//   - "fail"         prints a line and exits with code 1
+//   - "failonce"     like "fail" when the file CE_RUN_MARKER doesn't exist yet (and creates it), then like "wait"
 func fakeProgram(mode string) {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
@@ -33,7 +36,22 @@ func fakeProgram(mode string) {
 	fmt.Println("\x1b[H\x1b[2Jstarted " + mode) // with the clear-screen codes of ce_cores status output
 	fmt.Println("")
 
+	if mode == "failonce" {
+		if _, err := os.Stat(os.Getenv("CE_RUN_MARKER")); err != nil {
+			_ = os.WriteFile(os.Getenv("CE_RUN_MARKER"), nil, 0o644)
+			mode = "fail"
+		} else {
+			mode = "wait"
+		}
+	}
+
 	switch mode {
+	case "exit0":
+		time.Sleep(200 * time.Millisecond)
+		os.Exit(0)
+	case "fail":
+		time.Sleep(100 * time.Millisecond)
+		os.Exit(1)
 	case "exit3":
 		time.Sleep(200 * time.Millisecond)
 		os.Exit(3)
@@ -76,12 +94,16 @@ func fakeLauncher(t *testing.T, coresMode, webMode string, out *syncBuffer) *lau
 		t.Fatal(err)
 	}
 
+	marker := filepath.Join(t.TempDir(), "failed-once")
 	return &launcher{ // env sets CE_RUN_FAKE just for that program
-		dir:         t.TempDir(),
-		cores:       []string{"/usr/bin/env", "CE_RUN_FAKE=" + coresMode, exe},
-		web:         []string{"/usr/bin/env", "CE_RUN_FAKE=" + webMode, exe},
-		out:         out,
-		stopTimeout: 2 * time.Second,
+		dir:           t.TempDir(),
+		cores:         []string{"/usr/bin/env", "CE_RUN_FAKE=" + coresMode, "CE_RUN_MARKER=" + marker, exe},
+		web:           []string{"/usr/bin/env", "CE_RUN_FAKE=" + webMode, exe},
+		out:           out,
+		stopTimeout:   2 * time.Second,
+		restartDelay:  50 * time.Millisecond,
+		maxRestarts:   3,
+		restartWindow: time.Minute,
 	}
 }
 
@@ -260,5 +282,90 @@ func write(t *testing.T, path, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// waitFor waits until the output contains want count times
+func waitFor(t *testing.T, out *syncBuffer, want string, count int) {
+	t.Helper()
+	for i := 0; i < 100; i++ {
+		if strings.Count(out.String(), want) >= count {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("%q not %d times in output:\n%s", want, count, out.String())
+}
+
+func TestRunRestartsFailedCores(t *testing.T) {
+	out := &syncBuffer{}
+	l := fakeLauncher(t, "failonce", "wait", out)
+
+	sig := make(chan os.Signal, 1)
+	result := make(chan error, 1)
+	go func() { result <- l.run(sig) }()
+
+	waitFor(t, out, "[cores] started failonce", 2) // started, failed, started again
+	time.Sleep(200 * time.Millisecond)             // the restarted one installs its signal handler
+	sig <- os.Interrupt
+
+	if err := <-result; err != nil {
+		t.Errorf("stopped by signal, but got error %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"ce_cores has failed (exit code 1), restarting it in 50ms\n", "[cores] got interrupt", "[web]   got interrupt"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output has no %q:\n%s", want, got)
+		}
+	}
+	if strings.Count(got, "started wait") != 1 { // only the webserver runs in this mode
+		t.Errorf("the webserver should keep running, not be restarted:\n%s", got)
+	}
+}
+
+func TestRunGivesUpWhenCoresFailsTooOften(t *testing.T) {
+	out := &syncBuffer{}
+	l := fakeLauncher(t, "fail", "wait", out)
+
+	err := l.run(make(chan os.Signal))
+
+	if err == nil || !strings.Contains(err.Error(), "ce_cores keeps failing (last time: exit code 1)") {
+		t.Errorf("error = %v", err)
+	}
+	got := out.String()
+	if n := strings.Count(got, "[cores] started fail"); n != 4 { // started + 3 restarts
+		t.Errorf("ce_cores started %d times, want 4:\n%s", n, got)
+	}
+	if !strings.Contains(got, "ce_cores has failed 4 times within 1m0s, stopping") || !strings.Contains(got, "[web]   got interrupt") {
+		t.Errorf("output:\n%s", got)
+	}
+}
+
+func TestRunDoesNotRestartCoresWhichExitedCleanly(t *testing.T) {
+	out := &syncBuffer{}
+	l := fakeLauncher(t, "exit0", "wait", out)
+
+	err := l.run(make(chan os.Signal))
+
+	if err == nil || !strings.Contains(err.Error(), "ce_cores has exited (exit code 0)") {
+		t.Errorf("error = %v", err)
+	}
+	if strings.Contains(out.String(), "restarting") || !strings.Contains(out.String(), "[web]   got interrupt") {
+		t.Errorf("output:\n%s", out.String())
+	}
+}
+
+func TestMayRestartCountsOnlyRecentRestarts(t *testing.T) {
+	l := &launcher{maxRestarts: 2, restartWindow: time.Minute}
+	t0 := time.Now()
+
+	if !l.mayRestart(t0) || !l.mayRestart(t0.Add(time.Second)) {
+		t.Fatal("first 2 restarts should be allowed")
+	}
+	if l.mayRestart(t0.Add(2 * time.Second)) {
+		t.Error("3rd restart within a minute should not be allowed")
+	}
+	if !l.mayRestart(t0.Add(61 * time.Second)) { // the 1st one is more than a minute old now
+		t.Error("restart should be allowed again after the window")
 	}
 }

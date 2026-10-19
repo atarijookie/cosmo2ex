@@ -114,7 +114,9 @@ The Windows release is a zip, `ce-<version>-windows-x64.zip`: one folder, unzip 
 
 - `ce_run.exe` - the launcher, does what `ce_run.sh` + the systemd service do on Linux: creates the dirs from `.env`,
   copies the config drive, runs `ce_cores.exe` + `webserver.exe` with their output in its console window, and stops
-  both on Ctrl+C / closing the window, or when one of them exits. Only one instance can run. Source:
+  both on Ctrl+C / closing the window, or when one of them exits - except when `ce_cores` fails (exits with error or
+  crashes): it's restarted after 3 s, like `Restart=on-failure` of the systemd service, unless it fails more than
+  5 times within a minute. Only one instance can run. Source:
   `webserver/cmd/ce_run`
 - `.env` - `files/windows.env`: settings, logs and data in `%LOCALAPPDATA%\cosmo2ex`, Windows paths
   (`ce_cores` converts them to Cygwin paths); `BIN_DIR` is the folder of `ce_run.exe`, set by `ce_run.exe`
@@ -126,6 +128,10 @@ The Windows release is a zip, `ce-<version>-windows-x64.zip`: one folder, unzip 
   has the LGPLv3 + GPLv3 texts, a notice that the Cygwin library is used, and the source of exactly the bundled
   `cygwin1.dll` (its Cygwin source package, checked against the mirror's checksum)
 - the rest is the same as in the Linux tarballs (web UI, config drive with the Atari programs, floppy images)
+
+The programs have no code signing certificate, so SmartScreen warns on the first start of a downloaded copy - the
+README tells the user to click "More info" > "Run anyway" (or to unblock the zip before unzipping). A code signing
+certificate would remove that, but costs money and needs a build step to sign with it.
 
 Building takes two steps, as the Atari programs need the m68k-atari-mint toolchain, which is not available in Cygwin:
 

@@ -16,9 +16,10 @@ Running
 Double-click CosmosEx.command. It opens a Terminal window, starts ce_cores and webserver in it, and shows the output
 of both. Open the web interface on the address it prints (https://localhost:8080 on this Mac).
 
-Press Ctrl+C or close the Terminal window to stop CosmosEx. When one of the programs stops, the other one is
-stopped too. macOS may ask to allow incoming network connections - the CosmosEx device connects to ce_cores over
-the network, and the web interface can be opened from other computers.
+Press Ctrl+C or close the Terminal window to stop CosmosEx. If ce_cores crashes, it's restarted after 3 seconds
+(but not after 5 crashes within a minute - then CosmosEx stops); if the webserver stops, ce_cores is stopped too.
+macOS may ask to allow incoming network connections - the CosmosEx device connects to ce_cores over the network,
+and the web interface can be opened from other computers.
 
 Start at login: System Settings > General > Login Items > + > select CosmosEx.command.
 
