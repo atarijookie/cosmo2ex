@@ -49,8 +49,10 @@ else ifneq ($(filter CYGWIN_NT%,$(UNAME_S)),)
 BIN_EXT = .exe
 # GNU parts of the headers (pthread_setname_np(), accept4(), ...) - g++ on Linux always defines it, on Cygwin it doesn't
 CFLAGS += -D_GNU_SOURCE
-# pthreads are in cygwin1.dll; static libgcc / libstdc++ - then only cygwin1.dll is needed next to ce_cores.exe
-STATIC_RUNTIME = -static-libstdc++ -static-libgcc
+# pthreads are in cygwin1.dll. libstdc++ / libgcc as DLLs (cygstdc++-6.dll, cyggcc_s-seh-1.dll - bundled with
+# ce_cores.exe by release/builder/build_windows.sh): Cygwin's static libstdc++.a doesn't link - it has the copy
+# constructors of std::logic_error / std::runtime_error, which <stdexcept> defines inline too ("multiple definition")
+STATIC_RUNTIME =
 
 else
 $(error Unsupported platform '$(UNAME_S)' - expected Linux, Darwin or CYGWIN_NT*)

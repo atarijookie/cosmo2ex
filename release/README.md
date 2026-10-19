@@ -120,13 +120,14 @@ The Windows release is a zip, `ce-<version>-windows-x64.zip`: one folder, unzip 
   `webserver/cmd/ce_run`
 - `.env` - `files/windows.env`: settings, logs and data in `%LOCALAPPDATA%\cosmo2ex`, Windows paths
   (`ce_cores` converts them to Cygwin paths); `BIN_DIR` is the folder of `ce_run.exe`, set by `ce_run.exe`
-- `ce_cores.exe` + `cygwin1.dll` - `ce_cores` is a Cygwin program; `libstdc++` / `libgcc` are linked in statically, so
-  `cygstdc++-6.dll` / `cyggcc_s-seh-1.dll` are not needed (the DLLs are taken from what `cygcheck` finds, so they'd be
-  bundled if that ever changed)
+- `ce_cores.exe` + `cygwin1.dll`, `cygstdc++-6.dll`, `cyggcc_s-seh-1.dll` - `ce_cores` is a Cygwin program; the GCC
+  runtime (`libstdc++` / `libgcc`) is a DLL too, because Cygwin's static `libstdc++.a` doesn't link (see
+  `ce_cores/makefile`). The DLLs are taken from what `cygcheck` finds.
 - `webserver.exe` - native Windows program
 - `licenses/` - `cygwin1.dll` is LGPLv3: distributing it with this BSD licensed project is fine, as long as the package
   has the LGPLv3 + GPLv3 texts, a notice that the Cygwin library is used, and the source of exactly the bundled
-  `cygwin1.dll` (its Cygwin source package, checked against the mirror's checksum)
+  `cygwin1.dll` (its Cygwin source package, checked against the mirror's checksum). The GCC runtime DLLs are GPLv3
+  with the GCC Runtime Library Exception, which allows distributing them with programs compiled by GCC
 - the rest is the same as in the Linux tarballs (web UI, config drive with the Atari programs, floppy images)
 
 The programs have no code signing certificate, so SmartScreen warns on the first start of a downloaded copy - the

@@ -5,9 +5,12 @@
 #
 # usage: build_windows.sh <repo dir> <output dir>
 #
-# ce_cores.exe is a Cygwin program, so it needs cygwin1.dll next to it. libstdc++ and libgcc are linked in statically
-# (see ce_cores/makefile), so cygstdc++-6.dll and cyggcc_s-seh-1.dll are not needed - if that ever changes, they get
-# bundled too, the DLLs are taken from what cygcheck finds.
+# ce_cores.exe is a Cygwin program, so it needs cygwin1.dll next to it, and the GCC runtime DLLs cygstdc++-6.dll and
+# cyggcc_s-seh-1.dll (they can't be linked in statically on Cygwin, see ce_cores/makefile). The DLLs are taken from
+# what cygcheck finds.
+#
+# The GCC runtime DLLs are under GPLv3 with the GCC Runtime Library Exception, which allows distributing them with
+# a program compiled by GCC, under any license - the notice says that.
 #
 # cygwin1.dll is under LGPLv3, which allows distributing it with a program under any license, if the package has:
 #   - a notice that the program uses the Cygwin library under LGPLv3, with the LGPLv3 and GPLv3 texts
@@ -58,10 +61,13 @@ while read -r dll; do
     echo "[windows] bundled $(basename "$(cygpath -u "$dll")")"
 done
 
-if [ ! -f "$OUT/cygwin1.dll" ]; then
-    echo "cygwin1.dll not found by cygcheck - is this a Cygwin build?" >&2
-    exit 1
-fi
+# ce_cores.exe doesn't start without them
+for dll in cygwin1.dll cygstdc++-6.dll cyggcc_s-seh-1.dll; do
+    if [ ! -f "$OUT/$dll" ]; then
+        echo "$dll not found by cygcheck - is this a Cygwin build?" >&2
+        exit 1
+    fi
+done
 
 #-------------
 echo "[windows] building webserver + ce_run"
@@ -101,7 +107,9 @@ Its complete source code is in $CYGWIN_SRC next to this file.
 
 cygwin1.dll is a separate DLL - you may replace it with your own, modified version of the same Cygwin version.
 
-libstdc++ and libgcc are linked into ce_cores.exe under the GCC Runtime Library Exception.
+cygstdc++-6.dll and cyggcc_s-seh-1.dll are the GCC runtime libraries (libstdc++, libgcc), licensed under the
+GNU General Public License version 3 with the GCC Runtime Library Exception, which allows distributing them with
+programs compiled by GCC under any license: https://www.gnu.org/licenses/gcc-exception-3.1.html
 EOF
 
 echo "[windows] done"
