@@ -5,7 +5,7 @@ CXX	    = g++
 CC	    = gcc
 #STRIP	= strip
 CFLAGS	= -Wall -g -D_FILE_OFFSET_BITS=64 $(CPU_FLAGS)
-CXXFLAGS = $(CFLAGS)
+CXXFLAGS = $(CFLAGS) -std=c++17
 DEPFLAGS = -MM -MT $(patsubst %.d,%.o,$@) -MT $@
 # -M : with system headers, -MM : without
 
@@ -31,8 +31,8 @@ LDLIBS += -lpthread
 # USB keyboard / mouse / joysticks (ikbd/inputdevices.cpp): found with libudev, inspected with libevdev.
 # Needs libudev-dev + libevdev-dev. libevdev is linked statically (it's not installed on every system), libudev.so.1
 # is part of systemd / udev, so it's everywhere where udev is. Headers are taken from the sysroot of the compiler
-# (empty for native builds, the Raspbian one for armhf).
-CXX_SYSROOT := $(shell $(CXX) -print-sysroot)
+# (empty for native builds, the Raspbian one for armhf; clang doesn't know -print-sysroot - empty too, fine for native).
+CXX_SYSROOT := $(shell $(CXX) -print-sysroot 2>/dev/null)
 CFLAGS += -I$(CXX_SYSROOT)/usr/include/libevdev-1.0
 LIBEVDEV ?= -l:libevdev.a
 INPUT_LIBS = -ludev $(LIBEVDEV)

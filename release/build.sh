@@ -1,18 +1,19 @@
 #!/bin/sh
 # Builds the CosmosEx release tarballs, one per architecture, into release/out/.
 #
-# usage: release/build.sh [arch ...]     arch: amd64 arm64 armhf i386 (default: all of them), windows
+# usage: release/build.sh [arch ...]     arch: amd64 arm64 armhf i386 (default: all of them), windows, macos
 #        release/build.sh --native       build only for this machine, with its own toolchains (no docker)
 #
 # windows: makes the Windows zip from the programs built by builder/build_windows.sh in Cygwin - their dir is given
 # in the WINDOWS_BIN env var, e.g. WINDOWS_BIN=/tmp/windows-bin release/build.sh windows
+# macos: the same for the macOS zip, from the output of builder/build_macos.sh (run on a Mac) in MACOS_BIN
 #
 # Needs:
 #   - m68k-atari-mint-gcc toolchain, for the Atari programs on the config drive (these are
 #     the same for every architecture, so they are built once, on this machine)
 #   - docker (not for --native) - ce_cores and webserver are built in the toolchain stage of docker/Dockerfile
 #   - g++, make, go, libudev-dev, libevdev-dev (only for --native)
-#   - python3 (only for windows - makes the zip)
+#   - python3 (only for windows / macos - makes the zip)
 #
 # VERSION env var overrides the version used in the tarball names (default: date + git hash).
 
@@ -27,13 +28,15 @@ BUILDER_IMAGE=ce-release-builder
 # arguments
 NATIVE=0
 WINDOWS=0
+MACOS=0
 ARCHS=""
 for arg in "$@"; do
     case "$arg" in
         --native)               NATIVE=1 ;;
         amd64|arm64|armhf|i386) ARCHS="$ARCHS $arg" ;;
         windows)                WINDOWS=1 ;;
-        -h|--help)              sed -n '2,19p' "$0"; exit 0 ;;
+        macos)                  MACOS=1 ;;
+        -h|--help)              sed -n '2,20p' "$0"; exit 0 ;;
         *)                      echo "unknown argument: $arg" >&2; exit 1 ;;
     esac
 done
@@ -47,7 +50,7 @@ if [ "$NATIVE" -eq 1 ]; then
         armv6l|armv7l|armv8l)   ARCHS=armhf ;;
         *)                      ARCHS=$(uname -m) ;;
     esac
-elif [ -z "$ARCHS" ] && [ "$WINDOWS" -eq 0 ]; then
+elif [ -z "$ARCHS" ] && [ "$WINDOWS" -eq 0 ] && [ "$MACOS" -eq 0 ]; then
     ARCHS="amd64 arm64 armhf i386"
 fi
 
@@ -58,7 +61,7 @@ if [ -z "${VERSION:-}" ]; then
     fi
 fi
 
-echo "Building CosmosEx $VERSION for:$ARCHS$( [ "$WINDOWS" -eq 1 ] && echo " windows" )"
+echo "Building CosmosEx $VERSION for:$ARCHS$( [ "$WINDOWS" -eq 1 ] && echo " windows" )$( [ "$MACOS" -eq 1 ] && echo " macos" )"
 
 #-------------
 # check the tools first, so we don't fail in the middle
@@ -71,7 +74,7 @@ if [ "$NATIVE" -eq 1 ]; then
 elif [ -n "$ARCHS" ]; then
     command -v docker >/dev/null || missing="$missing docker"
 fi
-if [ "$WINDOWS" -eq 1 ]; then
+if [ "$WINDOWS" -eq 1 ] || [ "$MACOS" -eq 1 ]; then
     command -v python3 >/dev/null || missing="$missing python3"
 fi
 if [ -n "$missing" ]; then
@@ -83,6 +86,15 @@ if [ "$WINDOWS" -eq 1 ]; then
     for f in ce_cores.exe cygwin1.dll webserver.exe ce_run.exe licenses/CYGWIN-NOTICE.txt; do
         if [ ! -f "${WINDOWS_BIN:-}/$f" ]; then
             echo "windows: WINDOWS_BIN must be the output dir of builder/build_windows.sh, '${WINDOWS_BIN:-}/$f' not found" >&2
+            exit 1
+        fi
+    done
+fi
+
+if [ "$MACOS" -eq 1 ]; then
+    for f in ce_cores webserver ce_run; do
+        if [ ! -f "${MACOS_BIN:-}/$f" ]; then
+            echo "macos: MACOS_BIN must be the output dir of builder/build_macos.sh, '${MACOS_BIN:-}/$f' not found" >&2
             exit 1
         fi
     done
@@ -177,6 +189,31 @@ if [ "$WINDOWS" -eq 1 ]; then
     cp "$RELEASE_DIR/files/windows-README.txt" "$PKG/README.txt"
     cp -r "$WINDOWS_BIN/." "$PKG/"
 
+    rm -f "$OUT/$NAME.zip"
+    (cd "$STAGE/pkg" && python3 -m zipfile -c "$OUT/$NAME.zip" "$NAME")
+    echo "Created $OUT/$NAME.zip"
+fi
+
+#-------------
+# macOS zip:  ce-<version>-macos-universal/ - one folder with everything, unzip anywhere and double-click
+# CosmosEx.command (opens Terminal with ce_run in it). Universal binaries - Apple Silicon and Intel.
+if [ "$MACOS" -eq 1 ]; then
+    NAME="ce-$VERSION-macos-universal"
+    PKG="$STAGE/pkg/$NAME"
+    mkdir -p "$PKG/licenses"
+
+    cp -a "$COMMON/." "$PKG/"
+    rm "$PKG/ce_run.sh"                                         # ce_run instead
+    cp "$RELEASE_DIR/files/macos.env" "$PKG/.env"
+    cp "$RELEASE_DIR/files/macos-README.txt" "$PKG/README.txt"
+    cp "$RELEASE_DIR/files/CosmosEx.command" "$PKG/"
+    cp "$ROOT/ce_cores/license.txt" "$PKG/licenses/CosmosEx-license.txt"
+    for f in ce_cores webserver ce_run; do
+        cp "$MACOS_BIN/$f" "$PKG/"
+    done
+    chmod 755 "$PKG/ce_cores" "$PKG/webserver" "$PKG/ce_run" "$PKG/CosmosEx.command"    # lost in CI artifacts
+
+    # python's zipfile keeps the permissions (Archive Utility restores them), so the programs stay executable
     rm -f "$OUT/$NAME.zip"
     (cd "$STAGE/pkg" && python3 -m zipfile -c "$OUT/$NAME.zip" "$NAME")
     echo "Created $OUT/$NAME.zip"

@@ -2,7 +2,7 @@ CXX	= g++
 CC	= gcc
 
 CFLAGS	= -Wall -g -D_FILE_OFFSET_BITS=64
-CXXFLAGS	= $(CFLAGS)
+CXXFLAGS	= $(CFLAGS) -std=c++17
 
 TARGET	= libdospath.a
 OBJS	= dirtranslator.o filenameshortener.o libexports.o utilslib.o

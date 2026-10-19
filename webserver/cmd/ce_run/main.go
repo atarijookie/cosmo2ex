@@ -1,12 +1,13 @@
-// ce_run starts ce_cores and the webserver and stops both when one of them exits - on Windows (and other desktops)
-// it does what ce_run.sh + the systemd service do on Linux:
-//   - loads .env from its own folder, which is also BIN_DIR (set as env var BIN_DIR, the .env for Windows uses ${BIN_DIR})
+// ce_run starts ce_cores and the webserver and stops both when one of them exits - on Windows and macOS it does
+// what ce_run.sh + the systemd service do on Linux:
+//   - loads .env from its own folder, which is also BIN_DIR (set as env var BIN_DIR, the Windows / macOS .env use ${BIN_DIR})
 //   - creates the dirs from .env and removes PID files left by a crash
 //   - makes the runtime copy of the config drive (CONFIG_DRIVE_PATH)
 //   - runs both programs in its folder, their output prefixed with [cores] / [web]
-//   - Ctrl+C or closing the console window stops both; when one of them exits, the other one is stopped too
+//   - Ctrl+C or closing the console / Terminal window stops both; when one of them exits, the other one is stopped too
 //
-// Double-click it, or run it from a console. Only one instance can run (lock file in DATA_DIR).
+// Double-click it (on macOS: CosmosEx.command, which runs it in Terminal), or run it from a console.
+// Only one instance can run (lock file in DATA_DIR).
 package main
 
 import (
@@ -83,7 +84,9 @@ func run() error {
 	}
 
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM) // on Windows: Ctrl+C, closing the console window, logoff, shutdown
+	// on Windows: Ctrl+C, closing the console window, logoff, shutdown; on macOS / Linux: Ctrl+C, kill,
+	// closing the Terminal window (SIGHUP)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	return l.run(sig)
 }
 

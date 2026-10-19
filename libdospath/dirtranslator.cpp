@@ -459,10 +459,15 @@ bool DirTranslator::findFirstAndNext(SearchParams& sp, DiskItem& di)
             shortToLongPath(sp.path, longPath, false);
             UtilsLib::out(LDP_LOG_DEBUG, "DirTranslator::findFirstAndNext - translated possible short path: %s to long path: %s", sp.path.c_str(), longPath.c_str());
 
-            if (stat(longPath.c_str(), &attr) == 0) {  // matching just one file and it exists? good! (attr is used below for dir / file detection)
-                std::string justPath, justLongFname;
-                UtilsLib::splitFilenameFromPath(longPath, justPath, justLongFname);       // extract just long filename from the long path
+            std::string justPath, justLongFname;
+            UtilsLib::splitFilenameFromPath(longPath, justPath, justLongFname);           // extract just long filename from the long path
 
+            // Not translated (not known yet, e.g. created on the host after this dir was read)? Then it must exist with
+            // exactly this name - on a case-insensitive filesystem stat() of 'GAMES' finds also 'Games', and the name
+            // from the ST would become the long name. The dir scan below finds the real name then.
+            bool exactName = justLongFname != Internal(sp)->searchString || UtilsLib::existsWithExactName(justPath, justLongFname);
+
+            if (exactName && stat(longPath.c_str(), &attr) == 0) {  // matching just one file and it exists? good! (attr is used below for dir / file detection)
                 // use the translated (long) justPath, the dir part of sp.path might still contain short names
                 setDiskItem(sp, di, justPath, Internal(sp)->searchString, justLongFname, S_ISDIR(attr.st_mode));
                 closeDirSetFlags(sp);

@@ -32,6 +32,11 @@ jobs:
       - name: ce_cores tests
         run: make -C ce_cores -j"$(nproc)" test
 
+      - name: libdospath + ce_cores tests, built with clang
+        run: |
+          make -C libdospath clean && make -C libdospath CXX=clang++ CC=clang test
+          make -C ce_cores clean && make -C ce_cores -j"$(nproc)" CXX=clang++ CC=clang test
+
       - name: Pico firmware tests (on host)
         run: make -C ce_pico_tests -j"$(nproc)" test
 
@@ -92,6 +97,22 @@ jobs:
 
       - name: ce_cores build
         run: make -C ce_cores -j"$(sysctl -n hw.ncpu)"
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.22'
+          cache-dependency-path: webserver/go.sum
+
+      - name: Universal binaries (arm64 + x86_64) - ce_cores, webserver, ce_run
+        run: |
+          release/builder/build_macos.sh . out/macos
+          tar -czf out/ce-macos-ci.tar.gz -C out macos    # artifacts are zipped without file permissions, tar keeps them
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-ci                        # download, unzip, then: tar -xzf ce-macos-ci.tar.gz
+          path: out/ce-macos-ci.tar.gz
+          retention-days: 14
 
   atari:
     # drivers, boot sectors and ce_tests.tos

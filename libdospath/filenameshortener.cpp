@@ -129,21 +129,37 @@ bool FilenameShortener::shortToLongFileName(const std::string& shortFileName, st
         return true;
     }
 
-    // if short version was not found, check if the dir doesn't exist - if it does, just use it as is
-    std::string fullPath = this->forWhichPath;
-    UtilsLib::mergeHostPaths(fullPath, shortFileName);     // merge path to this folder with filename inside this folder (e.g. '/mnt/shared' + 'atari' -> '/mnt/shared/atari')
-
-    // if this file in this path exists, just add it as is - this might happen with start of path being native long and rest being short versions, e.g.:
+    // if short version was not found, check if the file / dir with exactly this name exists - if it does, just use it as is
+    // - this might happen with start of path being native long and rest being short versions, e.g.:
     // for path: '/mnt/shared/ATARI/IMAGES' it's okay to use the part 'mnt' and 'shared' as long and short as they really exist there in that form, the rest needs translation
-    if(UtilsLib::fileExists(fullPath)) {
+    // Exactly this name - on a case-insensitive filesystem 'GAME.PRG' would be found also for 'Game.prg' (e.g. created
+    // on the host after this dir was read), and then the next feeding would have to name 'Game.prg' 'GAME~1.PRG'.
+    if(UtilsLib::existsWithExactName(forWhichPath, shortFileName)) {
         // insert this filename to maps, so next time we won't have to investigate if the path really exists
         // NOTE: having the shortFileName as KEY and also as VALUE is OK in this case!
         mapFilenameWithExt.insert( std::pair<std::string, std::string>(shortFileName, shortFileName) );  // store this key-value pair
         mapReverseFilename.insert( std::pair<std::string, std::string>(shortFileName, shortFileName) );  // for reverse transformation
 
         longFileName = shortFileName;
-        UtilsLib::out(LDP_LOG_DEBUG, "FilenameShortener found that shortFileName %s exists as %s", shortFileName.c_str(), fullPath.c_str());
+        UtilsLib::out(LDP_LOG_DEBUG, "FilenameShortener found that shortFileName %s exists in %s", shortFileName.c_str(), forWhichPath.c_str());
         return true;
+    }
+
+    // DOS names ignore case and the short names are upper case - so e.g. 'file.txt' from the ST is the short name 'FILE.TXT'
+    std::string upperName = shortFileName;
+    for(size_t i=0; i<upperName.size(); i++) {
+        if(upperName[i] >= 'a' && upperName[i] <= 'z') {
+            upperName[i] -= 32;
+        }
+    }
+
+    if(upperName != shortFileName) {
+        it = mapReverseFilename.find(upperName);
+
+        if(it != mapReverseFilename.end()) {
+            longFileName = it->second;
+            return true;
+        }
     }
 
     return false;

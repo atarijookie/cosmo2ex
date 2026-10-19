@@ -5,7 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <dirent.h>
 #include <sys/stat.h>
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -47,12 +49,18 @@ struct TranslatedDiskHarness {
     TranslatedDisk *td;
 
     TranslatedDiskHarness() {
+        // the drive in /tmp, or in $CE_TEST_TMPDIR - to run the tests on another filesystem (e.g. a case-insensitive
+        // one, like APFS on macOS)
+        const char* tmpDir = getenv("CE_TEST_TMPDIR");
+        std::string tmplDrive = std::string((tmpDir && tmpDir[0]) ? tmpDir : "/tmp") + "/ce_test_tdd_XXXXXX";
+
         char tmplS[] = "/tmp/ce_test_tds_XXXXXX";
-        char tmplD[] = "/tmp/ce_test_tdd_XXXXXX";
+        std::vector<char> tmplD(tmplDrive.begin(), tmplDrive.end());
+        tmplD.push_back('\0');
         REQUIRE(mkdtemp(tmplS) != NULL);
-        REQUIRE(mkdtemp(tmplD) != NULL);
+        REQUIRE(mkdtemp(tmplD.data()) != NULL);
         settingsDir = tmplS;
-        drive = tmplD;
+        drive = tmplD.data();
         dotEnv["SETTINGS_DIR"] = settingsDir;
 
         uint8_t mac[6] = {0};
@@ -94,6 +102,22 @@ struct TranslatedDiskHarness {
         dt.lastStatus = 0xff;
         td->processCommand(cmd);
         return dt.lastStatus;
+    }
+
+    // names in the root dir of the drive, as Fsfirst / Fsnext report them (they get them from libdospath)
+    std::vector<std::string> list(void) {
+        std::vector<std::string> names;
+        SearchParams sp;
+        sp.path = drive + "/*.*";
+        sp.attribs = 0xff;
+        sp.addUpDir = false;
+        sp.internal = NULL;
+
+        DiskItem di;
+        while(ldp_findFirstAndNext(sp, di)) {
+            names.push_back(di.name);
+        }
+        return names;
     }
 
     uint8_t fattribGet(const std::string& p)                { return call(GEMDOS_Fattrib, {0, 0}, p); }
@@ -159,4 +183,98 @@ TEST_CASE("translated disk: Fcreate with read only attribute - file is read only
     CHECK(h.modeOf("NEWFILE") == (h.modeOf("NEWFILE") & ~0222));
     CHECK(h.fattribGet("D:\\NEWFILE") == FA_READONLY);
     h.call(GEMDOS_Fclose, {}, "", handle);
+}
+
+TEST_CASE("translated disk: file created on the host while the dir is cached - open, attributes, delete by its 8.3 name")
+{
+    TranslatedDiskHarness h;
+    h.touch("OTHER.TXT");
+    CHECK(h.fattribGet("D:\\OTHER.TXT") == 0);                 // the drive's root dir is cached now
+
+    h.touch("Game.prg");                                        // e.g. saved by a Mac app - not in the cache
+
+    uint8_t handle = h.call(GEMDOS_Fopen, {0}, "D:\\GAME.PRG");
+    CHECK(handle < 0x80);
+    h.call(GEMDOS_Fclose, {}, "", handle);
+
+    CHECK(h.fattribGet("D:\\GAME.PRG") == 0);
+
+    // what Fsfirst / Fsnext list - on a case-insensitive filesystem (APFS) it used to be 'GAME~1.PRG', as opening
+    // 'GAME.PRG' had made the name from the ST the long name of the short name 'GAME.PRG'
+    std::vector<std::string> names = h.list();
+    CHECK(std::count(names.begin(), names.end(), "GAME.PRG") == 1);
+    CHECK(std::count(names.begin(), names.end(), "GAME~1.PRG") == 0);
+
+    CHECK(h.call(GEMDOS_Fdelete, {}, "D:\\GAME.PRG") == E_OK);
+    CHECK(access(h.host("Game.prg").c_str(), F_OK) != 0);       // the real file is gone
+}
+
+TEST_CASE("translated disk: lower case path from the ST - every part of it is found, like on TOS")
+{
+    TranslatedDiskHarness h;
+    REQUIRE(mkdir(h.host("Sub").c_str(), 0755) == 0);
+    h.touch("Sub/File.txt");
+
+    uint8_t handle = h.call(GEMDOS_Fopen, {0}, "D:\\sub\\file.txt");    // used to fail on Linux - only the last part was looked up in other case
+    CHECK(handle < 0x80);
+    h.call(GEMDOS_Fclose, {}, "", handle);
+
+    CHECK(h.call(GEMDOS_Fdelete, {}, "D:\\sub\\file.txt") == E_OK);
+    CHECK(access(h.host("Sub/File.txt").c_str(), F_OK) != 0);
+}
+
+// names in a host dir exactly as stored - on a case-insensitive filesystem access() can't tell 'A.TXT' from 'a.txt'
+static std::vector<std::string> hostNames(const std::string& dirPath)
+{
+    std::vector<std::string> names;
+    DIR* dir = opendir(dirPath.c_str());
+    REQUIRE(dir != NULL);
+    while(struct dirent* de = readdir(dir)) {
+        std::string n = de->d_name;
+        if(n != "." && n != "..") {
+            names.push_back(n);
+        }
+    }
+    closedir(dir);
+    std::sort(names.begin(), names.end());
+    return names;
+}
+
+static uint8_t frename(TranslatedDiskHarness& h, const std::string& from, const std::string& to)
+{
+    std::string both = from + std::string(1, '\0') + to;       // the ST sends both names, each ending with 0
+    return h.call(GEMDOS_Frename, {}, both);
+}
+
+TEST_CASE("translated disk: Frename doesn't replace an existing file or dir")
+{
+    TranslatedDiskHarness h;
+    h.touch("A.TXT");
+    h.touch("B.TXT");
+    REQUIRE(system(("echo keep > '" + h.host("B.TXT") + "'").c_str()) == 0);
+    REQUIRE(mkdir(h.host("DIR").c_str(), 0755) == 0);
+
+    CHECK(frename(h, "D:\\A.TXT", "D:\\B.TXT") == (uint8_t) EACCDN);     // used to replace B.TXT
+    CHECK(frename(h, "D:\\A.TXT", "D:\\DIR") == (uint8_t) EACCDN);
+    CHECK(hostNames(h.drive) == std::vector<std::string>({"A.TXT", "B.TXT", "DIR"}));
+
+    FILE* f = fopen(h.host("B.TXT").c_str(), "r");
+    REQUIRE(f != NULL);
+    char buf[8] = {0};
+    CHECK(fgets(buf, sizeof(buf), f) != NULL);
+    fclose(f);
+    CHECK(std::string(buf) == "keep\n");
+
+    CHECK(frename(h, "D:\\A.TXT", "D:\\C.TXT") == E_OK);                 // new name - fine
+    CHECK(hostNames(h.drive) == std::vector<std::string>({"B.TXT", "C.TXT", "DIR"}));
+}
+
+TEST_CASE("translated disk: Frename to the same name in other case - renamed, also on a case-insensitive filesystem")
+{
+    TranslatedDiskHarness h;
+    h.touch("LongerName.txt");                                  // short name LONGER~1.TXT
+
+    // e.g. MiNT with long names: on APFS 'LONGERNAME.TXT' already exists - it's the same file, not another one
+    CHECK(frename(h, "D:\\LONGER~1.TXT", "D:\\LONGERNAME.TXT") == E_OK);
+    CHECK(hostNames(h.drive) == std::vector<std::string>({"LONGERNAME.TXT"}));
 }

@@ -648,6 +648,20 @@ void TranslatedDisk::onFrename(uint8_t *cmd)
         return;
     }
 
+    // TOS doesn't rename over an existing file / dir, but rename() would silently replace it. Unless it's the same item:
+    // on a case-insensitive filesystem (APFS, FAT, NTFS) a new name differing only in case exists too - that's just
+    // a change of case, and rename() does that.
+    struct stat oldAttr, newAttr;
+    if(lstat(newHostName.c_str(), &newAttr) == 0) {
+        bool sameItem = lstat(oldHostName.c_str(), &oldAttr) == 0 && oldAttr.st_dev == newAttr.st_dev && oldAttr.st_ino == newAttr.st_ino;
+
+        if(!sameItem) {
+            logHdd(LOG_DEBUG, "TranslatedDisk::onFrename - %s already exists, not renaming %s", newHostName.c_str(), oldHostName.c_str());
+            dataTrans->setStatus(EACCDN);
+            return;
+        }
+    }
+
     int ires = rename(oldHostName.c_str(), newHostName.c_str());    // rename host file
 
     if(ires == 0) {                                                 // good

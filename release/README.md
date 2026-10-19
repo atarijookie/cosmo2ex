@@ -66,15 +66,46 @@ sudo ./install.sh --uninstall --purge   # removes everything
 
 Without systemd the files are installed, but you have to start it yourself: `cd /opt/ce/bin && sudo ./ce_run.sh`.
 
+## macOS
+
+The macOS release is a zip, `ce-<version>-macos-universal.zip`: one folder, unzip it anywhere and double-click
+`CosmosEx.command` - that opens Terminal and runs `ce_run` in it (see `files/macos-README.txt`, which goes into the zip
+as `README.txt`). Universal programs, Apple Silicon (arm64) + Intel (x86_64), macOS 11+.
+
+- `ce_run` - the same launcher as on Windows (`webserver/cmd/ce_run`); Ctrl+C or closing the Terminal window stops
+  both programs
+- `.env` - `files/macos.env`: settings, logs and data in `~/Library/Application Support/cosmo2ex`; `BIN_DIR` is the
+  folder of `ce_run`, set by `ce_run`
+- `ce_cores`, `webserver` - universal binaries
+- the rest is the same as in the Linux tarballs (web UI, config drive with the Atari programs, floppy images)
+
+The programs are signed only ad-hoc (no Apple Developer ID), so macOS blocks them when downloaded - the README tells
+the user to remove the quarantine flag once (`xattr -dr com.apple.quarantine <folder>`). A Developer ID signature +
+notarization would remove that step, but needs a paid Apple developer account.
+
+Building takes two steps, like for Windows:
+
+1. on a Mac with the Xcode command line tools and Go: `release/builder/build_macos.sh <repo dir> <output dir>` -
+   builds `ce_cores`, `webserver` and `ce_run` per architecture (Go with `GOARCH=arm64` / `amd64`, `ce_cores` with
+   `clang++ -arch arm64` / `-arch x86_64`), combines them with `lipo`, signs them ad-hoc and checks both architectures
+   are there. CI runs it too and keeps the result as the `macos-ci` artifact,
+   packed in `ce-macos-ci.tar.gz` (GitHub zips artifacts without file permissions, the tar keeps the programs executable;
+   in the release workflow `release/build.sh` sets them again instead).
+2. on Linux: `MACOS_BIN=<that output dir> release/build.sh macos` - makes the zip (needs `python3`)
+
+The release workflow does both (`macos` job, then `tarballs`).
+
 ## Files
 
-- `build.sh` - builds everything and creates the tarballs (and the Windows zip)
+- `build.sh` - builds everything and creates the tarballs (and the Windows / macOS zips)
 - `install.sh` - installs / upgrades / uninstalls from a tarball
 - `builder/build_linux.sh` - builds `ce_cores` + `webserver` for one architecture
 - `files/ce_run.sh` - runs `ce_cores` + `webserver` in the foreground, used by the service
 - `files/ce.service` - the systemd unit
 - `builder/build_windows.sh` - builds the Windows programs, in Cygwin
+- `builder/build_macos.sh` - builds the macOS programs as universal binaries, on a Mac
 - `files/windows.env`, `files/windows-README.txt` - `.env` and `README.txt` of the Windows zip
+- `files/macos.env`, `files/macos-README.txt`, `files/CosmosEx.command` - the same for the macOS zip
 
 ## Windows
 

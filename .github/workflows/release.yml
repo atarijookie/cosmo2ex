@@ -2,8 +2,9 @@
 #   git tag v1.2.3 && git push origin v1.2.3
 #
 # Runs CI first, then builds in parallel:
-#   - the release tarballs (release/build.sh) + install.sh + SHA256SUMS, and the Windows zip - its programs are
-#     built in Cygwin first (release/builder/build_windows.sh), the rest is the same as in the tarballs
+#   - the release tarballs (release/build.sh) + install.sh + SHA256SUMS, and the Windows and macOS zips - their
+#     programs are built first, in Cygwin (release/builder/build_windows.sh) and on macOS
+#     (release/builder/build_macos.sh), the rest is the same as in the tarballs
 #   - the docker image for all platforms, pushed to ghcr.io/<owner>/cosmo2ex as :1.2.3 and :latest
 #   - the Pico firmwares (firmware/build.sh), in the ghcr.io/<owner>/ce-pico-builder image - that one is
 #     tagged with the hash of firmware/Dockerfile, and built + pushed only when that file changed
@@ -61,8 +62,29 @@ jobs:
           path: out/windows/
           if-no-files-found: error
 
+  macos:
+    # universal ce_cores, webserver, ce_run (arm64 + x86_64) - packed into the zip by the tarballs job
+    needs: ci
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.22'
+          cache-dependency-path: webserver/go.sum
+
+      - name: Build macOS programs
+        run: release/builder/build_macos.sh . out/macos
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-bin
+          path: out/macos/
+          if-no-files-found: error
+
   tarballs:
-    needs: [ci, windows]
+    needs: [ci, windows, macos]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -72,13 +94,20 @@ jobs:
           name: windows-bin
           path: windows-bin
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: macos-bin
+          path: macos-bin
+
       - name: Install m68k-atari-mint toolchain
         run: |
           sudo add-apt-repository -y ppa:vriviere/ppa
           sudo apt-get install -y --no-install-recommends cross-mint-essential
 
-      - name: Build release tarballs + Windows zip
-        run: VERSION="${GITHUB_REF_NAME#v}" WINDOWS_BIN="$PWD/windows-bin" release/build.sh amd64 arm64 armhf i386 windows
+      - name: Build release tarballs + Windows and macOS zips
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}" WINDOWS_BIN="$PWD/windows-bin" MACOS_BIN="$PWD/macos-bin" \
+            release/build.sh amd64 arm64 armhf i386 windows macos
 
       - uses: actions/upload-artifact@v7
         with:

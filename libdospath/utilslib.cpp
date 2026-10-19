@@ -329,10 +329,34 @@ const char *UtilsLib::getExtension(const char *fileName)
     return pExt;
 }
 
-bool UtilsLib::fileExists(std::string &hostPath)
+// Does dirPath contain an item with exactly this name? On a case-insensitive filesystem (APFS / HFS+ on macOS, FAT,
+// NTFS) access() finds also the same name in other case, e.g. 'GAME.PRG' for 'Game.prg' - then the dir is searched
+// for the exact name.
+bool UtilsLib::existsWithExactName(const std::string &dirPath, const std::string &name)
 {
-    int res = access(hostPath.c_str(), F_OK);
-    return (res != -1);     // if not error, file exists
+    std::string fullPath = dirPath;
+    mergeHostPaths(fullPath, name);
+
+    if(access(fullPath.c_str(), F_OK) != 0) {       // doesn't exist in any case? (the usual answer, e.g. for new files)
+        return false;
+    }
+
+    DIR *dir = opendir(dirPath.empty() ? "/" : dirPath.c_str());
+    if(dir == NULL) {
+        return false;
+    }
+
+    bool found = false;
+    struct dirent *de;
+    while((de = readdir(dir)) != NULL) {
+        if(name == de->d_name) {
+            found = true;
+            break;
+        }
+    }
+
+    closedir(dir);
+    return found;
 }
 
 void UtilsLib::out(int logLevel, const char *format, ...)

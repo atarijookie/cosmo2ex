@@ -34,3 +34,6 @@ This is a continuation / evolution of CosmosEx device. It is an ACSI/SCSI hard d
 
   Check out the repository with LF line endings (`git config --global core.autocrlf input` before cloning).
 - macOS: needs the Xcode command line tools (`xcode-select --install`), then the same two `make` commands as for Windows
+
+The file tests create their files in `/tmp`. Set `CE_TEST_TMPDIR` to run them on another filesystem, e.g. a
+case-insensitive one (like APFS on macOS, FAT or NTFS): `CE_TEST_TMPDIR=/mnt/usb make -C libdospath test`.

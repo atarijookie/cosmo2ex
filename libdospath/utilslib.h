@@ -47,7 +47,7 @@ public:
     static void joinStrings(std::vector<std::string> &elems, std::string& output, int count=-1);
 
     static const char *getExtension(const char *fileName);
-    static bool fileExists(std::string &hostPath);
+    static bool existsWithExactName(const std::string &dirPath, const std::string &name);
 
     static void out(int logLevel, const char *format, ...);
     static void logRotateIfNeeded(void);
