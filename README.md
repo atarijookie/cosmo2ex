@@ -1,6 +1,8 @@
 # Cosmo2ex
 This is a continuation / evolution of CosmosEx device. It is an ACSI/SCSI hard drive emulator, floppy emulator, IKBD emulator for Atari 16/32 Bit range of computers
 
+Open design, non-commercial license - see [License](#license).
+
 # What's what
 
 - ce_cores - this is the network server to which the device connects to
@@ -37,3 +39,15 @@ This is a continuation / evolution of CosmosEx device. It is an ACSI/SCSI hard d
 
 The file tests create their files in `/tmp`. Set `CE_TEST_TMPDIR` to run them on another filesystem, e.g. a
 case-insensitive one (like APFS on macOS, FAT or NTFS): `CE_TEST_TMPDIR=/mnt/usb make -C libdospath test`.
+
+# License
+
+Cosmo2ex is open design, non-commercial license: the sources and the hardware designs are public, you can build
+it, change it and share it for non-commercial use, but not sell it.
+
+- software and firmware - [PolyForm Noncommercial License 1.0.0](LICENSE)
+- hardware designs (schematics, PCBs in `devices/`) - [CC BY-NC-SA 4.0](devices/LICENSE)
+- third party code keeps its own license (`third_party/`, and the files that say so in their header)
+
+Building devices for yourself or your friends is fine. Selling devices, kits, PCBs or flashed boards needs a written
+commercial license from the author - get in touch first (https://joo.kie.sk).

@@ -1,8 +1,8 @@
-Welcome to the CosmosEx config drive!
+Welcome to the Cosmo2ex config drive!
 
 Here you'll find all the tools you need 
 to use the advanced features of your 
-CosmosEx (meaning: features besides 
+Cosmo2ex (meaning: features besides 
 basic HDD functionality).
 
 Please make sure you have read the 
@@ -16,7 +16,7 @@ docs at
 http://joo.kie.sk/cosmosex/download/
 CosmosEx_Users_Guide.pdf
 
-Also please visit your CosmosEx Web-
+Also please visit your Cosmo2ex Web-
 interface on it's configured network 
 address (see your DHCP server for that 
 or configure a static IP) for more 
@@ -28,7 +28,7 @@ This drive contains the following tools:
 
 Folder DRIVERS\
 ---------------
-(only needed for advanced CosmosEx 
+(only needed for advanced Cosmo2ex 
  functionality, NOT for basic HDD usage)
 
 ce_dd.prg - You only need this in 
@@ -36,13 +36,13 @@ ce_dd.prg - You only need this in
             boot from another 
             harddrive (e.g. RAW disk 
             image). By default 
-            CosmosEx boots a builtin 
+            Cosmo2ex boots a builtin 
             version of this - so 
             normally you don't need 
             to touch it. CE_DD 
             (builtin and standalone)
             handles the more advanced
-            features of your CosmosEx 
+            features of your Cosmo2ex 
             like accessing thumb drives, 
             making screenshots and 
             keeping the current date - 

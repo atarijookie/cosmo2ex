@@ -30,8 +30,8 @@ void *fddThreadCode(void *ptr)
     CoreFdd *coreFdd;
     pthread_t floppyEncThreadInfo;
 
-    logFdd(LOG_INFO, "CosmosEx FDD core starting at port %d", SERVER_TCP_PORT_FDD);
-    printf("\nCosmosEx FDD core starting at port %d\n", SERVER_TCP_PORT_FDD);
+    logFdd(LOG_INFO, "Cosmo2ex FDD core starting at port %d", SERVER_TCP_PORT_FDD);
+    printf("\nCosmo2ex FDD core starting at port %d\n", SERVER_TCP_PORT_FDD);
     printf("\nlog file: %s\n", Debug::getCoreLogFileName(false, LOGFILE_FDD));
 
 
@@ -46,7 +46,7 @@ void *fddThreadCode(void *ptr)
     floppyEncoder_stop();
     pthread_kill_join("floppy encoder", floppyEncThreadInfo);
 
-    logFdd(LOG_INFO, "CosmosEx terminated.");
+    logFdd(LOG_INFO, "Cosmo2ex terminated.");
     printf("Terminated\n");
     return NULL;
 }

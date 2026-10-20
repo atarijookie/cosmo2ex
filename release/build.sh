@@ -169,6 +169,7 @@ for arch in $ARCHS; do
     cp -a "$COMMON/." "$PKG/bin/"
     cp "$BIN/ce_cores.elf" "$BIN/webserver" "$PKG/bin/"
     cp "$RELEASE_DIR/files/ce.service" "$PKG/"
+    cp "$ROOT/LICENSE" "$PKG/"
     echo "$VERSION" > "$PKG/VERSION"
     echo "$arch"    > "$PKG/ARCH"
 
@@ -207,7 +208,7 @@ if [ "$MACOS" -eq 1 ]; then
     cp "$RELEASE_DIR/files/macos.env" "$PKG/.env"
     cp "$RELEASE_DIR/files/macos-README.txt" "$PKG/README.txt"
     cp "$RELEASE_DIR/files/CosmosEx.command" "$PKG/"
-    cp "$ROOT/ce_cores/license.txt" "$PKG/licenses/CosmosEx-license.txt"
+    cp "$ROOT/LICENSE" "$PKG/licenses/Cosmo2ex-license.txt"
     for f in ce_cores webserver ce_run; do
         cp "$MACOS_BIN/$f" "$PKG/"
     done

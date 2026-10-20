@@ -1,4 +1,4 @@
-CosmosEx for macOS
+Cosmo2ex for macOS
 ==================
 
 Runs on macOS 11 or newer, on Apple Silicon and on Intel Macs (universal programs).
@@ -16,9 +16,9 @@ Running
 Double-click CosmosEx.command. It opens a Terminal window, starts ce_cores and webserver in it, and shows the output
 of both. Open the web interface on the address it prints (https://localhost:8080 on this Mac).
 
-Press Ctrl+C or close the Terminal window to stop CosmosEx. If ce_cores crashes, it's restarted after 3 seconds
-(but not after 5 crashes within a minute - then CosmosEx stops); if the webserver stops, ce_cores is stopped too.
-macOS may ask to allow incoming network connections - the CosmosEx device connects to ce_cores over the network,
+Press Ctrl+C or close the Terminal window to stop Cosmo2ex. If ce_cores crashes, it's restarted after 3 seconds
+(but not after 5 crashes within a minute - then Cosmo2ex stops); if the webserver stops, ce_cores is stopped too.
+macOS may ask to allow incoming network connections - the Cosmo2ex device connects to ce_cores over the network,
 and the web interface can be opened from other computers.
 
 Start at login: System Settings > General > Login Items > + > select CosmosEx.command.
@@ -29,9 +29,10 @@ This folder can be anywhere, e.g. in Applications. Settings, logs and runtime da
 ~/Library/Application Support/cosmo2ex - set in .env, which is next to ce_run (Finder hides files starting with
 a dot - press Cmd+Shift+. to show them).
 
-Upgrading: stop CosmosEx, replace this folder with the new version (copy your .env over, if you changed it) and
+Upgrading: stop Cosmo2ex, replace this folder with the new version (copy your .env over, if you changed it) and
 run the xattr command again. Settings in ~/Library/Application Support/cosmo2ex are kept.
 
 Licenses
 --------
-See the licenses folder.
+Cosmo2ex is open design, non-commercial license (PolyForm Noncommercial 1.0.0): free to use, change and share for
+non-commercial use, not to sell. See the licenses folder.

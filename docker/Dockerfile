@@ -199,6 +199,9 @@ WORKDIR /files/opt/ce/bin
 # .env defaults (repo-root file; both apps load ./ .env from BIN_DIR)
 COPY .env ./.env
 
+# License terms have to go with every copy of the software
+COPY LICENSE ./LICENSE
+
 # Webserver static files (served as ./static from BIN_DIR)
 COPY webserver/static/ ./static/
 

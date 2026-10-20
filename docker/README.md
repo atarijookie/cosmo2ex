@@ -89,3 +89,5 @@ read-only, udev events are used instead.
 
 USB raw disks for HDD emulation (/dev/sd*): block major 8 is allowed.
 WARNING: this includes any SATA/USB system disk of the host.
+
+License: open design, non-commercial license - see LICENSE / the License section of the main README.md.

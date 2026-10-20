@@ -18,7 +18,7 @@
 #define MFM_6US     2
 #define MFM_8US     3
 
-#define VERSION_STRING          "CosmosEx v4.00 (by Jookie)"
+#define VERSION_STRING          "Cosmo2ex v4.00 (by Jookie)"
 #define VERSION_STRING_SHORT    "4.00"
 #define DATE_STRING             "01/11/26"
                               // MM/DD/YY
@@ -139,10 +139,6 @@ bool checkStartupFilesAndDirs(void);   // false if some file loaded on start or 
 #define CE_CONF_FDD_IMAGE_JUST_FILENAME         "ce_conf.st"
 
 #define FDD_TEST_IMAGE_JUST_FILENAME            "fdd_test.st"
-
-#define PATH_ATARI_CE_FDD_TTP               "CE_FDD.TTP"
-#define PATH_ATARI_CE_HDIMG_TTP             "CE_HDIMG.TTP"
-#define PATH_ATARI_CE_MEDIAPLAY             "CEMEDIAP.TTP"
 
 // These were global const string constants, but now they depend on .env content, so they are now
 // loaded on app start and used when needed.

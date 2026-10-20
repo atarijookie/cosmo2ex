@@ -113,7 +113,7 @@ int main( int argc, char* argv[] )
 
     // write some header out
     Clear_home();
-    (void) Cconws("\33p[ CosmosEx disk driver  ]\r\n[ by Jookie 2013 - 2024 ]\r\n[        ver ");
+    (void) Cconws("\33p[ Cosmo2ex disk driver  ]\r\n[ by Jookie 2013 - 2024 ]\r\n[        ver ");
     showAppVersion();
     (void) Cconws(" ]\33q\r\n\r\n");
 

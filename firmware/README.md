@@ -26,3 +26,5 @@ The image on ghcr.io is tagged with the hash of the Dockerfile. On release (and 
 if the image for the current Dockerfile isn't on ghcr.io yet, it gets built and pushed,
 otherwise the existing one is pulled - so to update arduino-cli or the arduino-pico
 core, just change the versions in the Dockerfile.
+
+License: open design, non-commercial license - see LICENSE / the License section of the main README.md.

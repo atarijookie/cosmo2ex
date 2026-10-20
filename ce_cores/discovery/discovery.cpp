@@ -72,8 +72,8 @@ void *discoveryMain(void *ptr)
         return NULL;
     }
 
-    logDiscovery(LOG_INFO, "Starting CosmosEx discovery server");
-    printf("Starting CosmosEx discovery server\n");
+    logDiscovery(LOG_INFO, "Starting Cosmo2ex discovery server");
+    printf("Starting Cosmo2ex discovery server\n");
 
     struct timeval timeout;
     fd_set readfds;
@@ -121,7 +121,7 @@ void *discoveryMain(void *ptr)
 
     close(udpSocket);
 
-    logDiscovery(LOG_ERROR, "Terminating CosmosEx network server");
+    logDiscovery(LOG_ERROR, "Terminating Cosmo2ex network server");
 
     return NULL;
 }

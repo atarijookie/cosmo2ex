@@ -124,7 +124,7 @@ The Windows release is a zip, `ce-<version>-windows-x64.zip`: one folder, unzip 
   runtime (`libstdc++` / `libgcc`) is a DLL too, because Cygwin's static `libstdc++.a` doesn't link (see
   `ce_cores/makefile`). The DLLs are taken from what `cygcheck` finds.
 - `webserver.exe` - native Windows program
-- `licenses/` - `cygwin1.dll` is LGPLv3: distributing it with this BSD licensed project is fine, as long as the package
+- `licenses/` - `cygwin1.dll` is LGPLv3: distributing it with this project is fine, as long as the package
   has the LGPLv3 + GPLv3 texts, a notice that the Cygwin library is used, and the source of exactly the bundled
   `cygwin1.dll` (its Cygwin source package, checked against the mirror's checksum). The GCC runtime DLLs are GPLv3
   with the GCC Runtime Library Exception, which allows distributing them with programs compiled by GCC
@@ -142,3 +142,7 @@ Building takes two steps, as the Atari programs need the m68k-atari-mint toolcha
 2. on Linux: `WINDOWS_BIN=<that output dir> release/build.sh windows` - makes the zip (needs `python3`)
 
 The release workflow does both (`windows` job, then `tarballs`).
+
+## License
+
+Open design, non-commercial license - see the License section of the [main README](../README.md#license).

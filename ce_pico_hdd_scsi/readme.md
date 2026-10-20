@@ -36,3 +36,7 @@
 - Stack protection: Disabled
 - Upload method: Picoprobe / Debugprobe (CMSIS-DAP)
 - USB stack: No USB
+
+## License
+
+Open design, non-commercial license - see the License section of the [main README](../README.md#license).

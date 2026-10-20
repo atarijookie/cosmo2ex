@@ -100,8 +100,8 @@ int main(int argc, char *argv[])
     int lockErr = 0;
     if(!cmdSockOpen(lockErr)) {
         if(lockErr == EADDRINUSE) {     // port taken = other instance holds it (or some other program uses CMD_UDP_PORT)
-            logHdd(LOG_ERROR, "Other instance of CosmosEx is running (CMD_UDP_PORT is in use), terminate it before starting a new one!");
-            printf("\nOther instance of CosmosEx is running (CMD_UDP_PORT is in use), terminate it before starting a new one!\n\n\n");
+            logHdd(LOG_ERROR, "Other instance of Cosmo2ex is running (CMD_UDP_PORT is in use), terminate it before starting a new one!");
+            printf("\nOther instance of Cosmo2ex is running (CMD_UDP_PORT is in use), terminate it before starting a new one!\n\n\n");
         } else {                        // without command socket nobody can control the app
             logHdd(LOG_ERROR, "Could not create command socket, terminating");
             printf("\nCould not create command socket, terminating\n\n\n");
@@ -171,8 +171,8 @@ int runCoreHdd(void)
 
     char appVersion[16];
     Version::getAppVersion(appVersion);
-    logHdd(LOG_INFO, "CosmosEx cores starting");
-    printf("\nCosmosEx cores starting\n");
+    logHdd(LOG_INFO, "Cosmo2ex cores starting");
+    printf("\nCosmo2ex cores starting\n");
 
 
     //-------------
@@ -188,7 +188,7 @@ int runCoreHdd(void)
     std::string pidFilePath = pidFileName();
     unlink(pidFilePath.c_str());
 
-    logHdd(LOG_INFO, "CosmosEx terminated.");
+    logHdd(LOG_INFO, "Cosmo2ex terminated.");
     printf("Terminated\n");
     return 0;
 }

@@ -31,9 +31,6 @@ ce_hans_fw
 ce_conf
 ce_dd_bootsectors
 ce_dd_prg
-ce_fdd_prg
-ce_fdd_ttp
-ce_hdimg_ttp
 ce_mount_acc
 ce_mount_prg
 ce_screencast

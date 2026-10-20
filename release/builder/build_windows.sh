@@ -81,7 +81,7 @@ echo "[windows] building webserver + ce_run"
 echo "[windows] license files"
 mkdir -p "$OUT/licenses"
 cp "$SRC/release/files/licenses/LGPL-3.0.txt" "$SRC/release/files/licenses/GPL-3.0.txt" "$OUT/licenses/"
-cp "$SRC/ce_cores/license.txt" "$OUT/licenses/CosmosEx-license.txt"
+cp "$SRC/LICENSE" "$OUT/licenses/Cosmo2ex-license.txt"
 
 CYGWIN_VERSION=$(cygcheck -c -d cygwin | awk '$1 == "cygwin" { print $2 }')     # e.g. 3.5.4-1
 if [ -z "$CYGWIN_VERSION" ]; then
