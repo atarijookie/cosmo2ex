@@ -13251,66 +13251,6 @@ Source: &lt;a href="https://www.infineon.com/dgdl/irlml6401pbf.pdf?fileId=5546d4
 </deviceset>
 </devicesets>
 </library>
-<library name="RSSM1011C3BK">
-<packages>
-<package name="RSSM1011C3BK">
-<wire x1="-6.6" y1="0" x2="-6.6" y2="2" width="0.127" layer="21"/>
-<wire x1="-6.6" y1="2" x2="-6.6" y2="8.4" width="0.127" layer="21"/>
-<wire x1="6.6" y1="0" x2="6.6" y2="2" width="0.127" layer="21"/>
-<wire x1="6.6" y1="2" x2="6.6" y2="8.4" width="0.127" layer="21"/>
-<wire x1="-6.6" y1="0" x2="6.6" y2="0" width="0.127" layer="21"/>
-<wire x1="6.6" y1="8.4" x2="6.9" y2="8.4" width="0.127" layer="21"/>
-<wire x1="6.9" y1="8.4" x2="7.6" y2="8.4" width="0.127" layer="21"/>
-<wire x1="7.6" y1="8.4" x2="7.6" y2="9.9" width="0.127" layer="21"/>
-<wire x1="7.6" y1="9.9" x2="-5" y2="9.9" width="0.127" layer="21"/>
-<wire x1="-5" y1="9.9" x2="-7.6" y2="9.9" width="0.127" layer="21"/>
-<wire x1="-6.6" y1="8.4" x2="-7" y2="8.4" width="0.127" layer="21"/>
-<wire x1="-7" y1="8.4" x2="-7.6" y2="8.4" width="0.127" layer="21"/>
-<wire x1="-7.6" y1="8.4" x2="-7.6" y2="9.9" width="0.127" layer="21"/>
-<wire x1="6.6" y1="2" x2="7.5" y2="5.9" width="0.127" layer="21"/>
-<wire x1="7.5" y1="5.9" x2="6.9" y2="8.4" width="0.127" layer="21"/>
-<wire x1="-6.6" y1="2" x2="-7.6" y2="5.9" width="0.127" layer="21"/>
-<wire x1="-7.6" y1="5.9" x2="-7" y2="8.4" width="0.127" layer="21"/>
-<wire x1="0" y1="-0.3" x2="0" y2="-4.8" width="0.7" layer="21"/>
-<wire x1="5" y1="-0.3" x2="5" y2="-4.8" width="0.7" layer="21"/>
-<wire x1="-5" y1="9.9" x2="-2.7" y2="12.8" width="0.127" layer="21"/>
-<wire x1="-2.7" y1="12.8" x2="0" y2="11.4" width="0.127" layer="21"/>
-<wire x1="0" y1="11.4" x2="1.8" y2="10.7" width="0.127" layer="21"/>
-<wire x1="1.8" y1="10.7" x2="5" y2="10" width="0.127" layer="21"/>
-<smd name="P$1" x="-0.1" y="-3.5" dx="4" dy="5" layer="1"/>
-<smd name="P$2" x="5" y="-3.5" dx="4" dy="5" layer="1"/>
-<wire x1="0" y1="0" x2="0" y2="-4.8" width="1" layer="46"/>
-<wire x1="5" y1="0" x2="5" y2="-4.9" width="1" layer="46"/>
-</package>
-</packages>
-<symbols>
-<symbol name="RSSM1011C3BK">
-<pin name="P$1" x="-7.62" y="0" visible="off" length="middle"/>
-<pin name="P$2" x="7.62" y="0" visible="off" length="middle" rot="R180"/>
-<circle x="-2.54" y="0" radius="0.359209375" width="0.254" layer="94"/>
-<circle x="2.54" y="0" radius="0.359209375" width="0.254" layer="94"/>
-<wire x1="-2.54" y1="0" x2="2.794" y2="1.778" width="0.254" layer="94"/>
-</symbol>
-</symbols>
-<devicesets>
-<deviceset name="RSSM1011C3BK">
-<gates>
-<gate name="G$1" symbol="RSSM1011C3BK" x="2.54" y="0"/>
-</gates>
-<devices>
-<device name="" package="RSSM1011C3BK">
-<connects>
-<connect gate="G$1" pin="P$1" pad="P$1"/>
-<connect gate="G$1" pin="P$2" pad="P$2"/>
-</connects>
-<technologies>
-<technology name=""/>
-</technologies>
-</device>
-</devices>
-</deviceset>
-</devicesets>
-</library>
 <library name="resistor-net">
 <description>&lt;b&gt;Generic Resistor Networks&lt;/b&gt;&lt;p&gt;
 &lt;author&gt;Created by librarian@cadsoft.de&lt;/author&gt;</description>
@@ -14108,6 +14048,55 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 </deviceset>
 </devicesets>
 </library>
+<library name="ce_fdd_v40">
+<packages>
+<package name="SMRS-1">
+<wire x1="0" y1="0.4" x2="14" y2="0.4" width="0.127" layer="21"/>
+<wire x1="14" y1="0.4" x2="14" y2="8.9" width="0.127" layer="21"/>
+<wire x1="14" y1="8.9" x2="0" y2="8.9" width="0.127" layer="21"/>
+<wire x1="0" y1="8.9" x2="0" y2="0.4" width="0.127" layer="21"/>
+<wire x1="-0.5" y1="-0.5" x2="14.5" y2="-0.5" width="0.127" layer="21"/>
+<wire x1="14.5" y1="-0.5" x2="14.5" y2="10" width="0.127" layer="21"/>
+<wire x1="14.5" y1="10" x2="-0.5" y2="10" width="0.127" layer="21"/>
+<wire x1="-0.5" y1="10" x2="-0.5" y2="-0.4" width="0.127" layer="21"/>
+<wire x1="7" y1="0.7" x2="7" y2="1.3" width="0.127" layer="21"/>
+<wire x1="11.5" y1="2.7" x2="11.5" y2="6.7" width="0.8128" layer="46"/>
+<smd name="P$1" x="11.5" y="4.7" dx="6" dy="3" layer="16" rot="R90"/>
+<wire x1="7" y1="2.7" x2="7" y2="6.7" width="0.8128" layer="46"/>
+<smd name="P$2" x="7" y="4.7" dx="6" dy="3" layer="16" rot="R90"/>
+<wire x1="11.5" y1="0.7" x2="11.5" y2="1.3" width="0.127" layer="21"/>
+<rectangle x1="5.4" y1="1.6" x2="13.1" y2="7.8" layer="39"/>
+<rectangle x1="5.4" y1="1.7" x2="13.1" y2="7.8" layer="41"/>
+</package>
+</packages>
+<symbols>
+<symbol name="SMRS-1">
+<pin name="P$1" x="-7.62" y="0" visible="pad" length="middle"/>
+<pin name="P$2" x="7.62" y="0" visible="pad" length="middle" rot="R180"/>
+<circle x="-2.54" y="0" radius="0.915809375" width="0.254" layer="94"/>
+<circle x="2.54" y="0" radius="0.915809375" width="0.254" layer="94"/>
+<wire x1="-2.54" y1="0" x2="2.794" y2="2.286" width="0.254" layer="94"/>
+</symbol>
+</symbols>
+<devicesets>
+<deviceset name="SMSR-1">
+<gates>
+<gate name="G$1" symbol="SMRS-1" x="-0.254" y="0"/>
+</gates>
+<devices>
+<device name="" package="SMRS-1">
+<connects>
+<connect gate="G$1" pin="P$1" pad="P$1"/>
+<connect gate="G$1" pin="P$2" pad="P$2"/>
+</connects>
+<technologies>
+<technology name=""/>
+</technologies>
+</device>
+</devices>
+</deviceset>
+</devicesets>
+</library>
 </libraries>
 <attributes>
 </attributes>
@@ -14224,7 +14213,6 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <part name="R33" library="rcl" deviceset="R-EU_" device="R0603" value="220R"/>
 <part name="JP1" library="jumper" deviceset="JP1E" device=""/>
 <part name="GND7" library="supply1" deviceset="GND" device=""/>
-<part name="U$1" library="RSSM1011C3BK" deviceset="RSSM1011C3BK" device=""/>
 <part name="C11" library="rcl" deviceset="C-EU" device="C0603" value="100 nF"/>
 <part name="GND9" library="supply1" deviceset="GND" device=""/>
 <part name="GND2" library="supply1" deviceset="GND" device=""/>
@@ -14258,13 +14246,10 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <part name="GND21" library="supply1" deviceset="GND" device=""/>
 <part name="C15" library="rcl" deviceset="C-EU" device="C0805" value="1 uF"/>
 <part name="GND10" library="supply1" deviceset="GND" device=""/>
-<part name="C16" library="rcl" deviceset="C-EU" device="C0603" value="100 nF"/>
-<part name="C17" library="rcl" deviceset="C-EU" device="C0603" value="100 nF"/>
-<part name="C18" library="rcl" deviceset="C-EU" device="C0805" value="1 uF"/>
+<part name="C18" library="rcl" deviceset="C-EU" device="C0603" value="1 uF"/>
 <part name="GND42" library="supply1" deviceset="GND" device=""/>
 <part name="GND25" library="supply1" deviceset="GND" device=""/>
 <part name="P+21" library="supply1" deviceset="VCC" device=""/>
-<part name="C19" library="rcl" deviceset="C-EU" device="C0603" value="100 nF"/>
 <part name="U$3" library="con_subd19" deviceset="M19" device=""/>
 <part name="GND26" library="supply1" deviceset="GND" device=""/>
 <part name="R30" library="rcl" deviceset="R-EU_" device="R0603" value="10k"/>
@@ -14321,6 +14306,15 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <part name="R21" library="rcl" deviceset="R-EU_" device="R0603" value="100k"/>
 <part name="GND11" library="supply1" deviceset="GND" device=""/>
 <part name="R36" library="rcl" deviceset="R-EU_" device="R0603" value="220R"/>
+<part name="U$1" library="ce_fdd_v40" deviceset="SMSR-1" device=""/>
+<part name="LED3" library="WS2812C-2020" deviceset="WS2812C-2020" device="">
+<attribute name="DESCRIPTION" value="Intelligent control LED integrated light source"/>
+<attribute name="HEIGHT" value="0.84mm"/>
+<attribute name="MANUFACTURER_NAME" value="Worldsemi"/>
+<attribute name="MANUFACTURER_PART_NUMBER" value="WS2812C-2020"/>
+<attribute name="TME_ELECTRONIC_COMPONENTS_PART_NUMBER" value=""/>
+<attribute name="TME_ELECTRONIC_COMPONENTS_PRICE-STOCK" value=""/>
+</part>
 </parts>
 <sheets>
 <sheet>
@@ -15193,17 +15187,6 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <pinref part="C3" gate="G$1" pin="1"/>
 <wire x1="149.86" y1="76.2" x2="149.86" y2="83.82" width="0.1524" layer="91"/>
 <junction x="149.86" y="83.82"/>
-<pinref part="C9" gate="G$1" pin="1"/>
-<wire x1="160.02" y1="83.82" x2="170.18" y2="83.82" width="0.1524" layer="91"/>
-<wire x1="170.18" y1="83.82" x2="170.18" y2="76.2" width="0.1524" layer="91"/>
-<junction x="160.02" y="83.82"/>
-<pinref part="C1" gate="G$1" pin="1"/>
-<wire x1="177.8" y1="76.2" x2="177.8" y2="83.82" width="0.1524" layer="91"/>
-<wire x1="177.8" y1="83.82" x2="170.18" y2="83.82" width="0.1524" layer="91"/>
-<junction x="170.18" y="83.82"/>
-<label x="85.344" y="81.788" size="1.016" layer="95" rot="R90"/>
-<pinref part="R35" gate="G$1" pin="2"/>
-<wire x1="86.36" y1="83.82" x2="86.36" y2="78.74" width="0.1524" layer="91"/>
 </segment>
 <segment>
 <pinref part="Q18" gate="G$1" pin="S"/>
@@ -15281,6 +15264,11 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <wire x1="180.34" y1="33.02" x2="180.34" y2="43.18" width="0.1524" layer="91"/>
 <wire x1="183.896" y1="33.02" x2="180.34" y2="33.02" width="0.1524" layer="91"/>
 <junction x="180.34" y="33.02"/>
+</segment>
+<segment>
+<pinref part="R35" gate="G$1" pin="2"/>
+<wire x1="86.36" y1="83.82" x2="86.36" y2="78.74" width="0.1524" layer="91"/>
+<label x="84.328" y="84.328" size="1.016" layer="95"/>
 </segment>
 </net>
 <net name="OUT_OE_INT" class="0">
@@ -15776,6 +15764,16 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <pinref part="IC5" gate="G$1" pin="VCC"/>
 <wire x1="48.26" y1="12.7" x2="55.88" y2="12.7" width="0.1524" layer="91"/>
 <label x="52.07" y="13.208" size="0.8128" layer="95" font="vector"/>
+</segment>
+<segment>
+<pinref part="C9" gate="G$1" pin="1"/>
+<wire x1="170.18" y1="83.82" x2="170.18" y2="76.2" width="0.1524" layer="91"/>
+<pinref part="C1" gate="G$1" pin="1"/>
+<wire x1="177.8" y1="76.2" x2="177.8" y2="83.82" width="0.1524" layer="91"/>
+<wire x1="177.8" y1="83.82" x2="170.18" y2="83.82" width="0.1524" layer="91"/>
+<wire x1="170.18" y1="83.82" x2="170.18" y2="86.36" width="0.1524" layer="91"/>
+<junction x="170.18" y="83.82"/>
+<label x="167.894" y="86.868" size="0.8128" layer="95" font="vector"/>
 </segment>
 </net>
 </nets>
@@ -16427,14 +16425,8 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <wire x1="214.884" y1="131.318" x2="217.17" y2="130.81" width="0.1524" layer="94"/>
 </plain>
 <instances>
-<instance part="C16" gate="G$1" x="269.24" y="223.52" smashed="yes">
-<attribute name="NAME" x="271.907" y="223.774" size="1.778" layer="95" rot="R90"/>
-</instance>
-<instance part="C17" gate="G$1" x="254" y="220.98" smashed="yes">
-<attribute name="NAME" x="256.159" y="221.488" size="1.778" layer="95" rot="R90"/>
-</instance>
-<instance part="C18" gate="G$1" x="279.4" y="220.98" smashed="yes">
-<attribute name="NAME" x="281.813" y="221.234" size="1.778" layer="95" rot="R90"/>
+<instance part="C18" gate="G$1" x="281.94" y="220.98" smashed="yes">
+<attribute name="NAME" x="284.353" y="221.234" size="1.778" layer="95" rot="R90"/>
 </instance>
 <instance part="GND42" gate="1" x="93.98" y="198.12" smashed="yes">
 <attribute name="VALUE" x="91.44" y="195.58" size="1.778" layer="96"/>
@@ -16443,9 +16435,6 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <attribute name="VALUE" x="279.4" y="203.2" size="1.778" layer="96"/>
 </instance>
 <instance part="P+21" gate="VCC" x="281.94" y="236.22"/>
-<instance part="C19" gate="G$1" x="363.22" y="220.98" smashed="yes">
-<attribute name="NAME" x="362.458" y="220.98" size="1.778" layer="95" rot="R90"/>
-</instance>
 <instance part="U$3" gate="G$1" x="99.06" y="101.6" rot="MR0"/>
 <instance part="GND26" gate="1" x="119.38" y="88.9" smashed="yes">
 <attribute name="VALUE" x="116.84" y="86.36" size="1.778" layer="96"/>
@@ -16474,23 +16463,9 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <nets>
 <net name="VCC" class="0">
 <segment>
-<wire x1="279.4" y1="231.14" x2="279.4" y2="223.52" width="0.1524" layer="91"/>
-<pinref part="C17" gate="G$1" pin="1"/>
-<wire x1="279.4" y1="231.14" x2="269.24" y2="231.14" width="0.1524" layer="91"/>
-<wire x1="269.24" y1="231.14" x2="254" y2="231.14" width="0.1524" layer="91"/>
-<wire x1="254" y1="231.14" x2="254" y2="223.52" width="0.1524" layer="91"/>
+<wire x1="281.94" y1="233.68" x2="281.94" y2="223.52" width="0.1524" layer="91"/>
 <pinref part="C18" gate="G$1" pin="1"/>
 <pinref part="P+21" gate="VCC" pin="VCC"/>
-<wire x1="281.94" y1="233.68" x2="281.94" y2="231.14" width="0.1524" layer="91"/>
-<wire x1="281.94" y1="231.14" x2="363.22" y2="231.14" width="0.1524" layer="91"/>
-<pinref part="C19" gate="G$1" pin="1"/>
-<wire x1="363.22" y1="231.14" x2="363.22" y2="223.52" width="0.1524" layer="91"/>
-<wire x1="279.4" y1="231.14" x2="281.94" y2="231.14" width="0.1524" layer="91"/>
-<junction x="279.4" y="231.14"/>
-<junction x="281.94" y="231.14"/>
-<pinref part="C16" gate="G$1" pin="1"/>
-<wire x1="269.24" y1="226.06" x2="269.24" y2="231.14" width="0.1524" layer="91"/>
-<junction x="269.24" y="231.14"/>
 </segment>
 <segment>
 <label x="86.36" y="206.248" size="1.016" layer="95" font="vector"/>
@@ -16518,22 +16493,8 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <net name="GND" class="0">
 <segment>
 <pinref part="GND25" gate="1" pin="GND"/>
-<wire x1="281.94" y1="210.82" x2="281.94" y2="208.28" width="0.1524" layer="91"/>
-<wire x1="281.94" y1="210.82" x2="363.22" y2="210.82" width="0.1524" layer="91"/>
-<pinref part="C19" gate="G$1" pin="2"/>
-<wire x1="363.22" y1="210.82" x2="363.22" y2="215.9" width="0.1524" layer="91"/>
-<junction x="269.24" y="210.82"/>
-<wire x1="269.24" y1="210.82" x2="279.4" y2="210.82" width="0.1524" layer="91"/>
-<wire x1="279.4" y1="210.82" x2="279.4" y2="215.9" width="0.1524" layer="91"/>
-<pinref part="C17" gate="G$1" pin="2"/>
-<wire x1="254" y1="215.9" x2="254" y2="210.82" width="0.1524" layer="91"/>
-<wire x1="254" y1="210.82" x2="269.24" y2="210.82" width="0.1524" layer="91"/>
+<wire x1="281.94" y1="208.28" x2="281.94" y2="215.9" width="0.1524" layer="91"/>
 <pinref part="C18" gate="G$1" pin="2"/>
-<wire x1="281.94" y1="210.82" x2="279.4" y2="210.82" width="0.1524" layer="91"/>
-<junction x="281.94" y="210.82"/>
-<junction x="279.4" y="210.82"/>
-<pinref part="C16" gate="G$1" pin="2"/>
-<wire x1="269.24" y1="218.44" x2="269.24" y2="210.82" width="0.1524" layer="91"/>
 </segment>
 <segment>
 <pinref part="GND42" gate="1" pin="GND"/>
@@ -16972,10 +16933,10 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <wire x1="368.3" y1="88.9" x2="109.22" y2="88.9" width="0.1524" layer="94" style="shortdash"/>
 <wire x1="109.22" y1="88.9" x2="109.22" y2="264.16" width="0.1524" layer="94" style="shortdash"/>
 <text x="116.84" y="254" size="2.54" layer="94" font="vector">power supply</text>
-<wire x1="109.22" y1="83.82" x2="220.98" y2="83.82" width="0.1524" layer="94" style="shortdash"/>
+<wire x1="109.22" y1="83.82" x2="241.3" y2="83.82" width="0.1524" layer="94" style="shortdash"/>
 <wire x1="109.22" y1="83.82" x2="109.22" y2="-7.62" width="0.1524" layer="94" style="shortdash"/>
-<wire x1="220.98" y1="83.82" x2="220.98" y2="-7.62" width="0.1524" layer="94" style="shortdash"/>
-<wire x1="109.22" y1="-7.62" x2="220.98" y2="-7.62" width="0.1524" layer="94" style="shortdash"/>
+<wire x1="241.3" y1="83.82" x2="241.3" y2="-7.62" width="0.1524" layer="94" style="shortdash"/>
+<wire x1="109.22" y1="-7.62" x2="241.3" y2="-7.62" width="0.1524" layer="94" style="shortdash"/>
 <text x="-63.5" y="116.078" size="0.8128" layer="91" font="vector" ratio="10">If using W6100, GP15 and GP22 can be used for IKBD</text>
 <text x="-63.5" y="114.3" size="0.8128" layer="94" font="vector" ratio="10">If using W6300, GP15 and GP22 are used by W6300 and IKBD cannot use them.</text>
 <wire x1="44.196" y1="152.908" x2="41.148" y2="152.908" width="0.1524" layer="94"/>
@@ -17016,7 +16977,6 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <instance part="D2" gate="G$1" x="43.18" y="180.34" smashed="yes" rot="R180">
 <attribute name="NAME" x="40.64" y="179.8574" size="1.778" layer="95" rot="R180"/>
 </instance>
-<instance part="U$1" gate="G$1" x="259.08" y="170.18"/>
 <instance part="C11" gate="G$1" x="180.34" y="35.56" smashed="yes">
 <attribute name="NAME" x="182.499" y="36.068" size="1.778" layer="95" rot="R90"/>
 </instance>
@@ -17047,6 +17007,8 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <instance part="R36" gate="G$1" x="132.08" y="43.18" smashed="yes" rot="MR0">
 <attribute name="VALUE" x="134.62" y="40.132" size="1.778" layer="96" rot="MR0"/>
 </instance>
+<instance part="U$1" gate="G$1" x="259.08" y="170.18"/>
+<instance part="LED3" gate="G$1" x="223.52" y="48.26" rot="R270"/>
 </instances>
 <busses>
 </busses>
@@ -17150,6 +17112,10 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <pinref part="C20" gate="G$1" pin="2"/>
 <wire x1="172.72" y1="30.48" x2="172.72" y2="15.24" width="0.1524" layer="91"/>
 <wire x1="172.72" y1="15.24" x2="180.34" y2="15.24" width="0.1524" layer="91"/>
+<pinref part="LED3" gate="G$1" pin="GND"/>
+<wire x1="203.2" y1="15.24" x2="223.52" y2="15.24" width="0.1524" layer="91"/>
+<wire x1="223.52" y1="15.24" x2="223.52" y2="22.86" width="0.1524" layer="91"/>
+<junction x="203.2" y="15.24"/>
 </segment>
 <segment>
 <pinref part="GND16" gate="1" pin="GND"/>
@@ -17201,7 +17167,6 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <segment>
 <pinref part="C7" gate="G$1" pin="+"/>
 <wire x1="294.64" y1="165.1" x2="294.64" y2="170.18" width="0.1524" layer="91"/>
-<pinref part="U$1" gate="G$1" pin="P$2"/>
 <wire x1="266.7" y1="170.18" x2="269.24" y2="170.18" width="0.1524" layer="91"/>
 <junction x="294.64" y="170.18"/>
 <pinref part="LED1" gate="G$1" pin="A"/>
@@ -17220,6 +17185,7 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <pinref part="C15" gate="G$1" pin="1"/>
 <wire x1="281.94" y1="162.56" x2="281.94" y2="170.18" width="0.1524" layer="91"/>
 <junction x="281.94" y="170.18"/>
+<pinref part="U$1" gate="G$1" pin="P$2"/>
 </segment>
 <segment>
 <pinref part="C11" gate="G$1" pin="1"/>
@@ -17238,6 +17204,10 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <wire x1="172.72" y1="43.18" x2="180.34" y2="43.18" width="0.1524" layer="91"/>
 <wire x1="172.72" y1="38.1" x2="172.72" y2="43.18" width="0.1524" layer="91"/>
 <junction x="172.72" y="43.18"/>
+<pinref part="LED3" gate="G$1" pin="VDD"/>
+<wire x1="200.66" y1="58.42" x2="220.98" y2="58.42" width="0.1524" layer="91"/>
+<wire x1="220.98" y1="58.42" x2="220.98" y2="48.26" width="0.1524" layer="91"/>
+<junction x="200.66" y="58.42"/>
 </segment>
 </net>
 <net name="N$1" class="0">
@@ -17444,6 +17414,10 @@ Source: &lt;a href="http://www.ti.com/lit/ds/symlink/sn74ahct1g125.pdf"&gt; Data
 <wire x1="193.04" y1="45.72" x2="193.04" y2="50.8" width="0.1524" layer="91"/>
 <wire x1="193.04" y1="50.8" x2="203.2" y2="50.8" width="0.1524" layer="91"/>
 <wire x1="203.2" y1="50.8" x2="203.2" y2="48.26" width="0.1524" layer="91"/>
+<pinref part="LED3" gate="G$1" pin="DI"/>
+<wire x1="203.2" y1="50.8" x2="223.52" y2="50.8" width="0.1524" layer="91"/>
+<wire x1="223.52" y1="50.8" x2="223.52" y2="48.26" width="0.1524" layer="91"/>
+<junction x="203.2" y="50.8"/>
 </segment>
 </net>
 <net name="N$3" class="0">
