@@ -113,7 +113,9 @@ static void freeWrittenSectorStorage(void)
     for(i=0; i<WRITTENMFMSECTOR_COUNT; i++) {       // go through the written sector storage
         if(writtenSectors[i].data != NULL) {        // buffer allocated? free it
             free(writtenSectors[i].data);
+            writtenSectors[i].data = NULL;          // so a sector written after this allocates a new buffer instead of using the freed one
         }
+        writtenSectors[i].hasData = false;
     }
 }
 
@@ -146,6 +148,11 @@ void floppyEncoder_decodeMfmWrittenSector(int floppySlotIndex, int track, int si
         wrSector->size = size;
 
         wrSector->hasData = true;                   // mark as ready only after everything is stored
+
+        // The encoded track still has the old data until the encoder thread writes this sector into the image and re-encodes it.
+        // Mark it not ready now, so a track / whole image sent to the device meanwhile (e.g. right after it reconnected and
+        // sent the writes it kept while disconnected) waits for the new content instead of getting the old one.
+        slots[floppySlotIndex].encImage.askToReencodeTrack(track, side);
     } else {                                        // storage full - this write is lost, that's data loss on the floppy
         logFdd(LOG_ERROR, "floppyEncoder_decodeMfmWrittenSector - written sector storage full (%d), DROPPING write of track %d, side %d, sector %d", WRITTENMFMSECTOR_COUNT, track, side, sector);
     }
@@ -503,6 +510,11 @@ void *floppyEncodeThreadCode(void *ptr)
             pauseTimer.restart();
         }
 
+        // Written sectors first - their tracks are marked not ready since they arrived, encoding such a track before the
+        // sector is written into the image would make it ready with the old data.
+        while(floppyEncoder_processOneWrittenSector(-1)) {      // if something was written, decode it and write it to image
+        }
+
         slot = findSlotToEncode();  // find some slot which needs encoding
 
         if(slot) {                  // if some slot needs encoding, do it, otherwise skip encoding
@@ -517,8 +529,6 @@ void *floppyEncodeThreadCode(void *ptr)
 
             //floppyEncodingRunning = false;
         }
-
-        floppyEncoder_processOneWrittenSector(-1);    // if something was written, decode it and write it to image
     }
 
     floppyEncoder_doBeforeTerminating();

@@ -233,7 +233,7 @@ bool MfmCachedImage::findNotReadyTrackAndEncodeIt(FloppyImage *img, int &track, 
     tracks[index].mfmStream[0] = track;     // store track and side at position 0 and 1
     tracks[index].mfmStream[1] = side;
 
-    currentStreamStart = tracks[index].mfmStream + 2;       // where the stream starts
+    currentStreamStart = tracks[index].mfmStream + MFM_STREAM_PREFIX_SIZE;  // where the stream starts
 
     bfr = currentStreamStart + STREAM_TABLE_SIZE;   // where the MFM data will start (after initial table)
     bytesInBfr = STREAM_TABLE_SIZE;             // no bytes in stream yet
@@ -265,12 +265,12 @@ bool MfmCachedImage::findNotReadyTrackAndEncodeIt(FloppyImage *img, int &track, 
         logFdd(LOG_DEBUG, "MfmCachedImage::findNotReadyTrackAndEncodeIt() - new longest track has %d ms total symbols time, has %d symbols in it, the average symbol time is %.2f us", tracks[index].totalSymbolsTime / 1000, tracks[index].symbolsInStream, avgTimePerSymbol);
     }
 
-    tracks[index].bytesInStream = bytesInBfr;   // store the data count
+    tracks[index].bytesInStream = MFM_STREAM_PREFIX_SIZE + bytesInBfr;  // what to send: track + side prefix and the whole stream (with the end mark)
     setRawWordAtIndex(0, STREAM_START_OFFSET + bytesInBfr);     // stream table - index 0: stream size in bytes (stream table + actual mfm data)
 
     // Debug::outBfr(LOGFILE_FDD, tracks[index].mfmStream, 48);     // uncomment to see start of stream with stream table in logs
 
-    if(bytesInBfr >= MFM_STREAM_SIZE) {
+    if(bytesInBfr >= MFM_STREAM_MAX_BYTES) {
         logFdd(LOG_WARNING, "MfmCachedImage::findNotReadyTrackAndEncodeIt() - WARNING! Track with index %d has %d bytes in it - TOO MUCH!", index, tracks[index].bytesInStream);
     }
 
@@ -561,7 +561,7 @@ void MfmCachedImage::appendByteToStream(uint8_t val, bool doCalcCrc)
             if(encoder.timesCnt == 4) {             // we have 4 times (whole byte), store it
                 encoder.timesCnt = 0;
 
-                if(bytesInBfr < MFM_STREAM_SIZE) {  // still have some space in buffer? store value
+                if(bytesInBfr < MFM_STREAM_MAX_BYTES) {    // still have some space in buffer? store value
                     bytesInBfr++;
 
                     *bfr = encoder.times;           // store times
@@ -582,7 +582,7 @@ void MfmCachedImage::appendTime(uint8_t time)
     if(encoder.timesCnt == 4) {         // we have 4 times (whole byte), store it
         encoder.timesCnt = 0;
 
-        if(bytesInBfr < MFM_STREAM_SIZE) {  // still have some space in buffer? store value
+        if(bytesInBfr < MFM_STREAM_MAX_BYTES) {    // still have some space in buffer? store value
             bytesInBfr++;
 
             *bfr = encoder.times;           // store times
@@ -633,7 +633,7 @@ void MfmCachedImage::setRawWordAtIndex(int index, uint16_t val)
 
 void MfmCachedImage::appendRawByte(uint8_t val)
 {
-    if(bytesInBfr < MFM_STREAM_SIZE) {  // still have some space in buffer? store value
+    if(bytesInBfr < MFM_STREAM_MAX_BYTES) {    // still have some space in buffer? store value
         bytesInBfr++;
 
         *bfr = val;     // just store this byte, no processing

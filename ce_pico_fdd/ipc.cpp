@@ -1,4 +1,5 @@
 #include "pico/util/queue.h"
+#include "hardware/sync.h"
 
 #include "ipc.h"
 #include "defs.h"
@@ -45,12 +46,13 @@ IPCbuffer* ipcGetFreeBuffer(int coreNo, uint32_t maxWaitMs)
         for(int i=0; i<maxBuffers; i++) {
             if(bfr[i].free) {
                 bfr[i].free = false;        // immediatelly not free
+                __dmb();                    // the caller's use of the buffer data comes after it was seen free
                 return &bfr[i];
             }
         }
 
         uint32_t now = millis();
-        if((now - start) > maxWaitMs) {
+        if((now - start) >= maxWaitMs) {    // >= so maxWaitMs 0 means just one look, no waiting
             return NULL;
         }
     }
@@ -93,4 +95,12 @@ void ipcSetBufferAndPutToFifo(IPCbuffer* bfr, int coreNo, IpcCommand command, ui
     bfr->length = lengthToStore;
 
     ipcPutBufferToFifo(coreNo, bfr->index);
+}
+
+// Each buffer pool is taken from by one core only (the one sending to the other), so seeing 'free' and setting it false
+// needs no atomic swap. But the core giving the buffer back must be done with its data before the flag shows it free.
+void ipcBufferRelease(IPCbuffer* bfr)
+{
+    __dmb();                // all reads / writes of the buffer data done before...
+    bfr->free = true;       // ...it shows up as free
 }

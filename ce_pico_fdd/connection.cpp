@@ -18,6 +18,7 @@
 #include "client_context.h"
 #include "utils.h"
 #include "ipc.h"
+#include "host_receive.h"
 
 #define SERVER_UDP_PORT 7200 // port number where CE listens for client requests
 #define CLIENT_UDP_PORT 7201 // port where this client should listen for CE responses
@@ -42,11 +43,7 @@ uint16_t hostPortIkbd;
 bool connectedToWifi;
 bool connectedToHost;
 
-THeader fddHeader;      // keep the header global to preserve syncTag between calls
-
-extern uint8_t imgTracks, imgSides, imgSectorsPerTrack;
 extern char imageFileName[32];
-extern bool diskChanged;
 extern int imageState;
 
 extern TDrivePosition posStreamed, hwPosition;
@@ -75,6 +72,7 @@ static void udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, co
     }
 
     if(p->len < 10) {       // too short?
+        pbuf_free(p);       // we own the received buffer, free it on every return
         return;
     }
 
@@ -213,6 +211,11 @@ void ceDiscoverySend(void)
 
     // alloc buffer, copy data to payload part
     struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, 10 + 1, PBUF_RAM);
+    if(p == NULL) {         // out of lwIP memory? try again on next attempt
+        debug("ceDiscoverySend - pbuf_alloc failed\n");
+        return;
+    }
+
     memcpy((char *)p->payload, "CELC", 4);      // 0..3 - CELC
     memcpy(((char *)p->payload) + 4, mac, 6);    // 4..9 - mac
 
@@ -356,7 +359,7 @@ void connect(TConnection* con, ip_addr_t* addr, uint16_t port)
     con->cc->ref();
     con->cc->setTimeout(5000);
 
-    con->cc->connectAsync(&hostIpAddr, hostPortFdd);
+    con->cc->connectAsync(addr, port);
 
     con->cc->setSync(true);
     con->cc->setNoDelay(true);
@@ -402,163 +405,34 @@ void connectToHost(void)
     connectToCEhost();
 }
 
-bool getIncommingHeader(void)
+// fdd connection to host, for host_receive.cpp
+
+bool hostConnected(void)
 {
-    if(!isConnected(&connectionFdd)) {   // connectionFdd not connected, no header received
-        return false;
-    }
-
-    while(true)
-    {
-        // Determine how many bytes are needed to be received, if we want to get 10 bytes of header.
-        // If we already got some bytes in the syncTag, we need less than 10 bytes.
-        int needed = 10;
-        if((fddHeader.syncTag & 0xffffff) == (SYNC_TAG_FDD >> 8))      // got c050d1 (3 bytes) already? need only 7 more
-        {
-            needed = 7;
-        }
-        else if((fddHeader.syncTag & 0xffff) == (SYNC_TAG_FDD >> 16))  // got c050 (2 bytes) already? need only 8 more
-        {
-            needed = 8;
-        }
-        else if((fddHeader.syncTag & 0xff) == (SYNC_TAG_FDD >> 24))    // got c0 (1 bytes) already? need only 9 more
-        {
-            needed = 9;
-        }
-        else                // in other cases, expect to have all 10 bytes available before trying to read header
-        {
-            needed = 10;
-        }
-
-        // not enough data for full header, no header received
-        int available = connectionCanReadBytes(&connectionFdd);
-        if(available < needed)
-        {
-            return false;
-        }
-
-        uint32_t data = connectionFdd.cc->read(); // read byte
-        fddHeader.syncTag = fddHeader.syncTag << 8;     // shift previous sync tag one byte up
-        fddHeader.syncTag |= data;                      // add lowest byte to syncTag
-
-        if(fddHeader.syncTag == SYNC_TAG_FDD)           // found expected syncTag
-        {
-            uint8_t restOfHeader[6];
-            connectionFdd.cc->read(restOfHeader, 6);  // read rest of the header
-
-            fddHeader.cmdCode = getWord(restOfHeader);
-            fddHeader.len = getDword(restOfHeader + 2);
-
-            return true;                        // got complete header
-        }
-    }
-
-    return false;       // no valid header
+    return isConnected(&connectionFdd);
 }
 
-int receivedTracks = 0;
-
-void showImageLoadProgress(void)
+size_t hostCanReadBytes(void)
 {
-    static uint32_t lastDisplay = 0;
-
-    uint32_t now = millis();
-    if(now - lastDisplay < 200) {       // too soon after last display? quit
-        return;
-    }
-    lastDisplay = now;
-
-    uint32_t totalTracks = MAX(imgTracks * imgSides, 1);
-    uint32_t percent = (receivedTracks * 100) / totalTracks;    // calc progress in percents
-
-    char progress[32];
-    memset(progress, 0, 32);
-    for(int i=0; i<20; i++) {
-        progress[i] = (percent > (i * 5)) ? '*' : ' ';
-    }
-
-    displayMessage("Loading image", imageFileName, progress);  // show on display
+    return connectionCanReadBytes(&connectionFdd);
 }
 
-void handleTrackReceived(void)
+size_t hostRead(uint8_t* bfr, size_t size)
 {
-    if(!isConnected(&connectionFdd)) {   // connectionFdd not connected, no header received
-        return;
-    }
-
-    IPCbuffer* bfr = ipcGetFreeBuffer(1, 500);
-    if(bfr == NULL) {
-        debug("handleTrackReceived - no free buffers\n");
-        return;
-    }
-
-    bfr->length = MIN(bfr->maxDataSize, fddHeader.len);     // limit read length to buffer length
-    connectionFdd.cc->read(bfr->data, bfr->length, 500);    // read into tmpTrackBuffer size lenData, wait max specified timeout
-
-    // read track # and side # from bfr
-    bfr->trackNo = MIN(bfr->data[0], MAX_TRACKS - 1);
-    bfr->sideNo = MIN(bfr->data[1], 1);
-
-    // store data to buffer, add buffer index to queue
-    ipcSetBufferAndPutToFifo(bfr, 1, CMD_STORE_TRACK, bfr->length);
-
-    debug("Rx t %d i %d\n", bfr->trackNo, bfr->sideNo);
-    receivedTracks++;
-
-    if(imageState == IMAGE_REQUESTED) {
-        showImageLoadProgress();
-    }
+    return conRead(&connectionFdd, bfr, size);
 }
 
-void handleImageReceived(void)
+void hostDisconnect(void)
 {
-    if(!isConnected(&connectionFdd)) {   // connectionFdd not connected, no header received
-        return;
-    }
-
-    uint8_t tmpBfr[128];
-    int lenData = MIN(128, fddHeader.len);  // limit read length to buffer length
-    connectionFdd.cc->read(tmpBfr, lenData, 500);    // read into tmpTrackBuffer size lenData, wait max specified timeout
-
-    if(tmpBfr[0] == 1)     // image receiving finished?
-    {
-        diskChanged = true;
-        imageState = IMAGE_LOADED;
-        showRunningStateOnDisplay();
-    }
-    else                // image receiving started?
-    {
-        receivedTracks = 0;
-        imageState = IMAGE_REQUESTED;
-    }
-
-    imgTracks = MIN(tmpBfr[1], MAX_TRACKS);
-    imgSides = tmpBfr[2];
-    imgSectorsPerTrack = MIN(tmpBfr[3], MAX_SECTORS_PER_TRACK);
-
-    memset(imageFileName, 0, 32);
-    strncpy(imageFileName, (const char*) (tmpBfr + 4), 31);        // store file name, up to 31 chars
-
-    debug("handleImageReceived %s, imgTracks: %d, imgSides: %d, imageFileName: %s\n", (tmpBfr[0] == 1) ? "END" : "START", imgTracks, imgSides, imageFileName);
-}
-
-void handleIncommingData(void)
-{
-    if(getIncommingHeader())        // if got valid hdd header
-    {
-        fddHeader.syncTag = 0;      // clear sync tag
-
-        switch(fddHeader.cmdCode) {
-            case ATN_SEND_TRACK: handleTrackReceived(); break;
-            case ATN_SEND_WHOLE_IMAGE: handleImageReceived(); break;
-            default: debug("unknown cmdCode %x\n", fddHeader.cmdCode); break;
-        }
-    }
+    stop(&connectionFdd);
 }
 
 /*
     Send data as is to host using the desired socket.
     This just selects the right socket and sends the count of data specified in dataSizeBytes.
+    If only a part of the data was sent (write timeout), the connection is closed - the host would take the start of
+    whatever is sent next as the rest of this message. So on false nothing of the data reached the host on a working
+    connection, and the caller can send all of it again later (after reconnect).
     @param bfr Pointer to start of the data buffer
     @param dataSizeBytes Size of the data you want to send.
 */
@@ -570,7 +444,17 @@ bool sendDataToHost(uint8_t *bfr, uint32_t dataSizeBytes)
     }
 
     uint32_t writtenCount = conWrite(&connectionFdd, bfr, dataSizeBytes);
-    return (writtenCount == dataSizeBytes);
+
+    if(writtenCount == dataSizeBytes) {
+        return true;
+    }
+
+    if(writtenCount > 0) {      // part of the message sent? the host can't find the start of the next one, start over
+        debug("sendDataToHost - sent only %d of %d bytes, disconnecting\n", writtenCount, dataSizeBytes);
+        stop(&connectionFdd);
+    }
+
+    return false;
 }
 
 /*

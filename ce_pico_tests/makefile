@@ -4,8 +4,11 @@
 # the fakes in fakes/ (Arduino, pico-sdk, EEPROM, Ethernet), the PIO bridge is replaced per project by tests/<project>/bridge_fake.cpp.
 # No third party library is compiled in. Each firmware gets its own test binary, as both define the same symbols.
 #
-#   make test                       - build and run both
-#   make test-acsi / test-scsi      - just one of them, extra doctest options via TEST_ARGS, e.g. TEST_ARGS="-tc=*header* -s"
+# ce_pico_fdd is tested the same way, but against its own pico-sdk fakes in fakes_fdd/ (it uses the sdk directly, not
+# arduino-pico), with the tests in tests/fdd/ - see the fdd section below.
+#
+#   make test                       - build and run all (acsi, scsi, fdd)
+#   make test-acsi / test-scsi / test-fdd - just one of them, extra doctest options via TEST_ARGS, e.g. TEST_ARGS="-tc=*header* -s"
 #   make test-asan                  - both, with AddressSanitizer + UndefinedBehaviorSanitizer
 #   make test-known-bugs            - also the KNOWN_BUG test cases (skipped otherwise) - these fail until the bugs get fixed
 
@@ -22,11 +25,11 @@ SANITIZE_FLAGS  = -fsanitize=address,undefined -fno-sanitize-recover=undefined -
 FW_SRCS         = utils.cpp ipc.cpp connection.cpp command_handling.cpp
 TEST_COMMON     = $(wildcard tests/*.cpp tests/common/*.cpp) fakes/fakes.cpp
 
-.PHONY: all test test-asan test-known-bugs clean $(addprefix test-,$(PROJECTS))
+.PHONY: all test test-asan test-known-bugs clean test-fdd $(addprefix test-,$(PROJECTS))
 
-all: $(addprefix run_tests_,$(addsuffix .elf,$(PROJECTS)))
+all: $(addprefix run_tests_,$(addsuffix .elf,$(PROJECTS))) run_tests_fdd.elf
 
-test: $(addprefix test-,$(PROJECTS))
+test: $(addprefix test-,$(PROJECTS)) test-fdd
 
 # $(1) = project (acsi / scsi)
 define PROJECT_template
@@ -53,6 +56,30 @@ test-$(1): run_tests_$(1).elf
 endef
 
 $(foreach p,$(PROJECTS),$(eval $(call PROJECT_template,$(p))))
+
+#--------------------------------------------------------
+# ce_pico_fdd - core1 / write capture / psram / ipc sources against fakes_fdd/, connection.h skipped via force_include.h
+FDD_FW_SRCS     = core1_main.cpp mfm_write.cpp psram.cpp ipc.cpp utils.cpp written_sectors.cpp host_receive.cpp
+FDD_FWOBJS      = $(addprefix obj/fdd/fw/,$(FDD_FW_SRCS:.cpp=.o))
+FDD_TOBJS       = $(addprefix obj/fdd/,$(patsubst %.cpp,%.o,tests/test_main.cpp $(wildcard tests/fdd/*.cpp) fakes_fdd/fakes_fdd.cpp))
+FLAGS_fdd       = -std=gnu++17 -g -O0 -Wall -Wno-sign-compare -Wno-unused-variable -Wno-unused-function -Wno-unused-but-set-variable -MMD -MP \
+                  -Ifakes_fdd -Itests -I../third_party/doctest -I../ce_pico_fdd -include fakes_fdd/force_include.h $(CXXFLAGS)
+
+obj/fdd/fw/%.o: ../ce_pico_fdd/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(FLAGS_fdd) -c $< -o $@
+
+obj/fdd/%.o: %.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(FLAGS_fdd) -c $< -o $@
+
+run_tests_fdd.elf: $(FDD_FWOBJS) $(FDD_TOBJS)
+	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
+
+test-fdd: run_tests_fdd.elf
+	./run_tests_fdd.elf $(TEST_ARGS)
+
+-include $(FDD_FWOBJS:.o=.d) $(FDD_TOBJS:.o=.d)
 
 # clean build, because all objects need the sanitizer flags - and clean again (also on failure), so the next normal build does not link them
 test-asan:

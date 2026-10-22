@@ -63,14 +63,14 @@ void psramTest(void)
 
     #define TEST_BFR_SIZE   13800
 
-    uint8_t writeBfr[TEST_BFR_SIZE];
+    static uint8_t writeBfr[TEST_BFR_SIZE];             // static - too big for the 4 kB stack of core1, where this runs
     for(int i=0; i<TEST_BFR_SIZE; i++) {                // full buffer with random data
         writeBfr[i] = random();
     }
 
     psramWriteBuffer(0, writeBfr, TEST_BFR_SIZE);       // write to psram
 
-    uint8_t readBfr[TEST_BFR_SIZE];
+    static uint8_t readBfr[TEST_BFR_SIZE];
     memset(readBfr, 0, TEST_BFR_SIZE);                  // clear the read buffer
 
     uint32_t start = millis();
@@ -92,8 +92,12 @@ void psramTest(void)
 
 void psramStoreTrack(int track, int side, uint8_t* data)
 {
+    if(track < 0 || track >= MAX_TRACKS) {  // no such track? don't store it over another one
+        debug("psramStoreTrack - bad track %d\n", track);
+        return;
+    }
+
     side = (side == 0) ? 0 : 1;     // limit side to values 0 and 1
-    track = MIN(track, MAX_TRACKS); // limit track to MAX_TRACKS
     uint32_t address = ((track * 2) + side) * READTRACKDATA_SIZE_BYTES;
 
     psramWriteBuffer(address, data, READTRACKDATA_SIZE_BYTES);
@@ -102,7 +106,7 @@ void psramStoreTrack(int track, int side, uint8_t* data)
 void psramLoadTrack(int track, int side, uint8_t* data)
 {
     side = (side == 0) ? 0 : 1;     // limit side to values 0 and 1
-    track = MIN(track, MAX_TRACKS); // limit track to MAX_TRACKS
+    track = MIN(track, MAX_TRACKS - 1); // limit track to the last one
     uint32_t address = ((track * 2) + side) * READTRACKDATA_SIZE_BYTES;
 
     psramReadBuffer(address, data, READTRACKDATA_SIZE_BYTES);
@@ -110,16 +114,22 @@ void psramLoadTrack(int track, int side, uint8_t* data)
 
 void psramStoreSector(int track, int side, int byteOffsetFromTrackStart, uint8_t* data, uint32_t copyLength, uint32_t clearLength)
 {
+    if(track < 0 || track >= MAX_TRACKS) {  // no such track? don't store it over another one
+        debug("psramStoreSector - bad track %d\n", track);
+        return;
+    }
+
     side = (side == 0) ? 0 : 1;     // limit side to values 0 and 1
-    track = MIN(track, MAX_TRACKS); // limit track to MAX_TRACKS
     uint32_t address = ((track * 2) + side) * READTRACKDATA_SIZE_BYTES;
     address += byteOffsetFromTrackStart;    // we will start writing from the specified sector offset
 
-    if(copyLength > 0) {
+    if(copyLength > 0) {        // something to copy? copy it to PSRAM
         psramWriteBuffer(address, data, copyLength);
     }
 
-    if(clearLength > 0) {
+    clearLength = MIN(clearLength, ENCODED_SECTOR_MAX_SIZE);
+
+    if(clearLength > 0) {       // something to clear? clear temp buffer and store it to PSRAM
         uint8_t clearBfr[ENCODED_SECTOR_MAX_SIZE];
         memset(clearBfr, 0, clearLength);
 
@@ -136,7 +146,7 @@ with the offset to the sector.
 void psramLoadSector(int track, int side, int sectorNumber, uint8_t* trackDataStart)
 {
     side = MIN(side, 1);                // limit side to values 0 and 1
-    track = MIN(track, MAX_TRACKS);     // limit track to MAX_TRACKS
+    track = MIN(track, MAX_TRACKS - 1); // limit track to the last one
     sectorNumber = MIN(sectorNumber, MAX_SECTORS_PER_TRACK);    // limit sector to 11
     uint32_t address = ((track * 2) + side) * READTRACKDATA_SIZE_BYTES;
 
@@ -158,7 +168,7 @@ void psramLoadSector(int track, int side, int sectorNumber, uint8_t* trackDataSt
 void psramLoadTrack_currentSectorFirst(int track, int side, uint8_t* trackDataStart)
 {
     side = MIN(side, 1);            // limit side to values 0 and 1
-    track = MIN(track, MAX_TRACKS); // limit track to MAX_TRACKS
+    track = MIN(track, MAX_TRACKS - 1); // limit track to the last one
     uint32_t address = ((track * 2) + side) * READTRACKDATA_SIZE_BYTES;
 
     psramReadBuffer(address, trackDataStart, 2 * STREAM_TABLE_ITEMS);     // load stream table at the start of track

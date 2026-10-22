@@ -13,6 +13,11 @@
 #define STREAM_TABLE_SIZE       (2 * STREAM_TABLE_ITEMS)
 #define STREAM_START_OFFSET     STREAM_TABLE_SIZE
 
+// Encoded track in mfmStream, as sent to the device: track #, side #, then the stream (stream table + MFM data + end mark).
+// The stream can't be longer than what's left of MFM_STREAM_SIZE after the 2 prefix bytes.
+#define MFM_STREAM_PREFIX_SIZE  2
+#define MFM_STREAM_MAX_BYTES    (MFM_STREAM_SIZE - MFM_STREAM_PREFIX_SIZE)
+
 // max sectors per track that fit in the stream table - images with more can't be encoded
 #define MAX_SECTORS_PER_TRACK_IN_STREAM     (STREAM_TABLE_ITEMS - 1)
 
@@ -26,7 +31,7 @@ typedef struct {
     int     side;
 
     uint8_t    *mfmStream;
-    int     bytesInStream;
+    int     bytesInStream;          // bytes of mfmStream to send to the device - track + side prefix and the stream
 
     int     symbolsInStream;            // how many symbols are the result of encoding this single track
     int     totalSymbolsTime;           // sum of symbols time in this track
@@ -107,7 +112,7 @@ private:
     uint16_t crc;       // current value of CRC calculator
     uint8_t *bfr;      // pointer to where we are storing data in the buffer
     uint8_t *currentStreamStart;
-    int  bytesInBfr;    // how many bytes we already stored in buffer
+    int  bytesInBfr;    // how many bytes we already stored in buffer - the stream, without the track + side prefix
 
     int  getNextIndexToEncode(void);
     void encodeSingleTrack(FloppyImage *img, int side, int track, int sectorsPerTrack);

@@ -15,13 +15,15 @@
 #include "display.h"
 #include "ikbd.h"
 #include "buttons.h"
-#include "mfm_read.h"
+#include "core1_main.h"
 #include "mfm_write.h"
 #include "psram.h"
 #include "defs.h"
 #include "utils.h"
 #include "serial_config.h"
 #include "ipc.h"
+#include "written_sectors.h"
+#include "host_receive.h"
 
 extern volatile bool core1running;
 
@@ -47,15 +49,12 @@ int imageState = IMAGE_NOT_LOADED;
 uint8_t imgTracks = 80, imgSides = 2, imgSectorsPerTrack = 9;
 char imageFileName[32];
 bool diskChanged = false;
-uint32_t diskChangeEnd;
-
-queue_t fifoMfmWrite;
+bool diskChangeActive = false;  // pins inverted for the disk change now
+uint32_t diskChangeStart;
 
 void pio_uart_setup(void);
 
 extern Settings_t Settings;
-
-TWriteBuffer wrBuffer;  // buffer for written sectors
 
 /*
     Notes on stdio output via USB + UART
@@ -147,10 +146,6 @@ void setup(void)
     // initialize additional UART RX via PIO and IRQ
     // pio_uart_setup();
 
-    queue_init(&fifoMfmWrite, 1, 64);
-
-    // queue_init(&fifoToCore0, 1, 32);
-    // queue_init(&fifoToCore1, 1, 32);
     ipcInit();
 
     // start core 1
@@ -159,8 +154,6 @@ void setup(void)
     sleep_ms(10);
     multicore_launch_core1(core1_main_loop);    // start core1 for mfm stream handling
     waitForCore1Running();
-
-    pio_mfm_write_setup();
 
     // Initialise the Wi-Fi chip
     if (cyw43_arch_init()) {
@@ -185,90 +178,6 @@ void requestWholeImage(void)
     sendHeaderAndDataToHost(atnSendWholeImageRequest, 0);
 }
 
-void storeWrittenSectorDataToTrackLocally(uint8_t side, uint8_t track, uint8_t sector, uint8_t* bfr, int len)
-{
-    // track / side / sector out of bounds?
-    if(side > 1 || track >= MAX_TRACKS || sector >= 12) {
-        debug("Failed to write side: %d, track: %d, sector: %d - TriSiSe out of bounds!\n", side, track, sector);
-        return;
-    }
-
-    uint8_t* pTrackStart = (side == 0) ? trackData0 : trackData1;
-    uint8_t* pDataEnd = pTrackStart + READTRACKDATA_SIZE_BYTES - 1;
-    uint8_t* pData = pTrackStart;
-
-    uint8_t* pStreamTableItem = pData + (sector * 2);       // calc pointer to where the offset to sector is - in the stream table
-    uint32_t offsetToSector = getWord(pStreamTableItem);    // get offset to sector in stream from stream table
-
-    // make sure that offset to sector is still within the track data
-    if(offsetToSector >= READTRACKDATA_SIZE_BYTES) {
-        debug("Failed to write side: %d, track: %d, sector: %d - bad sector offset!\n", side, track, sector);
-        return;
-    }
-
-    // advance pointer to start of the sector - this address should contain CMD_CURRENT_SECTOR
-    pData += offsetToSector;
-    uint8_t* pSectorEnd = pData + ENCODED_SECTOR_MAX_SIZE - 1;  // end of sector should be exactly here, because using fixed encoded sector size
-
-    uint8_t* pSectorDataStart = NULL;
-
-    #define HEADER_START    0
-    #define DATA_START      1
-    #define NOTHING         3
-
-    uint8_t lookingFor = HEADER_START;      // look for header, then for data start, then for data end
-
-    // find start and end of the sector we want to overwrite
-    while(pData < pDataEnd) {
-        uint8_t val = *pData;
-
-        // if data is not one of the few tags we expect, just move to next data and don't check the rest of the code
-        if(val != CMD_CURRENT_SECTOR && val != CMD_DATA_PART_OF_SECTOR && val != CMD_TRACK_STREAM_END) {
-            pData++;
-            continue;
-        }
-
-        // we're looking for header start and this is the current_sector mark
-        if(lookingFor == HEADER_START && val == CMD_CURRENT_SECTOR) {
-            if(pData[1] == side && pData[2] == track && pData[3] == sector) {   // side + track + sector match? found header!
-                lookingFor = DATA_START;    // header found, look for data start
-            }
-            pData += 4; // skip the current_sector mark - to continue after it
-            continue;
-        }
-
-        // if we already found the header, but not the sector data start, and this is start of the data, we've found start now
-        if(lookingFor == DATA_START && val == CMD_DATA_PART_OF_SECTOR) {
-            pData++;                    // skip beyond marker
-            pSectorDataStart = pData;   // store pointer to sector data start
-            lookingFor = NOTHING;       // data start found, look for data end
-            break;
-        }
-    }
-
-    // if we didn't find everything needed, fail
-    if(lookingFor != NOTHING) {
-        debug("Failed to write side: %d, track: %d, sector: %d - no data start found!\n", side, track, sector);
-        return;
-    }
-
-    int dataSizeBytes = pSectorEnd - pSectorDataStart;  // how many bytes are allocated in buffer for the sector data (from end to start) - should be about 1100 bytes
-    int copySize = MIN(len, dataSizeBytes);         // pick smaller of these sizes, so we won't overwrite the start of next sector
-
-    int dataSizeToClear = dataSizeBytes - copySize; // how many bytes should be cleared
-    dataSizeToClear = MAX(dataSizeToClear, 0);      // make sure it's not negative
-
-    memcpy(pSectorDataStart, bfr, copySize);        // copy new data at the start of data part of the sector
-
-    if(dataSizeToClear > 0) {
-        memset(pSectorDataStart + copySize, 0, dataSizeToClear);    // clear the bytes up to end of sector data
-    }
-
-    // copy the new data to psram
-    int byteOffsetFromTrackStart = pSectorDataStart - pTrackStart;  // calculate the byte offset of the written sector data from start of the track
-    psramStoreSector(track, side, byteOffsetFromTrackStart, bfr, copySize, dataSizeToClear);
-}
-
 uint32_t lastSendFwTime;
 
 void sendFwReport(uint32_t now)
@@ -284,8 +193,6 @@ int main()
     uint32_t now = millis();
     lastSendFwTime = now;
     uint32_t lastInputCheck = now;
-
-    int WGatePrev = 1;
 
     while(1)
     {
@@ -308,16 +215,18 @@ int main()
         // handle any data incoming
         handleIncommingData();
 
-        bool stWantsTheStream = BIT_IS_L(PIN_DRIVE_SEL) && BIT_IS_L(PIN_MOT_EN);
-
         // send heartbeat (fw version) once a second
         if (connectedToHost && (now - lastSendFwTime) >= 1000)
         {
             sendFwReport(now);
         }
 
-        // request whole image if no image loaded
-        if(connectedToHost && imageState == IMAGE_NOT_LOADED)
+        // send sectors written by ST to host - also the ones kept while not connected
+        writtenSectorsHandle();
+
+        // request whole image if no image loaded - but only after all written sectors were sent,
+        // so the image we get has them (e.g. after reconnect)
+        if(connectedToHost && imageState == IMAGE_NOT_LOADED && !writtenSectorsPending())
         {
             // before requesting the whole image, send fw report, so the host will get mac address,
             // which he will use to identify this device
@@ -328,24 +237,25 @@ int main()
             requestWholeImage();
         }
 
-        // enable / disable stream output based on stWantsTheStream flag
-        gpio_put(PIN_FLCC_OE, stWantsTheStream ? 0 : 1);
-
         // when disk change happened
         if(diskChanged) {
             diskChanged = false;        // no change anymore
 
-            BIT_INVERT(PIN_DENSITY);    // invert pins
-            BIT_INVERT(PIN_WPROTECT);
-            BIT_INVERT(PIN_DSKCHG);
+            if(!diskChangeActive) {     // pins not inverted yet? invert them - if they are, inverting again would undo it
+                diskChangeActive = true;
 
-            diskChangeEnd = now + 1000; // at this upcomming time invert back
-            // debug("DSK CHG start");
+                BIT_INVERT(PIN_DENSITY);    // invert pins
+                BIT_INVERT(PIN_WPROTECT);
+                BIT_INVERT(PIN_DSKCHG);
+                // debug("DSK CHG start");
+            }
+
+            diskChangeStart = now;      // invert back 1 s after the last disk change
         }
 
         // after enough time passed since the disk change, need to invert pins back
-        if(diskChangeEnd != 0 && (now >= diskChangeEnd)) {
-            diskChangeEnd = 0;          // set this var to zero, so we don't do this until next disk change
+        if(diskChangeActive && (now - diskChangeStart) >= 1000) {
+            diskChangeActive = false;   // don't do this until next disk change
 
             BIT_INVERT(PIN_DENSITY);    // invert pins
             BIT_INVERT(PIN_WPROTECT);
@@ -355,54 +265,6 @@ int main()
 
         //-------------------------------------------------
         now = millis();
-
-        // something in the MFM WRITE FIFO? Get it, add it to wrBuffer
-        while(!queue_is_empty(&fifoMfmWrite)) {
-            uint8_t wrStreamByte;
-            if (queue_try_remove(&fifoMfmWrite, &wrStreamByte)) {   // succeeded getting value?
-                if(wrBuffer.count < WRITEBUFFER_SIZE) {             // write buffer not full? add byte
-                    wrBuffer.buffer[wrBuffer.count] = wrStreamByte;
-                    wrBuffer.count++;
-                }
-            }
-        }
-
-        if(stWantsTheStream)
-        {
-            int WGateNow = BIT_LEVEL(PIN_WGATE);
-
-            if(WGatePrev != WGateNow)   // write gate changed?
-            {
-                WGatePrev = WGateNow;
-
-                if(WGateNow == 0)       // on write start
-                {
-                    posStreamed.side = BIT_IS_H(PIN_SIDE1) ? 0 : 1;                // get the current SIDE
-
-                    wrBuffer.buffer[10] = (((posStreamed.side > 0) ? 0x80 : 0) | posStreamed.track);    // store side, track, sector into write positions buffer
-                    wrBuffer.buffer[11] = posStreamed.sector;
-                    wrBuffer.count = 12;        // start with 12 bytes in the buffer - 10 for header, 2 for track + side + sector
-                }
-                else                    // on write end
-                {
-                    sendHeaderAndDataToHost(wrBuffer.buffer, wrBuffer.count - TX_HEADER_SIZE);      // send sector to host
-                    storeWrittenSectorDataToTrackLocally(posStreamed.side, posStreamed.track, posStreamed.sector, wrBuffer.buffer, wrBuffer.count);
-                }
-            }
-        }
-
-        // // While there is something in the fifo, fetch it and place it in trackWant.
-        // // Keep emptying, until stored last one to avoid multiple reads (read only the last one)
-        // uint8_t trackWant = 0xff;
-        // while(!queue_is_empty(&fifoToCore0)) {
-        //     queue_try_remove(&fifoToCore0, &trackWant);
-        // }
-
-        // // got valid track to load? then load it
-        // if(trackWant != 0xff) {
-        //     psramLoadTrack_currentSectorFirst(trackWant, 0, trackData0);
-        //     psramLoadTrack_currentSectorFirst(trackWant, 1, trackData1);
-        // }
 
         //---------------------------
         // check the button state and press duration
@@ -428,10 +290,6 @@ void setupAtnBuffers(void)
 
     // all tracks request
     storeHeader(atnSendWholeImageRequest, ATN_SEND_WHOLE_IMAGE, 0);
-
-    // configure write buffers
-    storeHeader(wrBuffer.buffer, ATN_SECTOR_WRITTEN, 12);
-    wrBuffer.count = 12;
 }
 
 void storeMacAddress(void)

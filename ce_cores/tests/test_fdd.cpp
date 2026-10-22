@@ -557,6 +557,65 @@ TEST_CASE_FIXTURE(FddTmpDir, "mfm cache: encoded track can be copied, re-encode 
     delete enc;
 }
 
+TEST_CASE_FIXTURE(FddTmpDir, "mfm cache: track size to send covers the track + side prefix and the whole stream up to the end mark")
+{
+    // the device gets exactly 'bytes' bytes - the stream must end with CMD_TRACK_STREAM_END + 0 within them,
+    // otherwise the device streams on into whatever is after the received data
+    writeFile(path("a.st"), makeImageData(80, 2, 9, false));
+    FloppyImageSt img;
+    REQUIRE(img.open(path("a.st").c_str()));
+
+    MfmCachedImage *enc = new MfmCachedImage();
+    enc->storeImageParams(&img, SLOT_COUNT - 1);
+    encodeWholeImage(enc, &img);
+
+    for(int side=0; side<2; side++) {
+        for(int track : { 0, 40, 79 }) {
+            CAPTURE(track);
+            CAPTURE(side);
+
+            std::vector<uint8_t> buf(MFM_STREAM_SIZE, 0xaa);
+            int bytes = 0;
+            REQUIRE(enc->copyEncodedTrackIfReady(track, side, buf.data(), bytes));
+
+            REQUIRE(bytes >= 4);
+            REQUIRE(bytes <= MFM_STREAM_SIZE);
+            CHECK(buf[0] == track);
+            CHECK(buf[1] == side);
+            CHECK(buf[bytes - 2] == CMD_TRACK_STREAM_END);  // used to be cut off - sent count was without the 2 prefix bytes
+            CHECK(buf[bytes - 1] == 0);
+
+            int lastSectorOffset = (buf[2 + 2 * 9] << 8) | buf[2 + 2 * 9 + 1];     // stream table word 9 - sector 9
+            CHECK(2 + lastSectorOffset + ENCODED_SECTOR_MAX_SIZE == bytes - 2);     // last sector ends right before the end mark
+        }
+    }
+
+    delete enc;
+}
+
+TEST_CASE_FIXTURE(FddTmpDir, "mfm cache: track longer than the stream buffer is cut at the buffer end, not written past it")
+{
+    // 15 sectors * 1200 B doesn't fit into MFM_STREAM_SIZE. The stream starts after the 2 prefix bytes, so the encoder
+    // must stop 2 bytes earlier than MFM_STREAM_SIZE - it used to write 2 bytes past the buffer (seen with ASan)
+    writeFile(path("a.st"), makeImageData(80, 2, 15, false));
+    FloppyImageSt img;
+    REQUIRE(img.open(path("a.st").c_str()));
+
+    MfmCachedImage *enc = new MfmCachedImage();
+    enc->storeImageParams(&img, SLOT_COUNT - 1);
+    int t, s, p;
+    enc->getParams(t, s, p);
+    REQUIRE(p == 15);
+    encodeWholeImage(enc, &img);
+
+    std::vector<uint8_t> buf(MFM_STREAM_SIZE);
+    int bytes = 0;
+    REQUIRE(enc->copyEncodedTrackIfReady(0, 0, buf.data(), bytes));
+    CHECK(bytes == MFM_STREAM_SIZE);        // full buffer, nothing more
+
+    delete enc;
+}
+
 TEST_CASE_FIXTURE(FddTmpDir, "mfm: encoded sector decodes back to the same data")
 {
     std::vector<uint8_t> data = makeImageData(80, 2, 9, true);
@@ -613,13 +672,13 @@ static std::vector<uint8_t> mfmOfSectorFilledWith(const std::string &dir, uint8_
     return mfm;
 }
 
-template<typename F> static bool waitFor(F condition, int timeoutMs = 10000)
+template<typename F> static bool waitFor(F condition, int timeoutMs = 10000, int pollMs = 10)
 {
-    for(int i=0; i<timeoutMs / 10; i++) {
+    for(int i=0; i<timeoutMs / pollMs; i++) {
         if(condition()) {
             return true;
         }
-        Utils::sleepMs(10);
+        Utils::sleepMs(pollMs);
     }
     return condition();
 }
@@ -678,16 +737,24 @@ TEST_CASE_FIXTURE(FddTmpDir, "floppy encoder: written sectors go to the image th
 
     // ST writes a sector to A - written to image A, its track re-encoded with the new data
     // (decode with own decoder object - the slot's one is used by the encoder thread at the same time)
+    // Until then the track must not be ready - a track sent to the device meanwhile would have the old data.
     MfmCachedImage *decoder = new MfmCachedImage();
     floppyEncoder_decodeMfmWrittenSector(slot, 3, 1, 4, mfm5A.data(), mfm5A.size());
+    bool readyWithOldData = false;
     bool reencoded = waitFor([&]{
         std::vector<uint8_t> mfm;
         uint8_t out[512];
-        return tryGetSectorDataPartMfm(&slots[slot].encImage, 3, 1, 4, mfm) &&
-               decodeSector(decoder, mfm, out) && out[0] == 0x5A && out[511] == 0x5A;
-    });
+        if(!tryGetSectorDataPartMfm(&slots[slot].encImage, 3, 1, 4, mfm) || !decodeSector(decoder, mfm, out)) {
+            return false;                       // not ready yet
+        }
+        if(out[0] == 0x00 && out[511] == 0x00) {
+            readyWithOldData = true;            // ready, but the write isn't in it
+        }
+        return out[0] == 0x5A && out[511] == 0x5A;
+    }, 10000, 1);
     delete decoder;
     REQUIRE(reencoded);
+    CHECK_FALSE(readyWithOldData);
 
     // switch to image B - device still has A until B is sent to it
     uint32_t genA = lockedImageGen(slot);
@@ -724,4 +791,32 @@ TEST_CASE_FIXTURE(FddTmpDir, "floppy encoder: written sectors go to the image th
     CHECK(fileSectorIs(pathB, 6, 1, 7, 0x3C));
     CHECK(fileSectorIs(pathB, 5, 0, 2, 0x00));             // write meant for A didn't end up in B
     CHECK(fileSectorIs(pathA, 6, 1, 7, 0x00));             // write meant for B didn't end up in A
+}
+
+TEST_CASE_FIXTURE(FddTmpDir, "floppy encoder: track with a received written sector is not ready until the write is in it")
+{
+    // Without the encoder thread: only the immediate effect of receiving a written sector. The device may ask for the
+    // whole image right after sending writes (it resends the ones kept while disconnected first), and that must not
+    // get the old content of the written track.
+    const int slot = 1;
+    writeFile(path("a.st"), makeImageData(80, 2, 9, false));
+    FloppyImageSt img;
+    REQUIRE(img.open(path("a.st").c_str()));
+
+    MfmCachedImage *enc = &slots[slot].encImage;
+    enc->storeImageParams(&img, slot);
+    encodeWholeImage(enc, &img);
+
+    std::vector<uint8_t> buf(MFM_STREAM_SIZE);
+    int bytes = 0;
+    REQUIRE(enc->copyEncodedTrackIfReady(3, 1, buf.data(), bytes));
+
+    std::vector<uint8_t> mfm = mfmOfSectorFilledWith(dir, 0x5A, 3, 1, 4);
+    floppyEncoder_decodeMfmWrittenSector(slot, 3, 1, 4, mfm.data(), mfm.size());
+
+    CHECK_FALSE(enc->copyEncodedTrackIfReady(3, 1, buf.data(), bytes));     // written track - wait for re-encode
+    CHECK(enc->copyEncodedTrackIfReady(3, 0, buf.data(), bytes));           // other side, other tracks - still ready
+    CHECK(enc->copyEncodedTrackIfReady(4, 1, buf.data(), bytes));
+
+    enc->clearWholeCachedImage();           // leave the slot as other tests expect it
 }

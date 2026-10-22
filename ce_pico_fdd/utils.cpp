@@ -116,7 +116,7 @@ static void call_flash_range_program(void *param) {
 
 void saveSettingsToEeprom(void)
 {
-    uint8_t buf[FLASH_SECTOR_SIZE];
+    static uint8_t buf[FLASH_SECTOR_SIZE];                      // static - as big as the whole 4 kB stack of core0
     memset(buf, 0, FLASH_SECTOR_SIZE);                          // clear 4k
     memcpy(buf, (const uint8_t *) &Settings, sizeof(Settings)); // copy just the settings - about 68 B
 

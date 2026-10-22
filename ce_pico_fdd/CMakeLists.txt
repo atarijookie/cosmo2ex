@@ -46,7 +46,9 @@ add_executable(ce_pico_fdd_vsc
         connection.cpp
         display.cpp
         ikbd.cpp
-        mfm_read.cpp
+        core1_main.cpp
+        written_sectors.cpp
+        host_receive.cpp
         psram.cpp
         utils.cpp
         client_context.h
