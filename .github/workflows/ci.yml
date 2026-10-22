@@ -24,7 +24,9 @@ jobs:
           cache-dependency-path: webserver/go.sum
 
       - name: Install libraries for ce_cores
-        run: sudo apt-get install -y --no-install-recommends libudev-dev libevdev-dev      # USB keyboard / mouse / joysticks
+        run: |      # USB keyboard / mouse / joysticks - update first, the runner image's package list can point to removed versions
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libudev-dev libevdev-dev
 
       - name: libdospath tests
         run: make -C libdospath test
