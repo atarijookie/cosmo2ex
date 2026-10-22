@@ -2,13 +2,18 @@
 // MESSAGE OUT on ATN, data transfers and status towards the Atari
 
 #include "test_helpers.h"
-#include "bridge_fake.h"
+#include <bridge_fake.h>         // tests/<project>/bridge_fake.h - also the merged ce_pico_hdd runs these tests
 #include "bridge.h"
 
 namespace {
 
 struct ScsiFixture : FirmwareFixture {
-    ScsiFixture() { fakeBridge = FakeBridge(); }
+    ScsiFixture() {
+        fakeBridge = FakeBridge();
+#ifdef TEST_PROJECT_HDD
+        hwVariant = VARIANT_SCSI;     // merged firmware - run the SCSI code paths
+#endif
+    }
 };
 
 void fromAtari(const std::vector<uint8_t> &bytes)

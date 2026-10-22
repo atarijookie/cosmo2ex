@@ -8,9 +8,9 @@
 #include "hardware/pio.h"
 #endif
 
-// --------- //
+// ---------- //
 // acsi_first //
-// --------- //
+// ---------- //
 
 #define acsi_first_wrap_target 0
 #define acsi_first_wrap 5

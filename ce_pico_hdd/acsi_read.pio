@@ -1,0 +1,51 @@
+.pio_version 0      // only requires PIO version 0
+.program acsi_read
+.side_set 1         // the number of side-set bits to be used
+
+start:
+        pull            side 1          ; load from the TX FIFO into the OSR
+        out pins, 8     side 1          ; write 8 bits from OSR to gpio
+
+        wait 0 pin 0    side 0          ; side set INT / DRQ to L, then wait for CS / ACK pin to become L
+        nop             side 1  [9]     ; side set INT / DRQ to H, delay 200 ns to skip signal transitions / glitches
+        wait 1 pin 0    side 1  [2]     ; then wait for CS / ACK pin to become H, with additional delay to keep data longer present on ACSI bus
+
+        push            side 1          ; Push the contents of the ISR into the RX FIFO. We don't care about the value, it's just a flag that the transfer has finished
+
+
+% c-sdk {
+#include "hardware/clocks.h"
+#include "hardware/gpio.h"
+
+// config only (no pin setup) - the same program runs with different handshake pins, see bridge_acsi.cpp
+static inline pio_sm_config acsi_read_program_get_config(uint offset, uint inPin, uint sideSetPin)
+{
+    pio_sm_config cRead = acsi_read_program_get_default_config(offset);
+    sm_config_set_out_pins(&cRead, PIN_D0, 8);          // for OUT
+    sm_config_set_in_pins(&cRead, inPin);               // for WAIT, IN
+    sm_config_set_sideset_pins(&cRead, sideSetPin);     // for SIDE_SET
+    sm_config_set_out_shift(&cRead, true, false, 32);   // Shift to right, autopush disabled
+    sm_config_set_fifo_join(&cRead, PIO_FIFO_JOIN_NONE);  // no fifo joining
+
+    float div = (float)clock_get_hz(clk_sys) / 50000000;    // calc divider for 50 MHz, that's 20 ns per instruction
+    sm_config_set_clkdiv(&cRead, div);
+    return cRead;
+}
+
+static inline void acsi_read_program_init(PIO pio, uint sm, uint offset, uint inPin, uint sideSetPin)
+{
+    #define PIO_READ_COUNT 13
+    int pio_pins[PIO_READ_COUNT] = {PIN_D0, PIN_D1, PIN_D2, PIN_D3, PIN_D4, PIN_D5, PIN_D6, PIN_D7, PIN_CS, PIN_A1, PIN_INT, PIN_DRQ, PIN_ACK};
+    int pio_dirs[PIO_READ_COUNT] = {     1,      1,      1,      1,      1,      1,      1,      1,      0,      0,       1,       1,       0};
+
+    for (int i = 0; i < PIO_READ_COUNT; i++) {
+        pio_gpio_init(pio, pio_pins[i]);
+        pio_sm_set_consecutive_pindirs(pio, sm, pio_pins[i], 1, pio_dirs[i]);
+    }
+
+    pio_sm_config cRead = acsi_read_program_get_config(offset, inPin, sideSetPin);
+
+    pio_sm_init(pio, sm, offset, &cRead);
+}
+
+%}
