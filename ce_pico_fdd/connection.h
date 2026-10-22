@@ -1,7 +1,8 @@
 #ifndef __CONNECTION_H__
 #define __CONNECTION_H__
 
-#include "client_context.h"
+#include <WiFi.h>
+#include <string>
 
 void showRunningStateOnDisplay(void);
 
@@ -12,18 +13,14 @@ bool sendHeaderAndDataToHost(uint8_t *bfr, uint32_t dataSizeBytes);
 
 #define SYNC_TAG_FDD    0xc0500fdd
 
-typedef struct {
-    struct tcp_pcb *pcb;
-    ClientContext *cc;
-} TConnection;
+typedef WiFiClient TConnection;     // a TCP connection to host (fdd, ikbd)
 
-size_t conWrite(TConnection* client, const uint8_t *buf, size_t size);
+size_t conWrite(TConnection* con, const uint8_t *buf, size_t size);
 size_t conRead(TConnection* con, uint8_t *buf, size_t size);
 
-bool connectionAvailable(TConnection* client);
-bool isConnected(TConnection* client);
-size_t connectionCanReadBytes(TConnection* client);
-void connect(TConnection* client, ip_addr_t* addr, uint16_t port);
-void stop(TConnection* client);
+bool isConnected(TConnection* con);
+size_t connectionCanReadBytes(TConnection* con);
+void connect(TConnection* con, const IPAddress& addr, uint16_t port);
+void stop(TConnection* con);
 
 #endif

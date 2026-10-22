@@ -1,21 +1,13 @@
-// #include "tusb.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <pico/stdio.h>
-#include <pico/stdlib.h>
-#include "hardware/spi.h"
-#include "pico/cyw43_arch.h"
-#include "hardware/uart.h"
+#include <Arduino.h>      // Serial - the USB serial port
+#include <cstring>
+
 #include "hardware/watchdog.h"
-#include "pico/flash.h"
-#include "pico/multicore.h"
 
 #include "defs.h"
 #include "utils.h"
-#include "psram.h"
+#include "settings.h"
 #include "display.h"
-
-extern Settings_t Settings;
+#include "serial_config.h"
 
 void getString(char* buffer, int maxLen)
 {
@@ -24,9 +16,9 @@ void getString(char* buffer, int maxLen)
     int i=0;
     while(1)
     {
-        int key = getchar_timeout_us(1000);
+        int key = Serial.read();
 
-        if(key == PICO_ERROR_TIMEOUT) {
+        if(key < 0) {       // nothing received yet
             continue;
         }
 
@@ -34,7 +26,7 @@ void getString(char* buffer, int maxLen)
             break;
         }
 
-        putchar(key);       // echo back to console
+        Serial.write((char) key);   // echo back to console
 
         buffer[i] = key;
         i++;
@@ -43,13 +35,13 @@ void getString(char* buffer, int maxLen)
 
 void serialShowMenu(void)
 {
-    printf("Serial config mode. Current stored settings are:\n");
-    printf("--------------------------------------\n");
-    printf("SSID    : %s\n", Settings.ssid);
-    printf("password: %s\n", Settings.password);
-    printf("ikbd    : %s\n", Settings.ikbdEnabled ? "enabled" : "disabled");
-    printf("--------------------------------------\n");
-    printf("Press 'S' to set SSID, 'P' to set password, 'I' to enable/disable IKBD, 'Q' to save.\n");
+    Serial.printf("Serial config mode. Current stored settings are:\n");
+    Serial.printf("--------------------------------------\n");
+    Serial.printf("SSID    : %s\n", Settings.ssid);
+    Serial.printf("password: %s\n", Settings.password);
+    Serial.printf("ikbd    : %s\n", Settings.ikbdEnabled ? "enabled" : "disabled");
+    Serial.printf("--------------------------------------\n");
+    Serial.printf("Press 'S' to set SSID, 'P' to set password, 'I' to enable/disable IKBD, 'Q' to save.\n");
 }
 
 void serialConfigLoop(void)
@@ -63,28 +55,28 @@ void serialConfigLoop(void)
 
     // main run loop
     while (1) {
-        int key = getchar_timeout_us(10);
+        int key = Serial.read();
 
         if(key == '\n' || key == '\r') {
             serialShowMenu();
         }
 
         if(key == 's' || key == 'S') {
-            printf("\nEnter SSID, finish by Enter key.\n");
+            Serial.printf("\nEnter SSID, finish by Enter key.\n");
             getString(Settings.ssid, MAX_SETTINGS_STRING_LEN);
-            printf("\nNew SSID: %s\n", Settings.ssid);
+            Serial.printf("\nNew SSID: %s\n", Settings.ssid);
             ssidChanged = true;
         }
 
         if(key == 'p' || key == 'P') {
-            printf("\nEnter password, finish by Enter key.\n");
+            Serial.printf("\nEnter password, finish by Enter key.\n");
             getString(Settings.password, MAX_SETTINGS_STRING_LEN);
-            printf("\nNew password: %s\n", Settings.password);
+            Serial.printf("\nNew password: %s\n", Settings.password);
             pswdChanged = true;
         }
 
         if(key == 'i' || key == 'I') {
-            printf("\nEnter 'E' to enable IKBD, 'D' to disable IKBD.\n");
+            Serial.printf("\nEnter 'E' to enable IKBD, 'D' to disable IKBD.\n");
             char ed[2];
             getString(ed, 2);
 
@@ -98,7 +90,7 @@ void serialConfigLoop(void)
                 ikbdChanged = true;
             }
 
-            printf("\nIKBD: %s\n", Settings.ikbdEnabled ? "enabled" : "disabled");
+            Serial.printf("\nIKBD: %s\n", Settings.ikbdEnabled ? "enabled" : "disabled");
         }
 
         // on Q key
@@ -109,26 +101,11 @@ void serialConfigLoop(void)
 
     // if no settings change is detected, just quit
     if(!ssidChanged && !pswdChanged && !ikbdChanged) {
-        printf("No settings changed.\n\n");
+        Serial.printf("No settings changed.\n\n");
         return;
     }
 
-    // some setting was changed, we must store it
-    saveSettingsToPSRAM();      // store setting to PSRAM
-    psramConfigFlagSet();       // set the flag that we should store data into EEPROM
-
-    debug("RESETing!\n");
-    sleep_ms(20);
-    watchdog_reboot(0, 0, 0);
-}
-
-void storeSettingsFromPSRAMtoEEPROM(void)
-{
-    debug("Loading settings from PSRAM.\n");
-    loadSettingsFromPSRAM();
-
-    debug("Saving settings to EEPROM.\n\n");
-    Settings.isValid = SETTINGS_VALID;  // load the isValid flag with the magic number
+    // some setting was changed, store it to flash - EEPROM.commit() pauses core 1 meanwhile, so it can be done right here
     saveSettingsToEeprom();
 
     debug("RESETing!\n");

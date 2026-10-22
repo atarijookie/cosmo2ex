@@ -10,7 +10,6 @@
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "pico/util/queue.h"
-#include "pico/async_context_threadsafe_background.h"
 #include "hardware/pio.h"
 #include "hardware/uart.h"
 

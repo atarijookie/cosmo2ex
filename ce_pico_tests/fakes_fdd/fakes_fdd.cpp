@@ -242,6 +242,11 @@ void restore_interrupts(uint32_t status)
     }
 }
 
+uint32_t millis(void)
+{
+    return to_ms_since_boot(get_absolute_time());
+}
+
 void sleep_ms(uint32_t ms)
 {
     fakeNowMs += ms;

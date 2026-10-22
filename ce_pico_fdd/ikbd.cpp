@@ -5,14 +5,14 @@
 #include "defs.h"
 #include "connection.h"
 #include "utils.h"
+#include "settings.h"
 #include "ikbd.h"
 
-extern ip_addr_t hostIpAddr;
+extern IPAddress hostIpAddr;
 extern std::string hostIpString;
 extern uint16_t hostPortIkbd;
 extern bool connectedToWifi;              // if true, wifi is connected
 
-extern Settings_t Settings;
 TConnection connectionIkbd;
 
 extern queue_t fifoUart;
@@ -86,7 +86,7 @@ void ikbdConnectDisconnect(void)
         if(connectedToWifi && !isConnected(&connectionIkbd))
         {
             debug("I connect\n");
-            connect(&connectionIkbd, &hostIpAddr, hostPortIkbd);
+            connect(&connectionIkbd, hostIpAddr, hostPortIkbd);
         }
     }
     else

@@ -23,6 +23,7 @@ void onWriteEnd(void);              // from WGATE IRQ
 void streamOutputEnableSetup(void); // read data output enable follows DRIVE_SEL + MOT_EN from now on, call on core1
 void trackRotationSetup(void);      // start the INDEX pulse + track restart alarm IRQ, call on core1
 
-void core1_main_loop(void);
+void core1Setup(void);             // core 1 start, from setup1()
+void core1Loop(void);              // one pass of the core 1 main loop, from loop1()
 
 #endif

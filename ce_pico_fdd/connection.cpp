@@ -1,33 +1,24 @@
-#include <stdio.h>
-#include <string.h>
-
-#include "pico/cyw43_arch.h"
-#include "lwip/netif.h"
-#include "lwip/ip4_addr.h"
-#include "lwip/tcp.h "
-
-#include "pico/stdlib.h"
-#include "lwip/sockets.h"
-#include "lwip/inet.h"
+#include <WiFi.h>
+#include <WiFiUdp.h>
+#include <cstring>
 
 #include "defs.h"
 #include "connection.h"
 #include "utils.h"
+#include "settings.h"
 #include "display.h"
-#include "psram.h"
-#include "client_context.h"
-#include "utils.h"
 #include "ipc.h"
 #include "host_receive.h"
 
 #define SERVER_UDP_PORT 7200 // port number where CE listens for client requests
 #define CLIENT_UDP_PORT 7201 // port where this client should listen for CE responses
 
-extern Settings_t Settings;
+#define CONNECT_TIMEOUT_MS  3000    // connect() to host waits at most this long - it blocks the core 0 main loop
+#define WRITE_TIMEOUT_MS    500     // write() to host gives up after this long without progress
+#define WIFI_JOIN_TIMEOUT_MS 5000   // joining the WiFi network waits at most this long - it blocks the core 0 main loop
 
+WiFiUDP udp;
 bool udpInitialized;
-
-struct udp_pcb* pcbUpd;
 
 TConnection connectionFdd;
 
@@ -35,7 +26,7 @@ extern uint8_t mac[6];
 
 uint8_t hostIp[4];
 std::string hostIpString;
-ip_addr_t hostIpAddr;
+IPAddress hostIpAddr;
 uint16_t hostPortHdd;
 uint16_t hostPortFdd;
 uint16_t hostPortIkbd;
@@ -45,8 +36,6 @@ bool connectedToHost;
 
 extern char imageFileName[32];
 extern int imageState;
-
-extern TDrivePosition posStreamed, hwPosition;
 
 void storeMacAddress(void);
 
@@ -64,41 +53,61 @@ void showRunningStateOnDisplay(void)
     displayMessage(msg1, msg2, msg3);
 }
 
-// Callback for incoming UDP packets
-static void udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port)
+void udpInitialize(void)
 {
-    if (p == NULL) {        // no buffer?
+    if(udpInitialized) {    // already initialized, quit
         return;
     }
 
-    if(p->len < 10) {       // too short?
-        pbuf_free(p);       // we own the received buffer, free it on every return
+    if(!udp.begin(CLIENT_UDP_PORT)) {
+        debug("udp.begin failed\n");
         return;
     }
 
-    uint8_t* payload = (uint8_t*) p->payload;
+    debug("UDP receiver listening on port %u\n", CLIENT_UDP_PORT);
+    udpInitialized = true;
+}
 
-    /*
-        received packet structure:
-        0..3    'CELR' string
-        4..5    port for hdd
-        6..7    port for fdd
-        8..9    port for ikbd
-    */
+// Receive response from server if there is any and store it if it's valid.
+// Serves also for dropping any additional udp packets.
+void ceDiscoveryReceive(void)
+{
+    if(!udpInitialized) {
+        return;
+    }
 
-    // CELR found at start
-    if (strncmp((const char *) payload, "CELR", 4) == 0)
+    while(true)
     {
-        hostIpAddr = *addr;
-        uint32_t sender_ip = lwip_ntohl(ip4_addr_get_u32(ip_2_ip4(addr)));
+        int packetSize = udp.parsePacket();
 
-        int shift = 24;
-        for(int i=0; i<4; i++) {
-            hostIp[i] = sender_ip >> shift;
-            shift -= 8;
+        if(packetSize == 0) {   // no packet received? can stop trying to read it
+            break;
         }
 
-        hostIpString = ip4addr_ntoa(ip_2_ip4(addr));
+        if(packetSize < 10) {   // too short? (the next parsePacket() drops it)
+            continue;
+        }
+
+        /*
+            received packet structure:
+            0..3    'CELR' string
+            4..5    port for hdd
+            6..7    port for fdd
+            8..9    port for ikbd
+        */
+        uint8_t payload[10];
+        udp.read(payload, 10);
+
+        if(strncmp((const char *) payload, "CELR", 4) != 0) {     // not CELR at start? skip it
+            continue;
+        }
+
+        hostIpAddr = udp.remoteIP();
+        for(int i=0; i<4; i++) {
+            hostIp[i] = hostIpAddr[i];
+        }
+
+        hostIpString = hostIpAddr.toString().c_str();
 
         // store ports and stop receiving
         hostPortHdd = getWord(payload + 4);
@@ -107,32 +116,6 @@ static void udp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, co
 
         debug("ceDiscoveryReceive - got host ip: %s, ports: %d, %d, %d\n", hostIpString.c_str(), hostPortHdd, hostPortFdd, hostPortIkbd);
     }
-
-    // Free the buffer after processing
-    pbuf_free(p);
-}
-
-void udpInitialize(void)
-{
-    if(udpInitialized) {    // already initialized, quit
-        return;
-    }
-
-    pcbUpd = udp_new();
-
-    // Bind to any IP, given port
-    err_t err = udp_bind(pcbUpd, IP_ADDR_ANY, CLIENT_UDP_PORT);
-    if (err != ERR_OK) {
-        debug("udp_bind failed: %d\n", err);
-        udp_remove(pcbUpd);
-        return;
-    }
-
-    // Register receive callback
-    udp_recv(pcbUpd, udp_recv_callback, NULL);
-    debug("UDP receiver listening on port %u\n", CLIENT_UDP_PORT);
-
-    udpInitialized = true;
 }
 
 // Read wifi settings, connect to wifi if not connected, don't try too often.
@@ -158,19 +141,21 @@ void connectToWifi(void)
     }
 
     // not connected to wifi yet, try to connect
-    int new_status = cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA);
+    int status = WiFi.status();
 
-    if (new_status != CYW43_LINK_UP) {      // not connected? connect now
-        debug("connectToWifi - connecting, ssid: %s, password: %s\n", Settings.ssid, Settings.password);
+    if (status != WL_CONNECTED) {           // not connected? connect now
+        debug("connectToWifi - connecting, ssid: %s\n", Settings.ssid);
 
         sprintf(msg, "ssid: %s", Settings.ssid);
         displayMessage("wifi connecting", msg);
 
-        cyw43_arch_wifi_connect_async(Settings.ssid, Settings.password, CYW43_AUTH_WPA2_AES_PSK);
+        // waits for joining the network (at most WIFI_JOIN_TIMEOUT_MS), not for the IP from DHCP - that comes later
+        WiFi.setTimeout(WIFI_JOIN_TIMEOUT_MS);
+        WiFi.beginNoBlock(Settings.ssid, Settings.password);
     }
     else
     {
-        debug("connectToWifi - not connecting, status: %d\n", new_status);
+        debug("connectToWifi - not connecting, status: %d\n", status);
     }
 
     storeMacAddress();      // copy wifi mac address to fw report buffer
@@ -196,11 +181,10 @@ void ceDiscoverySend(void)
     lastAttempt = millis();
 
     // get ip, mask, create broadcast address
-    u32_t ip_u32 = ip4_addr_get_u32(netif_ip_addr4(netif_default));
-    u32_t mask_u32 = ip4_addr_get_u32(netif_ip4_netmask(netif_default));
-    u32_t bcast_u32 = (ip_u32 & mask_u32) | (~mask_u32);
+    IPAddress ip = WiFi.localIP();
+    IPAddress mask = WiFi.subnetMask();
 
-    if(ip_u32 == 0) {   // no ip? don't send broadcast
+    if(ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0) {     // no ip? don't send broadcast
         debug("ceDiscoverySend - no IP yet\n");
         return;
     }
@@ -209,99 +193,61 @@ void ceDiscoverySend(void)
 
     displayMessage("wifi connected", "CE host discovery");
 
-    // alloc buffer, copy data to payload part
-    struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, 10 + 1, PBUF_RAM);
-    if(p == NULL) {         // out of lwIP memory? try again on next attempt
-        debug("ceDiscoverySend - pbuf_alloc failed\n");
-        return;
-    }
-
-    memcpy((char *)p->payload, "CELC", 4);      // 0..3 - CELC
-    memcpy(((char *)p->payload) + 4, mac, 6);    // 4..9 - mac
+    uint8_t packet[10];
+    memcpy(packet, "CELC", 4);      // 0..3 - CELC
+    memcpy(packet + 4, mac, 6);     // 4..9 - mac
 
     whichBroadcastAddr = !whichBroadcastAddr;   // toggle this flag
 
-    if(whichBroadcastAddr)      // send to subnet broadcast addr?
+    IPAddress bcast(255, 255, 255, 255);        // generic broadcast addr...
+
+    if(whichBroadcastAddr)                      // ...or subnet broadcast addr (e.g. 192.168.1.255)
     {
-        ip4_addr_t bcast;
-        ip4_addr_set_u32(&bcast, bcast_u32);
-        debug("ceDiscoverySend to %d.%d.%d.%d\n", bcast_u32 & 0xff, (bcast_u32 >> 8) & 0xff, (bcast_u32 >> 16) & 0xff, (bcast_u32 >> 24) & 0xff);
-        udp_sendto(pcbUpd, p, &bcast, SERVER_UDP_PORT);                 // broadcast to subnet devices (e.g. 192.168.1.255)
-    }
-    else        // send to generic broadcast addr
-    {
-        debug("ceDiscoverySend to 255.255.255.255\n");
-        udp_sendto(pcbUpd, p, IP_ADDR_BROADCAST, SERVER_UDP_PORT);     // broadcast to all possible devices (255.255.255.255)
+        for(int i=0; i<4; i++) {
+            bcast[i] = ip[i] | ~mask[i];
+        }
     }
 
-    pbuf_free(p);
+    debug("ceDiscoverySend to %s\n", bcast.toString().c_str());
+
+    udp.beginPacket(bcast, SERVER_UDP_PORT);
+    udp.write(packet, sizeof(packet));
+    udp.endPacket();
 }
 
 size_t conWrite(TConnection* con, const uint8_t *buf, size_t size)
 {
-    if (!con->cc || !size) {
+    if (!size) {
         return 0;
     }
 
-    con->cc->setTimeout(500);
-    return con->cc->write((const char*)buf, size);
+    return con->write(buf, size);       // waits at most WRITE_TIMEOUT_MS for progress, set on connect
 }
 
 size_t conRead(TConnection* con, uint8_t *buf, size_t size)
 {
-    if (!con->cc || !size) {
+    if (!size || connectionCanReadBytes(con) == 0) {    // WiFiClient::read() can't be called without a connection
         return 0;
     }
 
-    return con->cc->read(buf, size);
-}
-
-bool connectionAvailable(TConnection* con)
-{
-    if(!con->cc || !con->cc->availableForWrite()) {
-        return false;
-    }
-
-    return true;
+    int got = con->read(buf, size);
+    return (got > 0) ? got : 0;
 }
 
 bool isConnected(TConnection* con)
 {
-    if (!con->cc || con->cc->state() == CLOSED) {
-        return false;
-    }
-
-    return con->cc->state() == ESTABLISHED || connectionAvailable(con);
+    return con->connected();
 }
 
 size_t connectionCanReadBytes(TConnection* con)
 {
-    if(!con->cc || con->cc->state() == CLOSED) {
-        return 0;
-    }
-
-    return con->cc->getSize();
-}
-
-bool flush(TConnection* con, unsigned int maxWaitMs) {
-    if (!con->cc) {
-        return true;
-    }
-
-    if (maxWaitMs == 0) {
-        maxWaitMs = WIFICLIENT_MAX_FLUSH_WAIT_MS;
-    }
-    return con->cc->wait_until_acked(maxWaitMs);
+    int available = con->available();
+    return (available > 0) ? available : 0;
 }
 
 void stop(TConnection* con)
 {
-    if (!con->cc) {
-        return;
-    }
-
-    flush(con, 0);
-    con->cc->close();
+    con->stop();        // waits for the sent data to be acked (limited time), then closes
 }
 
 void connectToCEhost(void)
@@ -338,31 +284,22 @@ void connectToCEhost(void)
     displayMessage("wifi connected", "connecting to host:", hostIpString.c_str());
     debug("connectToCEhost - IP: %s, port: %d\n", hostIpString.c_str(), hostPortFdd);
 
-    // start connection attempt
-    connect(&connectionFdd, &hostIpAddr, hostPortFdd);
+    connect(&connectionFdd, hostIpAddr, hostPortFdd);
 }
 
-void connect(TConnection* con, ip_addr_t* addr, uint16_t port)
+// Connect to host - waits at most CONNECT_TIMEOUT_MS. Check the result with isConnected().
+void connect(TConnection* con, const IPAddress& addr, uint16_t port)
 {
-    if (con->cc) {
-        con->cc->close();
-        con->cc->unref();
-        con->cc = nullptr;
-    }
+    con->stop();                        // close the previous connection, if still open
 
-    con->pcb = tcp_new();
-    if (!con->pcb) {
+    con->setTimeout(CONNECT_TIMEOUT_MS);
+    if(!con->connect(addr, port)) {
         return;
     }
 
-    con->cc = new ClientContext(con->pcb, nullptr, nullptr);
-    con->cc->ref();
-    con->cc->setTimeout(5000);
-
-    con->cc->connectAsync(addr, port);
-
-    con->cc->setSync(true);
-    con->cc->setNoDelay(true);
+    con->setTimeout(WRITE_TIMEOUT_MS);  // for write() from now on
+    con->setSync(true);                 // write() returns once the data is acked
+    con->setNoDelay(true);
 }
 
 void connectToHost(void)
@@ -370,7 +307,7 @@ void connectToHost(void)
     static bool prevConnectedToHost = false;
     static bool prevConnectedToWifi = false;
 
-    connectedToWifi = cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA) == CYW43_LINK_UP;
+    connectedToWifi = WiFi.status() == WL_CONNECTED;
     connectedToHost = connectedToWifi && isConnected(&connectionFdd);
 
     if(prevConnectedToWifi != connectedToWifi) {    // connectedToWifi changed since last time? log it
@@ -392,6 +329,9 @@ void connectToHost(void)
     if(!connectedToWifi) {
         connectToWifi();
     }
+
+    // responses to discovery, other udp packets dropped
+    ceDiscoveryReceive();
 
     if(connectedToHost)     // we're connected to host? don't send discovery packets
     {

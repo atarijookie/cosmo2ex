@@ -1,10 +1,10 @@
 #include "defs.h"
 #include "connection.h"
 #include "utils.h"
+#include "settings.h"
 #include "display.h"
 #include "buttons.h"
 
-extern Settings_t Settings;
 
 void handleAnalogButtons(uint32_t now)
 {

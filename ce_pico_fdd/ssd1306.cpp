@@ -10,8 +10,8 @@ BSD license, check license.txt for more information
 *********************************************************************/
 
 #include <stdio.h>
+#include <string.h>
 #include "pico/stdlib.h"
-#include "pico/cyw43_arch.h"
 #include "hardware/spi.h"
 #include "hardware/i2c.h"
 #include "hardware/dma.h"

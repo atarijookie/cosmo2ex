@@ -18,20 +18,11 @@ extern volatile uint8_t hasTimedOut;
 // void timeoutStart(uint32_t durationMs);
 // void cmdTimeoutChangeLength(uint32_t newPeriod);
 
-#define SETTINGS_VALID  0xCAFE
-
-#define MAX_SETTINGS_STRING_LEN 32
-
-typedef struct {
-    uint16_t isValid;
-    char ssid[MAX_SETTINGS_STRING_LEN];
-    char password[MAX_SETTINGS_STRING_LEN];
-    uint8_t ikbdEnabled;
-} Settings_t;
-
-void loadSettingsFromEeprom(void);
-void saveSettingsToEeprom(void);
-uint32_t millis(void);
+#ifdef ARDUINO
+extern "C" unsigned long millis(void);  // from the arduino core
+#else
+uint32_t millis(void);                  // from the test fakes
+#endif
 
 void BIT_INVERT(int pin);
 

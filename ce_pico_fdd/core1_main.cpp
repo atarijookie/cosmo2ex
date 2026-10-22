@@ -5,13 +5,11 @@
 #include "hardware/irq.h"
 #include "hardware/pwm.h"
 #include "hardware/dma.h"
-#include "pico/flash.h"
 #include "pico/multicore.h"
 #include "pico/util/queue.h"
 #include "hardware/spi.h"
 
 #include "defs.h"
-#include "connection.h"
 #include "utils.h"
 #include "display.h"
 #include "psram.h"
@@ -525,10 +523,11 @@ void storeReceivedTrack(IPCbuffer* bfr)
     }
 }
 
-void core1_main_loop(void)
-{
-    flash_safe_execute_core_init();     // call this for flash_safe_execute() to work
+static int prevSideNo;
 
+// Core 1 start, from setup1() - after core 0 set up the pins and IPC buffers.
+void core1Setup(void)
+{
     // SPI initialisation.
     spi_init(spi1, 16000000);
     gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
@@ -553,59 +552,60 @@ void core1_main_loop(void)
 
     streamOutputEnableSetup();
 
-    int prevSideNo = BIT_IS_H(PIN_SIDE1) ? 0 : 1;
+    prevSideNo = BIT_IS_H(PIN_SIDE1) ? 0 : 1;
+}
 
-    while(1)
-    {
-        uint32_t now = millis();
-        uint32_t timeMsSinceLastStep = now - lastStepTime;
+// One pass of the core 1 main loop - loop1() calls it again and again.
+void core1Loop(void)
+{
+    uint32_t now = millis();
+    uint32_t timeMsSinceLastStep = now - lastStepTime;
 
-        // last STEP happened within last 15 ms?
-        if(timeMsSinceLastStep < 15 && state != STATE_STEPPING) {
-            clearMfmBuffer();
-            state = STATE_STEPPING;         // we're in the stepping state
-        }
-
-        // last step happened at least 15 ms ago? we're not stepping anymore
-        if(timeMsSinceLastStep >= 15 && state == STATE_STEPPING) {
-            // queue_try_add(&fifoToCore0, (const void*) &hwPosition.track);
-            state = STATE_LOADING;
-        }
-
-        if(state == STATE_LOADING) {
-            psramLoadTrack(hwPosition.track, 0, trackData0);
-            psramLoadTrack(hwPosition.track, 1, trackData1);
-
-            uint32_t irqState = save_and_disable_interrupts();     // track restart (alarm IRQ) must not come between reading timeTrackStart and setting dataIndexInTrack
-            updateStreamPositionByFloppyPosition();
-            restore_interrupts(irqState);
-
-            state = STATE_STREAMING;
-        }
-
-        hwPosition.side = BIT_IS_H(PIN_SIDE1) ? 0 : 1; // get the current SIDE
-
-        if(prevSideNo != hwPosition.side) {     // on side change, clear the current mfm buffer
-            prevSideNo = hwPosition.side;
-            clearMfmBuffer();
-        }
-
-        // something in the queue for core1? get it, handle it
-        IPCbuffer* bfr = ipcGetBufferFromFifo(1);
-        if(bfr) {
-            // debug("c1: c %d\n", bfr->command);
-            switch(bfr->command)
-            {
-                // store the track track data into PSRAM
-                case CMD_STORE_TRACK:
-                    storeReceivedTrack(bfr);
-                    break;
-            }
-
-            ipcBufferRelease(bfr);
-        }
-
-        // store finished writes, prepare buffers for next ones
-        handleWriteBuffers();
+    // last STEP happened within last 15 ms?
+    if(timeMsSinceLastStep < 15 && state != STATE_STEPPING) {
+        clearMfmBuffer();
+        state = STATE_STEPPING;         // we're in the stepping state
     }
+
+    // last step happened at least 15 ms ago? we're not stepping anymore
+    if(timeMsSinceLastStep >= 15 && state == STATE_STEPPING) {
+        // queue_try_add(&fifoToCore0, (const void*) &hwPosition.track);
+        state = STATE_LOADING;
+    }
+
+    if(state == STATE_LOADING) {
+        psramLoadTrack(hwPosition.track, 0, trackData0);
+        psramLoadTrack(hwPosition.track, 1, trackData1);
+
+        uint32_t irqState = save_and_disable_interrupts();     // track restart (alarm IRQ) must not come between reading timeTrackStart and setting dataIndexInTrack
+        updateStreamPositionByFloppyPosition();
+        restore_interrupts(irqState);
+
+        state = STATE_STREAMING;
+    }
+
+    hwPosition.side = BIT_IS_H(PIN_SIDE1) ? 0 : 1; // get the current SIDE
+
+    if(prevSideNo != hwPosition.side) {     // on side change, clear the current mfm buffer
+        prevSideNo = hwPosition.side;
+        clearMfmBuffer();
+    }
+
+    // something in the queue for core1? get it, handle it
+    IPCbuffer* bfr = ipcGetBufferFromFifo(1);
+    if(bfr) {
+        // debug("c1: c %d\n", bfr->command);
+        switch(bfr->command)
+        {
+            // store the track track data into PSRAM
+            case CMD_STORE_TRACK:
+                storeReceivedTrack(bfr);
+                break;
+        }
+
+        ipcBufferRelease(bfr);
+    }
+
+    // store finished writes, prepare buffers for next ones
+    handleWriteBuffers();
 }

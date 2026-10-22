@@ -1,12 +1,8 @@
 #include <cstring>
+#include <cstdarg>
+#include <cstdio>
 #include "pico/stdlib.h"
-#include "pico/time.h"
-#include "hardware/flash.h"
-#include "hardware/timer.h"
-#include "hardware/sync.h"
-#include "pico/multicore.h"
-#include "pico/flash.h"
-#include "hardware/flash.h"
+#include "hardware/uart.h"
 
 #include "defs.h"
 #include "utils.h"
@@ -14,7 +10,6 @@
 
 volatile uint8_t hasTimedOut = false;
 // alarm_id_t alarmId = -1;
-Settings_t Settings;
 
 uint16_t getWord(uint8_t *bfr)
 {
@@ -89,58 +84,6 @@ void storeHeader(uint8_t *bfr, uint16_t atnCode, uint32_t txLen)
     storeDword(bfr + 6, txLen);     //  6..9: txLen (4 bytes)
 }
 
-#define FLASH_TARGET_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
-const uint8_t *flash_target_contents = (const uint8_t *) (XIP_BASE + FLASH_TARGET_OFFSET);
-
-// load settings from eeprom into struct
-void loadSettingsFromEeprom(void)
-{
-    memset(&Settings, 0, sizeof(Settings));
-    memcpy(&Settings, flash_target_contents, sizeof(Settings));
-
-    if(Settings.isValid != SETTINGS_VALID) {
-        memset(&Settings, 0, sizeof(Settings));
-    }
-}
-
-// This function will be called when it's safe to call flash_range_erase
-static void call_flash_range_erase(void *param) {
-    flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
-}
-
-// This function will be called when it's safe to call flash_range_program
-static void call_flash_range_program(void *param) {
-    uint8_t* data = (uint8_t*) param;
-    flash_range_program(FLASH_TARGET_OFFSET, data, FLASH_SECTOR_SIZE);
-}
-
-void saveSettingsToEeprom(void)
-{
-    static uint8_t buf[FLASH_SECTOR_SIZE];                      // static - as big as the whole 4 kB stack of core0
-    memset(buf, 0, FLASH_SECTOR_SIZE);                          // clear 4k
-    memcpy(buf, (const uint8_t *) &Settings, sizeof(Settings)); // copy just the settings - about 68 B
-
-    // writing to flash needs other core to be initialized with flash_safe_execute_core_init(), 
-    // see serial_config.cpp for more details.
-
-    int rc = flash_safe_execute(call_flash_range_erase, (void*) FLASH_TARGET_OFFSET, UINT32_MAX);
-    if(rc != PICO_OK) {
-        debug("flash_range_erase failed, settings not stored\n");
-        return;
-    }
-
-    rc = flash_safe_execute(call_flash_range_program, (void*) buf, UINT32_MAX);
-    if(rc != PICO_OK) {
-        debug("flash_range_erase failed, settings not stored\n");
-        return;
-    }
-}
-
-uint32_t millis(void)
-{
-    return to_ms_since_boot(get_absolute_time());
-}
-
 void BIT_INVERT(int pin)
 {
     gpio_put(pin, BIT_IS_H(pin) ? 0 : 1);
@@ -153,6 +96,7 @@ void debug(const char *fmt, ...)
     va_start(args, fmt);
     int len = vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
+    len = MIN(len, (int) sizeof(buf) - 1);  // longer message was cut to fit buf
 
     for(int i=0; i<len; i++) {
         if(buf[i] == '\n') {

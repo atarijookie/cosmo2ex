@@ -9,9 +9,7 @@
 
 #include "defs.h"
 #include "utils.h"
-#include "serial_config.h"
 
-extern Settings_t Settings;
 critical_section_t spi_critical_section;
 
 extern volatile uint32_t timeTrackStart;
@@ -186,47 +184,4 @@ void psramLoadTrack_currentSectorFirst(int track, int side, uint8_t* trackDataSt
 
         psramLoadSector(track, side, sectorNumber, trackDataStart);   // load sector from psram to track array
     }
-}
-
-#define PSRAM_ADDR_FLAG     100000
-
-void psramConfigFlagSet(void)
-{
-    uint8_t bfr[4];
-    storeDword(bfr, RUN_CONFIG_AFTER_RESTART);
-    psramWriteBuffer(PSRAM_ADDR_FLAG, bfr, 4);
-}
-
-void psramConfigFlagClear(void)
-{
-    uint8_t bfr[4];
-    memset(bfr, 0, 4);
-    psramWriteBuffer(PSRAM_ADDR_FLAG, bfr, 4);
-}
-
-bool psramConfigFlagGet(void)
-{
-    uint8_t bfr[4];
-    psramReadBuffer(PSRAM_ADDR_FLAG, bfr, 4);
-    uint32_t flag = getDword(bfr);
-
-    return (flag == RUN_CONFIG_AFTER_RESTART);
-}
-
-#define PSRAM_ADDR_SETTINGS     200000
-
-void loadSettingsFromPSRAM(void)
-{
-    memset(&Settings, 0, sizeof(Settings));
-    psramReadBuffer(PSRAM_ADDR_SETTINGS, (uint8_t *) &Settings, sizeof(Settings));
-
-    if(Settings.isValid != SETTINGS_VALID) {
-        memset(&Settings, 0, sizeof(Settings));
-    }
-}
-
-void saveSettingsToPSRAM(void)
-{
-    Settings.isValid = SETTINGS_VALID;
-    psramWriteBuffer(PSRAM_ADDR_SETTINGS, (uint8_t *) &Settings, sizeof(Settings));
 }

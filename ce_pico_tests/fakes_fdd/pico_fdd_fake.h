@@ -24,6 +24,7 @@ typedef unsigned int uint;
 typedef uint64_t absolute_time_t;
 
 absolute_time_t get_absolute_time(void);
+uint32_t millis(void);      // arduino core in the firmware - from the fake clock here
 inline uint32_t to_ms_since_boot(absolute_time_t t) { return (uint32_t) (t / 1000); }
 void sleep_ms(uint32_t ms);
 
@@ -177,5 +178,11 @@ struct pio_program { const uint16_t *instructions; uint8_t length; int8_t origin
 
 bool pio_claim_free_sm_and_add_program_for_gpio_range(const pio_program *program, PIO *pio, uint *sm, uint *offset, uint gpio_base, uint gpio_count, bool set_gpio_base);
 inline uint pio_get_dreq(PIO, uint sm, bool is_tx) { return sm * 2 + (is_tx ? 0 : 1); }
+
+// What the real mfm_write.pio.h provides only without PICO_NO_HARDWARE - the tests compile it with PICO_NO_HARDWARE=1
+// (just the instructions), the PIO program is not simulated: the tests put the captured pulse lengths straight into
+// the DMA ring buffer (mfmBufferWrite).
+static const struct pio_program mfm_write_program = { nullptr, 0, -1, 0 };
+static inline void mfm_write_program_init(PIO, uint, uint, uint) {}
 
 #endif

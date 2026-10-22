@@ -63,7 +63,7 @@ FDD_FW_SRCS     = core1_main.cpp mfm_write.cpp psram.cpp ipc.cpp utils.cpp writt
 FDD_FWOBJS      = $(addprefix obj/fdd/fw/,$(FDD_FW_SRCS:.cpp=.o))
 FDD_TOBJS       = $(addprefix obj/fdd/,$(patsubst %.cpp,%.o,tests/test_main.cpp $(wildcard tests/fdd/*.cpp) fakes_fdd/fakes_fdd.cpp))
 FLAGS_fdd       = -std=gnu++17 -g -O0 -Wall -Wno-sign-compare -Wno-unused-variable -Wno-unused-function -Wno-unused-but-set-variable -MMD -MP \
-                  -Ifakes_fdd -Itests -I../third_party/doctest -I../ce_pico_fdd -include fakes_fdd/force_include.h $(CXXFLAGS)
+                  -DPICO_NO_HARDWARE=1 -Ifakes_fdd -Itests -I../third_party/doctest -I../ce_pico_fdd -include fakes_fdd/force_include.h $(CXXFLAGS)
 
 obj/fdd/fw/%.o: ../ce_pico_fdd/%.cpp
 	@mkdir -p $(dir $@)

@@ -12,11 +12,4 @@ void psramLoadTrack_currentSectorFirst(int track, int side, uint8_t* trackDataSt
 void psramStoreSector(int track, int side, int byteOffsetFromTrackStart, uint8_t* data, uint32_t copyLength, uint32_t clearLength);
 void psramLoadSector(int track, int side, int sector, uint8_t* trackDataStart);
 
-void psramConfigFlagSet(void);
-void psramConfigFlagClear(void);
-bool psramConfigFlagGet(void);
-
-void loadSettingsFromPSRAM(void);
-void saveSettingsToPSRAM(void);
-
 #endif
