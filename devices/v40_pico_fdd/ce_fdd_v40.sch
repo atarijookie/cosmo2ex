@@ -12158,6 +12158,155 @@ Source: &lt;a href="http://www.dip.com.tw/en/en-product-information/en-switch004
 </deviceset>
 </devicesets>
 </library>
+<library name="WS2812C-2020">
+<description>&lt;Intelligent control LED integrated light source&lt;/b&gt;&lt;p&gt;
+&lt;author&gt;Created by SamacSys&lt;/author&gt;</description>
+<packages>
+<package name="WS2812C2020">
+<description>&lt;b&gt;WS2812C-2020-2&lt;/b&gt;&lt;br&gt;
+</description>
+<smd name="1" x="0.915" y="-0.55" dx="0.7" dy="0.7" layer="1"/>
+<smd name="2" x="0.915" y="0.55" dx="0.7" dy="0.7" layer="1"/>
+<smd name="3" x="-0.915" y="0.55" dx="0.7" dy="0.7" layer="1"/>
+<smd name="4" x="-0.915" y="-0.55" dx="0.7" dy="0.7" layer="1"/>
+<text x="0" y="0" size="1.27" layer="25" align="center">&gt;NAME</text>
+<text x="0" y="0" size="1.27" layer="27" align="center">&gt;VALUE</text>
+<wire x1="-1.1" y1="1" x2="1.1" y2="1" width="0.2" layer="51"/>
+<wire x1="1.1" y1="1" x2="1.1" y2="-1" width="0.2" layer="51"/>
+<wire x1="1.1" y1="-1" x2="-1.1" y2="-1" width="0.2" layer="51"/>
+<wire x1="-1.1" y1="-1" x2="-1.1" y2="1" width="0.2" layer="51"/>
+<wire x1="-2.265" y1="2" x2="2.265" y2="2" width="0.1" layer="51"/>
+<wire x1="2.265" y1="2" x2="2.265" y2="-2" width="0.1" layer="51"/>
+<wire x1="2.265" y1="-2" x2="-2.265" y2="-2" width="0.1" layer="51"/>
+<wire x1="-2.265" y1="-2" x2="-2.265" y2="2" width="0.1" layer="51"/>
+<wire x1="-0.4" y1="1" x2="0.4" y2="1" width="0.1" layer="21"/>
+<wire x1="-0.4" y1="-1" x2="0.4" y2="-1" width="0.1" layer="21"/>
+<wire x1="0.8" y1="-1.5" x2="0.8" y2="-1.5" width="0.2" layer="21"/>
+<wire x1="0.8" y1="-1.5" x2="1" y2="-1.5" width="0.2" layer="21" curve="180"/>
+<wire x1="1" y1="-1.5" x2="1" y2="-1.5" width="0.2" layer="21"/>
+<wire x1="1" y1="-1.5" x2="0.8" y2="-1.5" width="0.2" layer="21" curve="180"/>
+</package>
+</packages>
+<symbols>
+<symbol name="WS2812C-2020">
+<wire x1="5.08" y1="2.54" x2="20.32" y2="2.54" width="0.254" layer="94"/>
+<wire x1="20.32" y1="-5.08" x2="20.32" y2="2.54" width="0.254" layer="94"/>
+<wire x1="20.32" y1="-5.08" x2="5.08" y2="-5.08" width="0.254" layer="94"/>
+<wire x1="5.08" y1="2.54" x2="5.08" y2="-5.08" width="0.254" layer="94"/>
+<text x="21.59" y="7.62" size="1.778" layer="95" align="center-left">&gt;NAME</text>
+<text x="21.59" y="5.08" size="1.778" layer="96" align="center-left">&gt;VALUE</text>
+<pin name="DO" x="25.4" y="-2.54" length="middle" rot="R180"/>
+<pin name="GND" x="25.4" y="0" length="middle" rot="R180"/>
+<pin name="DI" x="0" y="0" length="middle"/>
+<pin name="VDD" x="0" y="-2.54" length="middle"/>
+</symbol>
+</symbols>
+<devicesets>
+<deviceset name="WS2812C-2020" prefix="LED">
+<description>&lt;b&gt;Intelligent control LED integrated light source&lt;/b&gt;&lt;p&gt;
+Source: &lt;a href="http://www.world-semi.com/DownLoadFile/139"&gt; Datasheet &lt;/a&gt;</description>
+<gates>
+<gate name="G$1" symbol="WS2812C-2020" x="0" y="0"/>
+</gates>
+<devices>
+<device name="" package="WS2812C2020">
+<connects>
+<connect gate="G$1" pin="DI" pad="3"/>
+<connect gate="G$1" pin="DO" pad="1"/>
+<connect gate="G$1" pin="GND" pad="2"/>
+<connect gate="G$1" pin="VDD" pad="4"/>
+</connects>
+<technologies>
+<technology name="">
+<attribute name="DESCRIPTION" value="Intelligent control LED integrated light source" constant="no"/>
+<attribute name="HEIGHT" value="0.84mm" constant="no"/>
+<attribute name="MANUFACTURER_NAME" value="Worldsemi" constant="no"/>
+<attribute name="MANUFACTURER_PART_NUMBER" value="WS2812C-2020" constant="no"/>
+<attribute name="TME_ELECTRONIC_COMPONENTS_PART_NUMBER" value="" constant="no"/>
+<attribute name="TME_ELECTRONIC_COMPONENTS_PRICE-STOCK" value="" constant="no"/>
+</technology>
+</technologies>
+</device>
+</devices>
+</deviceset>
+</devicesets>
+</library>
+<library name="74AHCT1G08GW_125">
+<description>&lt;74AHC(T)1G08 - 2-input AND gate@en-us&lt;/b&gt;&lt;p&gt;
+&lt;author&gt;Created by SamacSys&lt;/author&gt;</description>
+<packages>
+<package name="SOT65P212X110-5N">
+<description>&lt;b&gt;SOT353-1&lt;/b&gt;&lt;br&gt;
+</description>
+<smd name="1" x="-0.95" y="0.65" dx="1.05" dy="0.4" layer="1"/>
+<smd name="2" x="-0.95" y="0" dx="1.05" dy="0.4" layer="1"/>
+<smd name="3" x="-0.95" y="-0.65" dx="1.05" dy="0.4" layer="1"/>
+<smd name="4" x="0.95" y="-0.65" dx="1.05" dy="0.4" layer="1"/>
+<smd name="5" x="0.95" y="0.65" dx="1.05" dy="0.4" layer="1"/>
+<text x="0" y="0" size="1.27" layer="25" align="center">&gt;NAME</text>
+<text x="0" y="0" size="1.27" layer="27" align="center">&gt;VALUE</text>
+<wire x1="-1.725" y1="1.375" x2="1.725" y2="1.375" width="0.05" layer="51"/>
+<wire x1="1.725" y1="1.375" x2="1.725" y2="-1.375" width="0.05" layer="51"/>
+<wire x1="1.725" y1="-1.375" x2="-1.725" y2="-1.375" width="0.05" layer="51"/>
+<wire x1="-1.725" y1="-1.375" x2="-1.725" y2="1.375" width="0.05" layer="51"/>
+<wire x1="-0.625" y1="1.025" x2="0.625" y2="1.025" width="0.1" layer="51"/>
+<wire x1="0.625" y1="1.025" x2="0.625" y2="-1.025" width="0.1" layer="51"/>
+<wire x1="0.625" y1="-1.025" x2="-0.625" y2="-1.025" width="0.1" layer="51"/>
+<wire x1="-0.625" y1="-1.025" x2="-0.625" y2="1.025" width="0.1" layer="51"/>
+<wire x1="-0.625" y1="0.375" x2="0.025" y2="1.025" width="0.1" layer="51"/>
+<wire x1="-0.075" y1="1.025" x2="0.075" y2="1.025" width="0.2" layer="21"/>
+<wire x1="0.075" y1="1.025" x2="0.075" y2="-1.025" width="0.2" layer="21"/>
+<wire x1="0.075" y1="-1.025" x2="-0.075" y2="-1.025" width="0.2" layer="21"/>
+<wire x1="-0.075" y1="-1.025" x2="-0.075" y2="1.025" width="0.2" layer="21"/>
+<wire x1="-1.475" y1="1.1" x2="-0.425" y2="1.1" width="0.2" layer="21"/>
+</package>
+</packages>
+<symbols>
+<symbol name="74AHCT1G08GW,125">
+<wire x1="5.08" y1="2.54" x2="20.32" y2="2.54" width="0.254" layer="94"/>
+<wire x1="20.32" y1="-7.62" x2="20.32" y2="2.54" width="0.254" layer="94"/>
+<wire x1="20.32" y1="-7.62" x2="5.08" y2="-7.62" width="0.254" layer="94"/>
+<wire x1="5.08" y1="2.54" x2="5.08" y2="-7.62" width="0.254" layer="94"/>
+<text x="21.59" y="7.62" size="1.778" layer="95" align="center-left">&gt;NAME</text>
+<text x="21.59" y="5.08" size="1.778" layer="96" align="center-left">&gt;VALUE</text>
+<pin name="B" x="0" y="0" length="middle"/>
+<pin name="A" x="0" y="-2.54" length="middle"/>
+<pin name="GND" x="0" y="-5.08" length="middle"/>
+<pin name="Y" x="25.4" y="0" length="middle" rot="R180"/>
+<pin name="VCC" x="25.4" y="-2.54" length="middle" rot="R180"/>
+</symbol>
+</symbols>
+<devicesets>
+<deviceset name="74AHCT1G08GW,125" prefix="IC">
+<description>&lt;b&gt;74AHC(T)1G08 - 2-input AND gate@en-us&lt;/b&gt;&lt;p&gt;
+Source: &lt;a href="https://assets.nexperia.com/documents/data-sheet/74AHC_AHCT1G08.pdf"&gt; Datasheet &lt;/a&gt;</description>
+<gates>
+<gate name="G$1" symbol="74AHCT1G08GW,125" x="0" y="0"/>
+</gates>
+<devices>
+<device name="" package="SOT65P212X110-5N">
+<connects>
+<connect gate="G$1" pin="A" pad="2"/>
+<connect gate="G$1" pin="B" pad="1"/>
+<connect gate="G$1" pin="GND" pad="3"/>
+<connect gate="G$1" pin="VCC" pad="5"/>
+<connect gate="G$1" pin="Y" pad="4"/>
+</connects>
+<technologies>
+<technology name="">
+<attribute name="DESCRIPTION" value="74AHC(T)1G08 - 2-input AND gate@en-us" constant="no"/>
+<attribute name="HEIGHT" value="1.1mm" constant="no"/>
+<attribute name="MANUFACTURER_NAME" value="Nexperia" constant="no"/>
+<attribute name="MANUFACTURER_PART_NUMBER" value="74AHCT1G08GW,125" constant="no"/>
+<attribute name="TME_ELECTRONIC_COMPONENTS_PART_NUMBER" value="" constant="no"/>
+<attribute name="TME_ELECTRONIC_COMPONENTS_PRICE-STOCK" value="" constant="no"/>
+</technology>
+</technologies>
+</device>
+</devices>
+</deviceset>
+</devicesets>
+</library>
 </libraries>
 <attributes>
 </attributes>
@@ -12263,7 +12412,7 @@ Source: &lt;a href="http://www.dip.com.tw/en/en-product-information/en-switch004
 <part name="Q1" library="BC817-25LT3G" deviceset="BC817-25LT3G" device=""/>
 <part name="S1" library="DTSM-62N-V-B" deviceset="DTSM-62N-V-B" device=""/>
 <part name="GND9" library="supply1" deviceset="GND" device=""/>
-<part name="R20" library="rcl" deviceset="R-EU_" device="R0603" value="10k"/>
+<part name="R20" library="rcl" deviceset="R-EU_" device="R0603" value="1k"/>
 <part name="P+12" library="supply1" deviceset="VCC" device=""/>
 <part name="SV2" library="con-lstb" deviceset="MA04-1" device=""/>
 <part name="JP2" library="jumper" deviceset="JP1E" device=""/>
@@ -12272,6 +12421,13 @@ Source: &lt;a href="http://www.dip.com.tw/en/en-product-information/en-switch004
 <part name="R32" library="rcl" deviceset="R-EU_" device="R0603" value="1k"/>
 <part name="R37" library="rcl" deviceset="R-EU_" device="R0603" value="1k"/>
 <part name="P+1" library="supply1" deviceset="VCC" device=""/>
+<part name="R38" library="rcl" deviceset="R-EU_" device="R0603" value="4k7"/>
+<part name="C10" library="rcl" deviceset="C-EU" device="C0603" value="100 nF"/>
+<part name="GND12" library="supply1" deviceset="GND" device=""/>
+<part name="LED2" library="WS2812C-2020" deviceset="WS2812C-2020" device=""/>
+<part name="GND15" library="supply1" deviceset="GND" device=""/>
+<part name="C9" library="rcl" deviceset="C-EU" device="C0603" value="100 nF"/>
+<part name="IC6" library="74AHCT1G08GW_125" deviceset="74AHCT1G08GW,125" device=""/>
 </parts>
 <sheets>
 <sheet>
@@ -13359,12 +13515,12 @@ Source: &lt;a href="http://www.dip.com.tw/en/en-product-information/en-switch004
 <instance part="R36" gate="G$1" x="-71.12" y="58.42" rot="R180"/>
 <instance part="GND7" gate="1" x="-12.7" y="48.26"/>
 <instance part="Q1" gate="G$1" x="2.54" y="66.04"/>
-<instance part="S1" gate="G$1" x="66.04" y="71.12" rot="R270"/>
-<instance part="GND9" gate="1" x="60.96" y="48.26"/>
-<instance part="R20" gate="G$1" x="60.96" y="83.82" smashed="yes" rot="R270">
-<attribute name="VALUE" x="57.658" y="86.36" size="1.778" layer="96" rot="R270"/>
+<instance part="S1" gate="G$1" x="-7.62" y="10.16" rot="R270"/>
+<instance part="GND9" gate="1" x="-12.7" y="-30.48"/>
+<instance part="R20" gate="G$1" x="-12.7" y="22.86" smashed="yes" rot="R270">
+<attribute name="VALUE" x="-16.002" y="25.4" size="1.778" layer="96" rot="R270"/>
 </instance>
-<instance part="P+12" gate="VCC" x="60.96" y="93.98"/>
+<instance part="P+12" gate="VCC" x="-12.7" y="33.02"/>
 <instance part="SV2" gate="1" x="22.86" y="134.62" rot="R180"/>
 <instance part="JP2" gate="A" x="-152.4" y="162.56" rot="MR270"/>
 <instance part="GND11" gate="1" x="-147.32" y="154.94"/>
@@ -13378,6 +13534,19 @@ Source: &lt;a href="http://www.dip.com.tw/en/en-product-information/en-switch004
 <attribute name="VALUE" x="0" y="134.112" size="1.778" layer="96"/>
 </instance>
 <instance part="P+1" gate="VCC" x="10.16" y="157.48"/>
+<instance part="R38" gate="G$1" x="-12.7" y="-17.78" smashed="yes" rot="R270">
+<attribute name="VALUE" x="-16.002" y="-15.24" size="1.778" layer="96" rot="R270"/>
+</instance>
+<instance part="C10" gate="G$1" x="45.72" y="-17.78" smashed="yes">
+<attribute name="NAME" x="47.879" y="-17.272" size="1.778" layer="95" rot="R90"/>
+</instance>
+<instance part="GND12" gate="1" x="45.72" y="-45.72"/>
+<instance part="LED2" gate="G$1" x="68.58" y="-5.08" rot="R270"/>
+<instance part="GND15" gate="1" x="5.08" y="-17.78"/>
+<instance part="C9" gate="G$1" x="38.1" y="-17.78" smashed="yes">
+<attribute name="NAME" x="40.259" y="-17.272" size="1.778" layer="95" rot="R90"/>
+</instance>
+<instance part="IC6" gate="G$1" x="7.62" y="-7.62"/>
 </instances>
 <busses>
 </busses>
@@ -13424,14 +13593,14 @@ Source: &lt;a href="http://www.dip.com.tw/en/en-product-information/en-switch004
 <junction x="-83.82" y="68.58"/>
 </segment>
 <segment>
-<pinref part="R20" gate="G$1" pin="1"/>
-<pinref part="P+12" gate="VCC" pin="VCC"/>
-<wire x1="60.96" y1="88.9" x2="60.96" y2="91.44" width="0.1524" layer="91"/>
-</segment>
-<segment>
 <pinref part="R21" gate="G$1" pin="2"/>
 <pinref part="P+1" gate="VCC" pin="VCC"/>
 <wire x1="10.16" y1="152.4" x2="10.16" y2="154.94" width="0.1524" layer="91"/>
+</segment>
+<segment>
+<pinref part="R20" gate="G$1" pin="1"/>
+<pinref part="P+12" gate="VCC" pin="VCC"/>
+<wire x1="-12.7" y1="27.94" x2="-12.7" y2="30.48" width="0.1524" layer="91"/>
 </segment>
 </net>
 <net name="GND" class="0">
@@ -13543,20 +13712,34 @@ Source: &lt;a href="http://www.dip.com.tw/en/en-product-information/en-switch004
 <wire x1="12.7" y1="58.42" x2="12.7" y2="50.8" width="0.1524" layer="91"/>
 </segment>
 <segment>
-<pinref part="S1" gate="G$1" pin="NO_2"/>
-<pinref part="GND9" gate="1" pin="GND"/>
-<wire x1="60.96" y1="55.88" x2="60.96" y2="53.34" width="0.1524" layer="91"/>
-<pinref part="S1" gate="G$1" pin="NO_1"/>
-<wire x1="60.96" y1="53.34" x2="60.96" y2="50.8" width="0.1524" layer="91"/>
-<wire x1="66.04" y1="55.88" x2="66.04" y2="53.34" width="0.1524" layer="91"/>
-<wire x1="66.04" y1="53.34" x2="60.96" y2="53.34" width="0.1524" layer="91"/>
-<junction x="60.96" y="53.34"/>
-</segment>
-<segment>
 <pinref part="JP2" gate="A" pin="2"/>
 <pinref part="GND11" gate="1" pin="GND"/>
 <wire x1="-149.86" y1="160.02" x2="-147.32" y2="160.02" width="0.1524" layer="91"/>
 <wire x1="-147.32" y1="160.02" x2="-147.32" y2="157.48" width="0.1524" layer="91"/>
+</segment>
+<segment>
+<pinref part="GND9" gate="1" pin="GND"/>
+<pinref part="R38" gate="G$1" pin="2"/>
+<wire x1="-12.7" y1="-27.94" x2="-12.7" y2="-22.86" width="0.1524" layer="91"/>
+</segment>
+<segment>
+<pinref part="GND12" gate="1" pin="GND"/>
+<pinref part="C10" gate="G$1" pin="2"/>
+<wire x1="45.72" y1="-43.18" x2="45.72" y2="-38.1" width="0.1524" layer="91"/>
+<pinref part="LED2" gate="G$1" pin="GND"/>
+<wire x1="45.72" y1="-38.1" x2="45.72" y2="-22.86" width="0.1524" layer="91"/>
+<wire x1="68.58" y1="-30.48" x2="68.58" y2="-38.1" width="0.1524" layer="91"/>
+<wire x1="68.58" y1="-38.1" x2="45.72" y2="-38.1" width="0.1524" layer="91"/>
+<junction x="45.72" y="-38.1"/>
+<pinref part="C9" gate="G$1" pin="2"/>
+<wire x1="38.1" y1="-22.86" x2="38.1" y2="-38.1" width="0.1524" layer="91"/>
+<wire x1="38.1" y1="-38.1" x2="45.72" y2="-38.1" width="0.1524" layer="91"/>
+</segment>
+<segment>
+<wire x1="5.08" y1="-12.7" x2="5.08" y2="-15.24" width="0.1524" layer="91"/>
+<wire x1="7.62" y1="-12.7" x2="5.08" y2="-12.7" width="0.1524" layer="91"/>
+<pinref part="GND15" gate="1" pin="GND"/>
+<pinref part="IC6" gate="G$1" pin="GND"/>
 </segment>
 </net>
 <net name="5V" class="0">
@@ -13601,6 +13784,24 @@ Source: &lt;a href="http://www.dip.com.tw/en/en-product-information/en-switch004
 <wire x1="15.24" y1="134.62" x2="7.62" y2="134.62" width="0.1524" layer="91"/>
 <label x="8.128" y="134.874" size="0.8128" layer="95" font="vector" ratio="20"/>
 <pinref part="SV2" gate="1" pin="3"/>
+</segment>
+<segment>
+<pinref part="C10" gate="G$1" pin="1"/>
+<wire x1="45.72" y1="-15.24" x2="45.72" y2="-10.16" width="0.1524" layer="91"/>
+<label x="43.688" y="8.636" size="1.778" layer="95"/>
+<pinref part="LED2" gate="G$1" pin="VDD"/>
+<wire x1="45.72" y1="-10.16" x2="45.72" y2="5.08" width="0.1524" layer="91"/>
+<wire x1="45.72" y1="5.08" x2="45.72" y2="7.62" width="0.1524" layer="91"/>
+<wire x1="66.04" y1="-5.08" x2="66.04" y2="5.08" width="0.1524" layer="91"/>
+<wire x1="66.04" y1="5.08" x2="45.72" y2="5.08" width="0.1524" layer="91"/>
+<junction x="45.72" y="5.08"/>
+<wire x1="33.02" y1="-10.16" x2="38.1" y2="-10.16" width="0.1524" layer="91"/>
+<junction x="45.72" y="-10.16"/>
+<pinref part="C9" gate="G$1" pin="1"/>
+<wire x1="38.1" y1="-10.16" x2="45.72" y2="-10.16" width="0.1524" layer="91"/>
+<wire x1="38.1" y1="-15.24" x2="38.1" y2="-10.16" width="0.1524" layer="91"/>
+<junction x="38.1" y="-10.16"/>
+<pinref part="IC6" gate="G$1" pin="VCC"/>
 </segment>
 </net>
 <net name="PANEL_RX" class="0">
@@ -13899,16 +14100,24 @@ Source: &lt;a href="http://www.dip.com.tw/en/en-product-information/en-switch004
 </net>
 <net name="CAPTIVE_BTN" class="0">
 <segment>
-<pinref part="S1" gate="G$1" pin="COM_2"/>
-<pinref part="S1" gate="G$1" pin="COM_1"/>
-<wire x1="66.04" y1="71.12" x2="66.04" y2="73.66" width="0.1524" layer="91"/>
-<pinref part="R20" gate="G$1" pin="2"/>
-<wire x1="60.96" y1="78.74" x2="60.96" y2="73.66" width="0.1524" layer="91"/>
-<wire x1="60.96" y1="73.66" x2="60.96" y2="71.12" width="0.1524" layer="91"/>
-<wire x1="60.96" y1="73.66" x2="66.04" y2="73.66" width="0.1524" layer="91"/>
-<junction x="60.96" y="73.66"/>
-<wire x1="60.96" y1="73.66" x2="49.276" y2="73.66" width="0.1524" layer="91"/>
-<label x="49.53" y="74.168" size="0.8128" layer="95" font="vector" ratio="20"/>
+<wire x1="-12.7" y1="-7.62" x2="-29.464" y2="-7.62" width="0.1524" layer="91"/>
+<label x="-29.21" y="-7.112" size="0.8128" layer="95" font="vector" ratio="20"/>
+<pinref part="S1" gate="G$1" pin="NO_2"/>
+<pinref part="R38" gate="G$1" pin="1"/>
+<wire x1="-12.7" y1="-5.08" x2="-12.7" y2="-7.62" width="0.1524" layer="91"/>
+<pinref part="S1" gate="G$1" pin="NO_1"/>
+<wire x1="-12.7" y1="-7.62" x2="-12.7" y2="-12.7" width="0.1524" layer="91"/>
+<wire x1="-7.62" y1="-5.08" x2="-7.62" y2="-7.62" width="0.1524" layer="91"/>
+<wire x1="-7.62" y1="-7.62" x2="-12.7" y2="-7.62" width="0.1524" layer="91"/>
+<junction x="-12.7" y="-7.62"/>
+<pinref part="IC6" gate="G$1" pin="B"/>
+<wire x1="-7.62" y1="-7.62" x2="2.54" y2="-7.62" width="0.1524" layer="91"/>
+<junction x="-7.62" y="-7.62"/>
+<wire x1="2.54" y1="-7.62" x2="7.62" y2="-7.62" width="0.1524" layer="91"/>
+<wire x1="2.54" y1="-10.16" x2="7.62" y2="-10.16" width="0.1524" layer="91"/>
+<pinref part="IC6" gate="G$1" pin="A"/>
+<wire x1="2.54" y1="-10.16" x2="2.54" y2="-7.62" width="0.1524" layer="91"/>
+<junction x="2.54" y="-7.62"/>
 </segment>
 <segment>
 <pinref part="U1" gate="U$1" pin="GP1"/>
@@ -13932,6 +14141,28 @@ Source: &lt;a href="http://www.dip.com.tw/en/en-product-information/en-switch004
 <pinref part="R37" gate="G$1" pin="2"/>
 <pinref part="SV2" gate="1" pin="2"/>
 <wire x1="7.62" y1="137.16" x2="15.24" y2="137.16" width="0.1524" layer="91"/>
+</segment>
+</net>
+<net name="N$13" class="0">
+<segment>
+<pinref part="R20" gate="G$1" pin="2"/>
+<pinref part="S1" gate="G$1" pin="COM_2"/>
+<wire x1="-12.7" y1="17.78" x2="-12.7" y2="12.7" width="0.1524" layer="91"/>
+<pinref part="S1" gate="G$1" pin="COM_1"/>
+<wire x1="-12.7" y1="12.7" x2="-12.7" y2="10.16" width="0.1524" layer="91"/>
+<wire x1="-7.62" y1="10.16" x2="-7.62" y2="12.7" width="0.1524" layer="91"/>
+<wire x1="-7.62" y1="12.7" x2="-12.7" y2="12.7" width="0.1524" layer="91"/>
+<junction x="-12.7" y="12.7"/>
+</segment>
+</net>
+<net name="N$15" class="0">
+<segment>
+<pinref part="LED2" gate="G$1" pin="DI"/>
+<wire x1="33.02" y1="-7.62" x2="58.42" y2="-7.62" width="0.1524" layer="91"/>
+<wire x1="58.42" y1="-7.62" x2="58.42" y2="-2.54" width="0.1524" layer="91"/>
+<wire x1="58.42" y1="-2.54" x2="68.58" y2="-2.54" width="0.1524" layer="91"/>
+<wire x1="68.58" y1="-2.54" x2="68.58" y2="-5.08" width="0.1524" layer="91"/>
+<pinref part="IC6" gate="G$1" pin="Y"/>
 </segment>
 </net>
 </nets>
