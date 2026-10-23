@@ -19,6 +19,7 @@
 #include "written_sectors.h"
 #include "host_receive.h"
 #include "panel.h"
+#include "captive_portal.h"
 
 // Core 1 (setup1() + loop1()) does the floppy streaming and write capture, core 0 (setup() + loop()) the rest.
 // The WiFi chip and lwIP are started by the arduino core before setup(), they run in the background (IRQ) on core 0.
@@ -192,8 +193,12 @@ void loop(void)
             // }
         }
 
-        // connect to wifi, discover CE server, connect to CE server
-        connectToHost();
+        // connect to wifi, discover CE server, connect to CE server - or, in WiFi setup, serve the setup page
+        if(captivePortalActive()) {
+            captivePortalLoop();
+        } else {
+            connectToHost();
+        }
 
         // handle any data incoming
         handleIncommingData();

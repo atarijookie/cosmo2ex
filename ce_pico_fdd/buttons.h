@@ -7,6 +7,4 @@
 void buttonsInit(void);
 void handleAllButtons(void);        // the button on the FDD board - call from the main loop
 
-void startCaptivePortal(void);
-
 #endif

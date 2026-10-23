@@ -20,7 +20,7 @@ The panel handles everything display/button specific (fonts, rendering, debounce
   via PIO (arduino-pico `SerialPIO`, ce_pico_fdd/panel_uart.cpp)
 - FDD: 10k pull-up on GP17 (RX), so a missing panel doesn't produce garbage; the current 2k2 (R20/R21) can stay
   or be replaced by 10k
-- FDD: GP27 (the former ANALOG_BTNS, SV2 pin 1) is now the captive portal button - a button to GND, R32 (1k pull-up)
+- FDD: GP27 (the former ANALOG_BTNS, SV2 pin 1) is now the captive portal (WiFi setup) button - a button to GND, R32 (1k pull-up)
   and C3 (100 nF) can stay
 
 ### FDD side (ce_pico_fdd/panel.cpp)
@@ -33,7 +33,7 @@ The panel handles everything display/button specific (fonts, rendering, debounce
   have aren't sent
 - beeps: image loaded (`B50,2700`), host connected (`B100,3200`), host lost (`B400,800`); the floppy step sound is
   not sent to the panel, that's the beeper on the FDD board (on the STEP signal)
-- keys: long press of enter (`KEH`) starts the captive portal, the others are only logged for now (left / right are
+- keys: long press of enter (`KEH`) starts the captive portal (WiFi setup) or leaves it, the others are only logged for now (left / right are
   meant for browsing the images later)
 
 ## 2. Panel board (RP2040-Zero, Waveshare pinout)

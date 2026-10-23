@@ -43,7 +43,22 @@
 
 - the display and buttons are on a separate front panel (ce_pico_display, RP2040-Zero), connected over UART on GP16
   (TX) / GP17 (RX) - see ce_pico_display/protocol.md; panel.cpp has the panel logic, panel_uart.cpp the PIO UART
-- button on GP27 (to GND): long press (1 s) starts the captive portal - not implemented yet, just shows a message
+- button on GP27 (to GND): long press (1 s) starts the captive portal (WiFi setup), the same as a long press of
+  enter on the front panel; another long press leaves it without saving
+
+## WiFi setup (captive portal)
+
+- the FDD scans the WiFi networks, then starts an open AP `cosmo2ex` (192.168.42.1) - connect a phone or PC to it,
+  the setup page opens by itself (every DNS name and URL leads to it), or open http://192.168.42.1
+- the page has the WiFi name (with the scanned networks offered) and password; an empty password keeps the stored one
+  for the same WiFi name, otherwise it means an open network; both max 31 chars, the password at least 8 (WPA2)
+- Save stores them to EEPROM (the floppy streaming pauses for the flash write), then the FDD goes back to the normal
+  mode and connects with them right away
+- without a page request for 5 minutes, the portal ends with the old settings
+- the Pico can't be an AP and a station at once - the host connection is down while the portal runs, core 1 keeps
+  streaming the current image
+- captive_portal.cpp - AP, DNS and web server (arduino-pico WiFi, DNSServer, WebServer); portal_form.cpp - the pages
+  and the checks of the entered values (tested on the host)
 
 ## Notes
 

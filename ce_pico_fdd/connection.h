@@ -7,6 +7,8 @@
 void showRunningStateOnDisplay(void);
 
 void connectToHost(void);
+void connectionStop(void);          // close the host connection, forget the host (captive portal starts)
+void connectionRestart(void);       // connect again with the stored settings, right away
 
 bool sendDataToHost(uint8_t *bfr, uint32_t dataSizeBytes);
 bool sendHeaderAndDataToHost(uint8_t *bfr, uint32_t dataSizeBytes);

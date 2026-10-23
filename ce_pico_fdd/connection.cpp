@@ -119,19 +119,19 @@ void ceDiscoveryReceive(void)
     }
 }
 
+static uint32_t wifiLastAttempt = 0xffff0000; // -65k
+
 // Read wifi settings, connect to wifi if not connected, don't try too often.
 void connectToWifi(void)
 {
-    static uint32_t lastAttempt = 0xffff0000; // -65k
-
     // if last attempt was less than a moment ago, don't try
-    if ((millis() - lastAttempt) < 15000)
+    if ((millis() - wifiLastAttempt) < 15000)
     {
         return;
     }
 
     // we're connecting now
-    lastAttempt = millis();
+    wifiLastAttempt = millis();
 
     char msg[128];
 
@@ -347,6 +347,24 @@ void connectToHost(void)
 
     // connect to CE server
     connectToCEhost();
+}
+
+// Close the host connection and forget the host - before the WiFi goes to AP mode (captive portal).
+void connectionStop(void)
+{
+    stop(&connectionFdd);
+    connectedToHost = false;
+
+    memset(hostIp, 0, sizeof(hostIp));      // maybe another network after this - discover the host again
+    hostPortFdd = 0;
+    hostIpString.clear();
+}
+
+// Start over with the stored settings: connect to WiFi on the next connectToHost(), don't wait for the retry time.
+void connectionRestart(void)
+{
+    connectionStop();
+    wifiLastAttempt = millis() - 15000;
 }
 
 // fdd connection to host, for host_receive.cpp
