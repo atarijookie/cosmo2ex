@@ -7,8 +7,10 @@
 # ce_pico_fdd is tested the same way, but against its own pico-sdk fakes in fakes_fdd/ (it uses the sdk directly, not
 # arduino-pico), with the tests in tests/fdd/ - see the fdd section below.
 #
-#   make test                       - build and run all (acsi, scsi, fdd)
-#   make test-acsi / test-scsi / test-fdd - just one of them, extra doctest options via TEST_ARGS, e.g. TEST_ARGS="-tc=*header* -s"
+# ce_pico_display - only its hardware independent sources (protocol, keys), no fakes needed, tests in tests/display/.
+#
+#   make test                       - build and run all (acsi, scsi, fdd, display)
+#   make test-acsi / test-scsi / test-fdd / test-display - just one of them, extra doctest options via TEST_ARGS, e.g. TEST_ARGS="-tc=*header* -s"
 #   make test-asan                  - both, with AddressSanitizer + UndefinedBehaviorSanitizer
 #   make test-known-bugs            - also the KNOWN_BUG test cases (skipped otherwise) - these fail until the bugs get fixed
 
@@ -25,11 +27,11 @@ SANITIZE_FLAGS  = -fsanitize=address,undefined -fno-sanitize-recover=undefined -
 FW_SRCS         = utils.cpp ipc.cpp connection.cpp command_handling.cpp
 TEST_COMMON     = $(wildcard tests/*.cpp tests/common/*.cpp) fakes/fakes.cpp
 
-.PHONY: all test test-asan test-known-bugs clean test-fdd $(addprefix test-,$(PROJECTS))
+.PHONY: all test test-asan test-known-bugs clean test-fdd test-display $(addprefix test-,$(PROJECTS))
 
-all: $(addprefix run_tests_,$(addsuffix .elf,$(PROJECTS))) run_tests_fdd.elf
+all: $(addprefix run_tests_,$(addsuffix .elf,$(PROJECTS))) run_tests_fdd.elf run_tests_display.elf
 
-test: $(addprefix test-,$(PROJECTS)) test-fdd
+test: $(addprefix test-,$(PROJECTS)) test-fdd test-display
 
 # $(1) = project (acsi / scsi)
 define PROJECT_template
@@ -80,6 +82,29 @@ test-fdd: run_tests_fdd.elf
 	./run_tests_fdd.elf $(TEST_ARGS)
 
 -include $(FDD_FWOBJS:.o=.d) $(FDD_TOBJS:.o=.d)
+
+#--------------------------------------------------------
+# ce_pico_display - protocol parser and keys, plain C++
+DISPLAY_FW_SRCS = protocol.cpp keys.cpp
+DISPLAY_FWOBJS  = $(addprefix obj/display/fw/,$(DISPLAY_FW_SRCS:.cpp=.o))
+DISPLAY_TOBJS   = $(addprefix obj/display/,$(patsubst %.cpp,%.o,tests/test_main.cpp $(wildcard tests/display/*.cpp)))
+FLAGS_display   = $(CXXFLAGS_BASE) -I../ce_pico_display $(CXXFLAGS)
+
+obj/display/fw/%.o: ../ce_pico_display/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(FLAGS_display) -c $< -o $@
+
+obj/display/%.o: %.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(FLAGS_display) -c $< -o $@
+
+run_tests_display.elf: $(DISPLAY_FWOBJS) $(DISPLAY_TOBJS)
+	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
+
+test-display: run_tests_display.elf
+	./run_tests_display.elf $(TEST_ARGS)
+
+-include $(DISPLAY_FWOBJS:.o=.d) $(DISPLAY_TOBJS:.o=.d)
 
 # clean build, because all objects need the sanitizer flags - and clean again (also on failure), so the next normal build does not link them
 test-asan:
