@@ -66,7 +66,7 @@
 
 
 #define PIN_TXD_DEBUG       0
-#define PIN_RXD_DEBUG       1
+#define PIN_CAPTIVE_BTN     1       // button to GND, long press starts the captive portal - instead of the debug UART RX, which isn't used
 #define PIN_DRIVE_SEL       2
 #define PIN_MOT_EN          3
 #define PIN_DIR             4
@@ -89,7 +89,7 @@
 #define PIN_INDEX           21
 #define PIN_DENSITY         22
 #define PIN_WDATA           26
-#define PIN_CAPTIVE_BTN     27      // button to GND, long press starts the captive portal
+#define PIN_BEEPER          27      // buzzer with its own generator, H = on, see beeper.h
 #define PIN_FLCC_OE         28
 
 #define BIT_IS_H(PIN)   (gpio_get(PIN) != 0)

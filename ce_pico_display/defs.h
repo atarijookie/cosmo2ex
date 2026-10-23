@@ -15,8 +15,6 @@
 #define PIN_BTN_ENTER       27      // also encoder push
 #define PIN_BTN_RIGHT       28      // also encoder B
 #define PIN_STRAP_ENCODER   29      // open = 3 buttons, GND = rotary encoder
-#define PIN_BEEP            14
-#define PIN_STRAP_ACTIVE    15      // open = passive piezo (PWM tone), GND = active buzzer (DC on/off)
 
 #define UART_BAUD           115200
 
@@ -25,12 +23,6 @@
 #define LONG_PRESS_MS       1000
 #define ENC_STEPS_PER_DETENT 4      // quadrature transitions per click, some encoders have 2
 #define ENC_REVERSE         0       // 1 if CW turn gives left on your encoder
-
-// beeper
-#define BEEP_MAX_MS         5000
-#define BEEP_DEFAULT_HZ     2700
-#define BEEP_MIN_HZ         100
-#define BEEP_MAX_HZ         10000
 
 // screen
 #define REDRAW_DELAY_MS     20      // redraw this long after the last change, so a whole screen doesn't flicker

@@ -60,8 +60,8 @@ endef
 $(foreach p,$(PROJECTS),$(eval $(call PROJECT_template,$(p))))
 
 #--------------------------------------------------------
-# ce_pico_fdd - core1 / write capture / psram / ipc / front panel / captive portal page sources against fakes_fdd/, connection.h skipped via force_include.h
-FDD_FW_SRCS     = core1_main.cpp mfm_write.cpp psram.cpp ipc.cpp utils.cpp written_sectors.cpp host_receive.cpp panel.cpp portal_form.cpp
+# ce_pico_fdd - core1 / write capture / psram / ipc / front panel / captive portal page / beeper sources against fakes_fdd/, connection.h skipped via force_include.h
+FDD_FW_SRCS     = core1_main.cpp mfm_write.cpp psram.cpp ipc.cpp utils.cpp written_sectors.cpp host_receive.cpp panel.cpp portal_form.cpp beeper.cpp
 FDD_FWOBJS      = $(addprefix obj/fdd/fw/,$(FDD_FW_SRCS:.cpp=.o))
 FDD_TOBJS       = $(addprefix obj/fdd/,$(patsubst %.cpp,%.o,tests/test_main.cpp $(wildcard tests/fdd/*.cpp) fakes_fdd/fakes_fdd.cpp))
 FLAGS_fdd       = -std=gnu++17 -g -O0 -Wall -Wno-sign-compare -Wno-unused-variable -Wno-unused-function -Wno-unused-but-set-variable -MMD -MP \

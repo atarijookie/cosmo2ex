@@ -1,27 +1,35 @@
 # FDD front panel - connection and protocol (proposal, v1)
 
 The front panel is a separate small board with its own MCU (RP2040-Zero), display, 3 buttons (or a rotary
-encoder) and an optional piezo. The FDD (main board) only sends text and beeps, and receives button events.
+encoder). The FDD (main board) only sends text, and receives button events. There's no beeper on the panel - it's
+on the FDD board, so the beeps work without a panel too.
 The panel handles everything display/button specific (fonts, rendering, debounce, long press, burn-in).
 
 ## 1. Cable (FDD <-> panel)
 
-4 wires, keyed connector (e.g. JST-XH 4p) so 5V can't end up on a data pin.
+4 wires, keyed connector (e.g. JST-XH 4p) so 5V can't end up on a data pin. Pin order as on the FDD board (SV2 in
+devices/v40_pico_fdd), signal names from the FDD side:
 
 | Pin | Signal | FDD side (Pico 2 W)  | Panel side (RP2040-Zero)      |
 |-----|--------|----------------------|-------------------------------|
-| 1   | GND    | GND                  | GND                           |
-| 2   | 5V     | `5V` net             | -> Schottky -> `5V` pin       |
-| 3   | TX     | GP16 (FDD -> panel)  | GP1 (UART0 RX)                |
-| 4   | RX     | GP17 (panel -> FDD)  | GP0 (UART0 TX)                |
+| 1   | RX     | GP17 (panel -> FDD)  | GP0 (UART0 TX)                |
+| 2   | TX     | GP16 (FDD -> panel)  | GP1 (UART0 RX)                |
+| 3   | 5V     | `5V` net             | -> Schottky -> `5V` pin       |
+| 4   | GND    | GND                  | GND                           |
 
 - data lines are 3.3V on both sides, 5V is power only
+- 1k in series on both data lines on both boards, at the connector - each board protects its own pins against a
+  reversed / wrong cable or plugging in while powered (5V on a data pin: ~1 mA through the clamp diode). 2k in total
+  with ~100 pF of cable and input is a ~0.2 us edge, nothing at 115200 (8.7 us per bit)
+- pull-up on the RX of each board: both firmwares enable the internal one (the RP pads default to pull-down, which
+  would be a break on the line with the other side missing); optional external 10k to 3.3V (the FDD board has R21 at
+  the connector side of R32)
 - FDD: uart0 is the debug port (GP0/GP1), uart1 the keyboard (GP8/GP9), so the panel UART on GP16/GP17 is done
   via PIO (arduino-pico `SerialPIO`, ce_pico_fdd/panel_uart.cpp)
-- FDD: 10k pull-up on GP17 (RX), so a missing panel doesn't produce garbage; the current 2k2 (R20/R21) can stay
-  or be replaced by 10k
-- FDD: GP27 (the former ANALOG_BTNS, SV2 pin 1) is now the captive portal (WiFi setup) button - a button to GND, R32 (1k pull-up)
-  and C3 (100 nF) can stay
+- FDD: GP27 (the former ANALOG_BTNS, SV2 pin 1) is now the beeper - a buzzer with its own generator, switched on /
+  off by the firmware (see ce_pico_fdd/beeper.h), instead of the STEP signal driving it directly
+- FDD: GP1 (the debug UART RX, not used by the firmware) is now the captive portal (WiFi setup) button - a button to
+  GND, internal pull-up; add an external pull-up (e.g. 10k) and 100 nF to GND
 
 ### FDD side (ce_pico_fdd/panel.cpp)
 
@@ -31,8 +39,6 @@ The panel handles everything display/button specific (fonts, rendering, debounce
 - sends `?` at start; on every `I` from the panel it takes the panel size and sends `C` + all lines again
 - adds the `S` flag when a text is longer than the panel line (`cols` / `cols2` from `I`), lines the panel doesn't
   have aren't sent
-- beeps: image loaded (`B50,2700`), host connected (`B100,3200`), host lost (`B400,800`); the floppy step sound is
-  not sent to the panel, that's the beeper on the FDD board (on the STEP signal)
 - keys: long press of enter (`KEH`) starts the captive portal (WiFi setup) or leaves it, the others are only logged for now (left / right are
   meant for browsing the images later)
 
@@ -45,23 +51,18 @@ Only the castellated edge pins are used, not the pads on the bottom (the clones 
 | 5V              | power in                        | from cable 5V through a Schottky (e.g. BAT60A, MBR0520), so USB and FDD 5V don't fight |
 | GND             | GND                             |                                                             |
 | 3V3             | display VCC                     | from the Zero's LDO                                         |
-| GP0             | UART0 TX -> FDD                 | 220R in series (cable protection)                           |
-| GP1             | UART0 RX <- FDD                 | 220R in series                                              |
+| GP0             | UART0 TX -> FDD                 | 1k in series (cable protection)                             |
+| GP1             | UART0 RX <- FDD                 | 1k in series, internal pull-up                              |
 | GP4             | I2C0 SDA -> display             | SSD1306 modules usually have pull-ups; add 4k7 pads anyway  |
 | GP5             | I2C0 SCL -> display             |                                                             |
 | GP26            | BTN_LEFT  / ENC_A               | to GND, internal pull-up, optional 100 nF to GND            |
 | GP27            | BTN_ENTER / ENC_SW              | to GND, internal pull-up, optional 100 nF to GND            |
 | GP28            | BTN_RIGHT / ENC_B               | to GND, internal pull-up, optional 100 nF to GND            |
 | GP29            | strap: input type               | open = 3 buttons, GND = rotary encoder                      |
-| GP14            | BEEP (PWM7 A)                   | -> 1k -> NPN (BC847 / MMBT3904) base; piezo between cable 5V and collector |
-| GP15            | strap: beeper type              | open = passive piezo (PWM tone), GND = active buzzer (DC on/off) |
 | GP9..GP13       | reserved: SPI1 display          | GP10 SCK, GP11 MOSI, GP12 DC, GP13 CS, GP9 RST - for future bigger SPI displays |
 | GP16            | onboard WS2812                  | not used in v1                                              |
 
 - Buttons and encoder share pins, the encoder version only differs in the strap on GP29
-- Beeper: passive piezo transducer (no built-in generator) is recommended so the frequency can be set; an active
-  buzzer (e.g. LPB1475B, 3-14V) also works at 5V, then the frequency is ignored. For a magnetic buzzer add a
-  flyback diode.
 
 ## 3. Serial settings
 
@@ -77,7 +78,6 @@ Only the castellated edge pins are used, not the pads on the bottom (the clones 
 | `?`                         | identify - panel answers with `I...`                                     |
 | `C`                         | clear all lines                                                          |
 | `T<n><j>[flags]:<text>`     | set line `n` to `text`                                                   |
-| `B<ms>[,<hz>]`              | beep for `ms` (1-5000), optional frequency `hz` (100-10000, default 2700); `B0` stops. A new beep replaces the running one. |
 | `D<0-255>`                  | display brightness / contrast                                            |
 | `!BOOT`                     | reboot the panel into the UF2 bootloader (for updates over its USB)      |
 
@@ -100,7 +100,6 @@ Examples:
 T0C2:COSMO2EX
 T2L:A: GAMES1.ST
 T3RI:12/40
-B50,2000
 ```
 
 The panel coalesces changes - it redraws ~20 ms after the last command, so a whole screen sent as 4 `T` lines
@@ -118,11 +117,10 @@ won't flicker.
 - `proto` - protocol version, `1` for this one
 - `lines` - text lines in normal size (e.g. `4` on the 128x32 OLED, `1` on a 12x1 display)
 - `cols` / `cols2` - chars per line in normal / double size
-- `caps` - capability letters: `B` has beeper, `E` encoder (otherwise buttons), `S` supports scroll, `D` supports
-  brightness
+- `caps` - capability letters: `E` encoder (otherwise buttons), `S` supports scroll, `D` supports brightness
 - `fwver` - panel firmware version, e.g. `0.1`
 
-Example: `I1,4,25,18,BSD,0.1` (0.91" 128x32 OLED: 4 lines of 25 chars, 18 in double size)
+Example: `I1,4,25,18,SD,0.1` (0.91" 128x32 OLED: 4 lines of 25 chars, 18 in double size)
 
 `K` events:
 

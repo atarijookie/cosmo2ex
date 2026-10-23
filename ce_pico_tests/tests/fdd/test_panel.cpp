@@ -65,7 +65,7 @@ TEST_CASE_FIXTURE(PanelFixture, "the I message resends the whole screen, with sc
     panelSetLine(2, PANEL_LEFT, 0, "short");
     sendAll();
 
-    fakePanelReceive("I1,4,25,18,BSD,0.1\n");
+    fakePanelReceive("I1,4,25,18,SD,0.1\n");
     std::string tx = sendAll();
 
     CHECK(panelPresent());
@@ -121,14 +121,6 @@ TEST_CASE_FIXTURE(PanelFixture, "flush sends right away, gives up after the time
     panelFlush(50);
     CHECK(millis() - start >= 50);
     CHECK(millis() - start < 60);
-}
-
-TEST_CASE_FIXTURE(PanelFixture, "beeps")
-{
-    sendAll();
-    panelBeep(50);
-    panelBeep(100, 3200);
-    CHECK(sendAll() == "B50\nB100,3200\n");
 }
 
 TEST_CASE_FIXTURE(PanelFixture, "text is cut to the max length, non-printable chars become spaces")

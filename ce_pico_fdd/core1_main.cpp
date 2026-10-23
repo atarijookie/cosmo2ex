@@ -16,6 +16,7 @@
 #include "ipc.h"
 #include "mfm_write.h"
 #include "core1_main.h"
+#include "beeper.h"
 
 volatile bool core1running = false;
 
@@ -73,6 +74,8 @@ void __isr floppyStepISR(uint gpio, uint32_t event_mask)
     if(BIT_IS_H(PIN_MOT_EN)) {       // motor not enabled? Skip the following code.
         return;
     }
+
+    beeperStepClick();
 
     if(BIT_IS_H(PIN_DIR)) {  // direction is High? track--
         if(hwPosition.track > 0) {
@@ -608,4 +611,6 @@ void core1Loop(void)
 
     // store finished writes, prepare buffers for next ones
     handleWriteBuffers();
+
+    beeperLoop();
 }

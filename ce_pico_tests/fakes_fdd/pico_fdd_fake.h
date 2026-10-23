@@ -47,6 +47,7 @@ typedef void (*gpio_irq_callback_t)(uint gpio, uint32_t event_mask);
 
 void gpio_put(uint gpio, bool value);
 bool gpio_get(uint gpio);
+inline void gpio_init(uint) {}
 inline void gpio_set_function(uint, int) {}
 inline void gpio_set_dir(uint, bool) {}
 inline void gpio_pull_up(uint) {}

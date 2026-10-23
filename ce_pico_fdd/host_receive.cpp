@@ -7,7 +7,7 @@
 #include "connection.h"
 #include "utils.h"
 #include "display.h"
-#include "panel.h"
+#include "beeper.h"
 #include "ipc.h"
 #include "host_receive.h"
 
@@ -193,7 +193,7 @@ void handleImageReceived(void)
         diskChanged = true;
         imageState = IMAGE_LOADED;
         showRunningStateOnDisplay();
-        panelBeep(BEEP_IMAGE_LOADED_MS, BEEP_IMAGE_LOADED_HZ);
+        beep(BEEP_IMAGE_LOADED_MS);
     }
     else                // image receiving started?
     {

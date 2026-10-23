@@ -103,27 +103,10 @@ TEST_CASE("invalid text lines")
     parse("T", false);
 }
 
-TEST_CASE("beep")
+TEST_CASE("no beep - the beeper is on the FDD board")
 {
-    Command cmd = parse("B50");
-    CHECK(cmd.type == CMD_BEEP);
-    CHECK(cmd.beepMs == 50);
-    CHECK(cmd.beepHz == BEEP_DEFAULT_HZ);
-
-    cmd = parse("B50,2000");
-    CHECK(cmd.beepMs == 50);
-    CHECK(cmd.beepHz == 2000);
-
-    CHECK(parse("B0").beepMs == 0);             // stop
-    CHECK(parse("B5000").beepMs == 5000);
-
-    parse("B", false);
-    parse("B5001", false);
-    parse("B50,", false);
-    parse("B50,99", false);
-    parse("B50,10001", false);
-    parse("B50x", false);
-    parse("B123456", false);
+    parse("B50", false);
+    parse("B50,2000", false);
 }
 
 TEST_CASE("brightness")

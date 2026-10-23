@@ -1,17 +1,16 @@
-// Cosmo2ex FDD front panel - RP2040-Zero with a display, 3 buttons or a rotary encoder, and a beeper.
+// Cosmo2ex FDD front panel - RP2040-Zero with a display, 3 buttons or a rotary encoder.
 // Talks to the FDD over UART, see protocol.md. The same messages are accepted on the USB serial too (for testing
 // the panel from a PC terminal), and the panel's messages are sent there as well when a terminal is open.
 
 #include <Arduino.h>
+#include <hardware/gpio.h>
 
 #include "defs.h"
 #include "protocol.h"
 #include "keys.h"
 #include "screen.h"
-#include "beeper.h"
 
 static bool hasEncoder;
-static bool activeBuzzer;
 
 static LineReceiver rxUart;
 static LineReceiver rxUsb;
@@ -35,7 +34,6 @@ static void sendIdentify(void)
     char caps[8];
     char* c = caps;
 
-    *c++ = 'B';
     if(hasEncoder) {
         *c++ = 'E';
     }
@@ -61,7 +59,6 @@ static void handleCommand(const Command& cmd, uint32_t now)
         case CMD_IDENTIFY:   sendIdentify();                                                 break;
         case CMD_CLEAR:      screenClear(now);                                               break;
         case CMD_TEXT:       screenSetLine(cmd.line, cmd.justify, cmd.flags, cmd.text, now); break;
-        case CMD_BEEP:       beeperStart(cmd.beepMs, cmd.beepHz, now);                       break;
         case CMD_BRIGHTNESS: screenSetBrightness(cmd.brightness, now);                       break;
         case CMD_BOOTLOADER: rp2040.rebootToBootloader();                                    break;
     }
@@ -116,22 +113,20 @@ static void handleEncoder(uint32_t now)
 void setup(void)
 {
     pinMode(PIN_STRAP_ENCODER, INPUT_PULLUP);
-    pinMode(PIN_STRAP_ACTIVE, INPUT_PULLUP);
     pinMode(PIN_BTN_LEFT, INPUT_PULLUP);
     pinMode(PIN_BTN_ENTER, INPUT_PULLUP);
     pinMode(PIN_BTN_RIGHT, INPUT_PULLUP);
-    delay(1);                           // let the pull-ups settle before reading the straps
+    delay(1);                           // let the pull-ups settle before reading the strap
 
     hasEncoder = digitalRead(PIN_STRAP_ENCODER) == LOW;
-    activeBuzzer = digitalRead(PIN_STRAP_ACTIVE) == LOW;
 
     Serial.begin(115200);               // USB
     Serial1.setTX(PIN_UART_TX);
     Serial1.setRX(PIN_UART_RX);
     Serial1.begin(UART_BAUD);
+    gpio_pull_up(PIN_UART_RX);          // the pads default to pull-down - with no FDD that's a break, not idle
 
     screenInit();
-    beeperInit(activeBuzzer);
 
     if(hasEncoder) {
         attachInterrupt(digitalPinToInterrupt(PIN_BTN_LEFT), encoderIsr, CHANGE);
@@ -156,6 +151,5 @@ void loop(void)
     }
     handleKey(keyEnter, PIN_BTN_ENTER, 'E', now);       // button or encoder push
 
-    beeperLoop(now);
     screenLoop(now);
 }

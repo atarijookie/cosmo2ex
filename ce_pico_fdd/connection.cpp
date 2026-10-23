@@ -8,6 +8,7 @@
 #include "settings.h"
 #include "display.h"
 #include "panel.h"
+#include "beeper.h"
 #include "ipc.h"
 #include "host_receive.h"
 
@@ -324,9 +325,9 @@ void connectToHost(void)
         if(connectedToHost) {     // now in connected state, display state on display
             imageState = IMAGE_NOT_LOADED;
             showRunningStateOnDisplay();
-            panelBeep(BEEP_HOST_CONNECTED_MS, BEEP_HOST_CONNECTED_HZ);
+            beep(BEEP_HOST_CONNECTED_MS);
         } else {
-            panelBeep(BEEP_HOST_LOST_MS, BEEP_HOST_LOST_HZ);
+            beep(BEEP_HOST_LOST_MS);
         }
     }
 

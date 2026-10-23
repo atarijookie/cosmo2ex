@@ -222,17 +222,6 @@ void panelSetLine(int line, char justify, uint8_t flags, const char* text)
     l.text[i] = 0;
 }
 
-void panelBeep(uint16_t ms, uint16_t hz)
-{
-    char msg[24];
-    if(hz) {
-        sprintf(msg, "B%u,%u\n", ms, hz);
-    } else {
-        sprintf(msg, "B%u\n", ms);
-    }
-    queue(msg);                 // queue full - the beep is dropped
-}
-
 void panelLoop(void)
 {
     receive();

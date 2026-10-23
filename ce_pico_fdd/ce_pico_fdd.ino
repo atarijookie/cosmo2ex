@@ -20,6 +20,7 @@
 #include "host_receive.h"
 #include "panel.h"
 #include "captive_portal.h"
+#include "beeper.h"
 
 // Core 1 (setup1() + loop1()) does the floppy streaming and write capture, core 0 (setup() + loop()) the rest.
 // The WiFi chip and lwIP are started by the arduino core before setup(), they run in the background (IRQ) on core 0.
@@ -85,10 +86,9 @@ void waitForCore1Running(void)
 
 void setup(void)
 {
-    // uart0 for debug strings (debug() writes to it directly)
+    // uart0 for debug strings (debug() writes to it directly) - TX only, its RX pin is the captive portal button
     uart_init(uart0, 115200);
     gpio_set_function(PIN_TXD_DEBUG, UART_FUNCSEL_NUM(uart0, PIN_TXD_DEBUG));
-    gpio_set_function(PIN_RXD_DEBUG, UART_FUNCSEL_NUM(uart0, PIN_RXD_DEBUG));
 
     debug("\n\nsetup() starting\n");
 
@@ -112,6 +112,7 @@ void setup(void)
         gpio_put(outputs[i], levels[i]);
     }
 
+    beeperInit();
     displayInit();
     buttonsInit();
 

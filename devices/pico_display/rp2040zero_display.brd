@@ -2747,8 +2747,8 @@ design rules under a new name.</description>
 <attribute name="OC_FARNELL" value="unknown" x="-45.87875" y="-34.051875" size="1.778" layer="27" rot="R270" display="off"/>
 <attribute name="VALUE" x="10.38225" y="13.573125" size="1.27" layer="27" ratio="10" rot="R270"/>
 </element>
-<element name="R1" library="resistor" package="R0603" value="220R" x="6.429375" y="18.7325" smashed="yes" rot="MR90"/>
-<element name="R2" library="resistor" package="R0603" value="220R" x="6.429375" y="15.160625" smashed="yes" rot="MR270"/>
+<element name="R1" library="resistor" package="R0603" value="1k" x="6.429375" y="18.7325" smashed="yes" rot="MR90"/>
+<element name="R2" library="resistor" package="R0603" value="1k" x="6.429375" y="15.160625" smashed="yes" rot="MR270"/>
 <element name="D1" library="diode" package="DO214AC" value="SK110-DIO" x="5.715" y="10.398125" smashed="yes" rot="MR90"/>
 <element name="R3" library="resistor" package="R0603" value="0R" x="8.73125" y="1.190625" smashed="yes" rot="MR180"/>
 <element name="S1" library="DTSM-62N-V-B" package="DTSM62NVB" value="DTSM-62N-V-B" x="5.800625" y="4.099375" smashed="yes">
@@ -2781,6 +2781,7 @@ design rules under a new name.</description>
 </element>
 <element name="R5" library="resistor" package="R0603" value="2k2" x="3.81" y="15.636875" smashed="yes" rot="MR0"/>
 <element name="R6" library="resistor" package="R0603" value="2k2" x="3.81" y="18.176875" smashed="yes" rot="MR0"/>
+<element name="R4" library="resistor" package="R0603" value="10k" x="1.27" y="-3.175"/>
 </elements>
 <signals>
 <signal name="TX_PANEL">
@@ -2795,6 +2796,8 @@ design rules under a new name.</description>
 <wire x1="6.429375" y1="16.010625" x2="7.166875" y2="16.010625" width="0.3048" layer="16"/>
 <wire x1="7.166875" y1="16.010625" x2="7.699375" y2="15.478125" width="0.3048" layer="16"/>
 <wire x1="7.699375" y1="15.478125" x2="8.73125" y2="15.478125" width="0.3048" layer="16"/>
+<contactref element="R4" pad="1"/>
+<wire x1="0.42" y1="-3.175" x2="7.699375" y2="15.478125" width="0" layer="19" extent="1-16"/>
 </signal>
 <signal name="5V">
 <contactref element="SV1" pad="3"/>
@@ -2964,39 +2967,10 @@ design rules under a new name.</description>
 <wire x1="24.209375" y1="5.08" x2="26.67" y2="5.08" width="0.3048" layer="16"/>
 <wire x1="26.67" y1="5.08" x2="27.701875" y2="4.048125" width="0.3048" layer="16"/>
 <wire x1="27.701875" y1="4.048125" x2="27.701875" y2="3.730625" width="0.3048" layer="16"/>
+<contactref element="R4" pad="2"/>
+<wire x1="2.12" y1="-3.175" x2="3.81" y2="3.095625" width="0" layer="19" extent="1-16"/>
 </signal>
 </signals>
-<errors>
-<approved hash="6,1,a8e002990290a8e9"/>
-<approved hash="6,1,f5725874587ff579"/>
-<approved hash="6,1,9e4ed137d12f9e56"/>
-<approved hash="6,1,8f0ad2733257f9bf"/>
-<approved hash="6,1,cf7222742275cf73"/>
-<approved hash="6,1,e96518b70c32fbfc"/>
-<approved hash="6,1,e3977fe0fc70661b"/>
-<approved hash="6,1,8691f7b7f56f8754"/>
-<approved hash="6,1,85ae4d894d8285a5"/>
-<approved hash="6,1,2b70cbe6ca492adf"/>
-<approved hash="6,1,e49125b7276e8757"/>
-<approved hash="6,1,8673cbf0c5c6d73b"/>
-<approved hash="6,1,c2b99bd4b5951afd"/>
-<approved hash="6,1,a6926bb6556e6756"/>
-<approved hash="6,1,1270e906e89613e0"/>
-<approved hash="6,1,c00b07519ae643b9"/>
-<approved hash="6,1,baa00a260b88bb0e"/>
-<approved hash="6,1,78936db56b6fa756"/>
-<approved hash="6,1,db057c227c3bdb1c"/>
-<approved hash="6,1,2bb9c7768cf1d21a"/>
-<approved hash="6,1,01611f590017f834"/>
-<approved hash="6,1,6b8ea7fb0b39edba"/>
-<approved hash="6,1,8491edbbef638754"/>
-<approved hash="6,1,a6e081e68048a74e"/>
-<approved hash="6,1,a6af29882981a6a6"/>
-<approved hash="6,1,63e0e4e6e54b624d"/>
-<approved hash="6,1,e6912bb32d6a8753"/>
-<approved hash="6,1,a0ae558a2b52676a"/>
-<approved hash="6,1,f7065f215f3af71d"/>
-</errors>
 </board>
 </drawing>
 </eagle>

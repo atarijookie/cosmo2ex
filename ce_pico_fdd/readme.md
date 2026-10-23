@@ -43,8 +43,17 @@
 
 - the display and buttons are on a separate front panel (ce_pico_display, RP2040-Zero), connected over UART on GP16
   (TX) / GP17 (RX) - see ce_pico_display/protocol.md; panel.cpp has the panel logic, panel_uart.cpp the PIO UART
-- button on GP27 (to GND): long press (1 s) starts the captive portal (WiFi setup), the same as a long press of
-  enter on the front panel; another long press leaves it without saving
+- button on GP1 (to GND, instead of the unused debug UART RX - the debug output on GP0 stays): long press (1 s)
+  starts the captive portal (WiFi setup), the same as a long press of enter on the front panel; another long press
+  leaves it without saving
+
+## Beeper
+
+- on GP27 (H = on), a buzzer with its own generator - the firmware only switches it on / off, it's on the FDD board
+  (not on the front panel), so it works without a panel too
+- a 2 ms click on every head step (from the STEP ISR, only with the motor on), 50 ms when an image is loaded, 100 ms
+  when the host connects, 400 ms when it's lost
+- beeper.cpp - core 1 owns the pin and ends all the beeps in its loop, core 0 only asks for them
 
 ## WiFi setup (captive portal)
 

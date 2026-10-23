@@ -81,31 +81,6 @@ static bool parseText(const char* p, Command& cmd)
     return true;
 }
 
-static bool parseBeep(const char* p, Command& cmd)
-{
-    uint32_t ms, hz = BEEP_DEFAULT_HZ;
-
-    if(!parseNumber(p, BEEP_MAX_MS, ms)) {
-        return false;
-    }
-
-    if(*p == ',') {
-        p++;
-        if(!parseNumber(p, BEEP_MAX_HZ, hz) || hz < BEEP_MIN_HZ) {
-            return false;
-        }
-    }
-
-    if(*p) {
-        return false;
-    }
-
-    cmd.beepMs = ms;
-    cmd.beepHz = hz;
-    cmd.type = CMD_BEEP;
-    return true;
-}
-
 bool parseCommand(const char* line, Command& cmd)
 {
     cmd.type = CMD_NONE;
@@ -128,9 +103,6 @@ bool parseCommand(const char* line, Command& cmd)
     switch(line[0]) {
         case 'T':
             return parseText(line + 1, cmd);
-
-        case 'B':
-            return parseBeep(line + 1, cmd);
 
         case 'D': {
             const char* p = line + 1;

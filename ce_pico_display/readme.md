@@ -1,9 +1,8 @@
 # CosmosEx pico - FDD front panel
 
-- RP2040-Zero (Waveshare or its clones - same pinout), 0.91" 128x32 SSD1306 I2C OLED, 3 buttons or a rotary encoder,
-  optional piezo
-- connected to the FDD (ce_pico_fdd) with 4 wires: GND, 5V, TX, RX - the FDD sends text and beeps, the panel sends
-  button events; connections and the protocol are in [protocol.md](protocol.md)
+- RP2040-Zero (Waveshare or its clones - same pinout), 0.91" 128x32 SSD1306 I2C OLED, 3 buttons or a rotary encoder
+- connected to the FDD (ce_pico_fdd) with 4 wires: GND, 5V, TX, RX - the FDD sends text, the panel sends button
+  events (the beeper is on the FDD board); connections and the protocol are in [protocol.md](protocol.md)
 - update: drag & drop `ce_pico_display.uf2` onto the RPI-RP2 drive - hold BOOT while plugging in the USB, or send
   `!BOOT` to the panel (from the FDD, or from a terminal on the panel's USB serial)
 
@@ -53,7 +52,6 @@ Open a terminal on the panel's USB serial port (any baud rate) and type the mess
 T0C2:COSMO2EX
 T2L:A: GAMES1.ST
 T3RI:12/40
-B100
 ```
 
 The key events (`KES`, `KLH`, ...) and the `I...` answer show up in the terminal too.
@@ -63,8 +61,7 @@ The key events (`KES`, `KLH`, ...) and the `I...` answer show up in the terminal
 - protocol.cpp and keys.cpp are hardware independent and tested on the host - `make -C ce_pico_tests test-display`
 - another display: change the U8g2 constructor, the fonts and LINE_HEIGHT in screen.cpp - the FDD adapts to the lines
   and columns the panel reports in its `I` message
-- straps (read at start): GP29 to GND = rotary encoder instead of the buttons, GP15 to GND = active buzzer (DC on/off)
-  instead of a passive piezo (PWM tone)
+- strap (read at start): GP29 to GND = rotary encoder instead of the buttons
 - encoder direction / clicks: ENC_REVERSE and ENC_STEPS_PER_DETENT in defs.h
 
 ## License

@@ -14,7 +14,6 @@
 #define CMD_IDENTIFY        1   // ?
 #define CMD_CLEAR           2   // C
 #define CMD_TEXT            3   // T<n><j>[flags]:<text>
-#define CMD_BEEP            4   // B<ms>[,<hz>]
 #define CMD_BRIGHTNESS      5   // D<0-255>
 #define CMD_BOOTLOADER      6   // !BOOT
 
@@ -33,8 +32,6 @@ typedef struct {
     uint8_t  justify;
     uint8_t  flags;
     char     text[MAX_TEXT_LEN + 1];
-    uint16_t beepMs;        // CMD_BEEP
-    uint16_t beepHz;
     uint8_t  brightness;    // CMD_BRIGHTNESS
 } Command;
 

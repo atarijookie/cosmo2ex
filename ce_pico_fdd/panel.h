@@ -21,18 +21,9 @@
 
 #define PANEL_TEXT_MAX      63
 
-// beeps on the panel - the floppy step sound is not here, that's the beeper on the FDD board (on the STEP signal)
-#define BEEP_IMAGE_LOADED_MS    50
-#define BEEP_IMAGE_LOADED_HZ    2700
-#define BEEP_HOST_CONNECTED_MS  100
-#define BEEP_HOST_CONNECTED_HZ  3200
-#define BEEP_HOST_LOST_MS       400
-#define BEEP_HOST_LOST_HZ       800
-
 void panelInit(void);
 void panelClear(void);
 void panelSetLine(int line, char justify, uint8_t flags, const char* text);
-void panelBeep(uint16_t ms, uint16_t hz = 0);       // hz 0 = panel default
 void panelLoop(void);                   // receive, send what's queued - call from the main loop
 void panelFlush(uint32_t timeoutMs);    // send the changes now, wait until sent (at most timeoutMs)
 

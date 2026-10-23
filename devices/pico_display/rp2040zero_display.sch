@@ -9042,8 +9042,8 @@ Source: AVX .. aphvc.pdf</description>
 <parts>
 <part name="U1" library="RP2040-ZERO" deviceset="RP2040-ZERO" device="'"/>
 <part name="SV1" library="con-lstb" deviceset="MA04-1" device=""/>
-<part name="R1" library="resistor" deviceset="R-EU_" device="R0603" value="220R"/>
-<part name="R2" library="resistor" deviceset="R-EU_" device="R0603" value="220R"/>
+<part name="R1" library="resistor" deviceset="R-EU_" device="R0603" value="1k"/>
+<part name="R2" library="resistor" deviceset="R-EU_" device="R0603" value="1k"/>
 <part name="GND1" library="supply1" deviceset="GND" device=""/>
 <part name="D1" library="diode" deviceset="DIODE-" device="DO214AC" value="SK110-DIO"/>
 <part name="GND2" library="supply1" deviceset="GND" device=""/>
@@ -9066,6 +9066,8 @@ Source: AVX .. aphvc.pdf</description>
 <part name="P+2" library="supply1" deviceset="VCC" device=""/>
 <part name="P+3" library="supply1" deviceset="VCC" device=""/>
 <part name="P+4" library="supply1" deviceset="VCC" device=""/>
+<part name="R4" library="resistor" deviceset="R-EU_" device="R0603" value="10k"/>
+<part name="P+5" library="supply1" deviceset="VCC" device=""/>
 </parts>
 <sheets>
 <sheet>
@@ -9114,6 +9116,8 @@ Source: AVX .. aphvc.pdf</description>
 <instance part="P+2" gate="VCC" x="149.86" y="91.44"/>
 <instance part="P+3" gate="VCC" x="160.02" y="91.44"/>
 <instance part="P+4" gate="VCC" x="109.22" y="45.72" rot="MR90"/>
+<instance part="R4" gate="G$1" x="30.48" y="48.26" rot="R90"/>
+<instance part="P+5" gate="VCC" x="30.48" y="58.42" rot="MR0"/>
 </instances>
 <busses>
 </busses>
@@ -9129,9 +9133,13 @@ Source: AVX .. aphvc.pdf</description>
 <net name="RX_PANEL" class="0">
 <segment>
 <pinref part="SV1" gate="1" pin="2"/>
-<wire x1="15.24" y1="38.1" x2="33.02" y2="38.1" width="0.1524" layer="91"/>
+<wire x1="15.24" y1="38.1" x2="30.48" y2="38.1" width="0.1524" layer="91"/>
 <label x="16.51" y="38.608" size="0.8128" layer="95" font="vector"/>
 <pinref part="R2" gate="G$1" pin="1"/>
+<pinref part="R4" gate="G$1" pin="1"/>
+<wire x1="30.48" y1="38.1" x2="33.02" y2="38.1" width="0.1524" layer="91"/>
+<wire x1="30.48" y1="43.18" x2="30.48" y2="38.1" width="0.1524" layer="91"/>
+<junction x="30.48" y="38.1"/>
 </segment>
 </net>
 <net name="5V" class="0">
@@ -9343,6 +9351,11 @@ Source: AVX .. aphvc.pdf</description>
 <pinref part="U1" gate="G$1" pin="3V3"/>
 <wire x1="91.44" y1="45.72" x2="106.68" y2="45.72" width="0.1524" layer="91"/>
 <pinref part="P+4" gate="VCC" pin="VCC"/>
+</segment>
+<segment>
+<pinref part="R4" gate="G$1" pin="2"/>
+<pinref part="P+5" gate="VCC" pin="VCC"/>
+<wire x1="30.48" y1="53.34" x2="30.48" y2="55.88" width="0.1524" layer="91"/>
 </segment>
 </net>
 </nets>
