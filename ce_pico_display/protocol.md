@@ -17,9 +17,24 @@ The panel handles everything display/button specific (fonts, rendering, debounce
 
 - data lines are 3.3V on both sides, 5V is power only
 - FDD: uart0 is the debug port (GP0/GP1), uart1 the keyboard (GP8/GP9), so the panel UART on GP16/GP17 is done
-  via PIO (one TX + one RX state machine)
+  via PIO (arduino-pico `SerialPIO`, ce_pico_fdd/panel_uart.cpp)
 - FDD: 10k pull-up on GP17 (RX), so a missing panel doesn't produce garbage; the current 2k2 (R20/R21) can stay
-  or be replaced by 10k. GP27 (ANALOG_BTNS), R32 and C3 are no longer needed for the panel.
+  or be replaced by 10k
+- FDD: GP27 (the former ANALOG_BTNS, SV2 pin 1) is now the captive portal button - a button to GND, R32 (1k pull-up)
+  and C3 (100 nF) can stay
+
+### FDD side (ce_pico_fdd/panel.cpp)
+
+- keeps the 4 lines that should be on the panel, sends only the changed ones; sending never waits - the messages are
+  queued and written as the PIO fifo (8 bytes) has space, except `displayMessage()`, which waits up to 50 ms, as its
+  callers often block the main loop right after it (connecting to wifi / host)
+- sends `?` at start; on every `I` from the panel it takes the panel size and sends `C` + all lines again
+- adds the `S` flag when a text is longer than the panel line (`cols` / `cols2` from `I`), lines the panel doesn't
+  have aren't sent
+- beeps: image loaded (`B50,2700`), host connected (`B100,3200`), host lost (`B400,800`); the floppy step sound is
+  not sent to the panel, that's the beeper on the FDD board (on the STEP signal)
+- keys: long press of enter (`KEH`) starts the captive portal, the others are only logged for now (left / right are
+  meant for browsing the images later)
 
 ## 2. Panel board (RP2040-Zero, Waveshare pinout)
 

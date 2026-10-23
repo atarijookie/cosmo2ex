@@ -7,6 +7,7 @@
 #include "utils.h"
 #include "settings.h"
 #include "display.h"
+#include "panel.h"
 #include "ipc.h"
 #include "host_receive.h"
 
@@ -39,18 +40,18 @@ extern int imageState;
 
 void storeMacAddress(void);
 
+// image name big on top, host and wifi below
 void showRunningStateOnDisplay(void)
 {
-    char msg1[128];
-    sprintf(msg1, "ssid: %s", Settings.ssid);
+    panelSetLine(0, PANEL_CENTER, PANEL_DOUBLE | PANEL_BOLD, imageFileName[0] ? imageFileName : "no image");
+    panelSetLine(1, PANEL_LEFT, 0, "");
 
-    char msg2[64];
-    sprintf(msg2, "host: %s %c", hostIpString.c_str(), Settings.ikbdEnabled ? 'I' : ' ');
+    char msg[64];
+    snprintf(msg, sizeof(msg), "host: %s%s", hostIpString.c_str(), Settings.ikbdEnabled ? " I" : "");
+    panelSetLine(2, PANEL_LEFT, 0, msg);
 
-    char msg3[64];
-    sprintf(msg3, "image: %s", imageFileName);
-
-    displayMessage(msg1, msg2, msg3);
+    snprintf(msg, sizeof(msg), "ssid: %s", Settings.ssid);
+    panelSetLine(3, PANEL_LEFT, 0, msg);
 }
 
 void udpInitialize(void)
@@ -323,6 +324,9 @@ void connectToHost(void)
         if(connectedToHost) {     // now in connected state, display state on display
             imageState = IMAGE_NOT_LOADED;
             showRunningStateOnDisplay();
+            panelBeep(BEEP_HOST_CONNECTED_MS, BEEP_HOST_CONNECTED_HZ);
+        } else {
+            panelBeep(BEEP_HOST_LOST_MS, BEEP_HOST_LOST_HZ);
         }
     }
 

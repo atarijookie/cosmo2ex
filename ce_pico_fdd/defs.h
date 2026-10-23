@@ -61,7 +61,8 @@
 ///////////////////////////
 
 #define SPI_PORT spi0
-#define I2C_PORT i2c0
+
+#define PANEL_UART_BAUD     115200
 
 
 #define PIN_TXD_DEBUG       0
@@ -80,15 +81,15 @@
 #define PIN_CS              13
 #define PIN_RDATA           14
 #define PIN_DSKCHG          15
-#define PIN_SDA             16      // input/output
-#define PIN_SCL             17      // output
+#define PIN_PANEL_TX        16      // front panel UART (PIO), see ce_pico_display/protocol.md
+#define PIN_PANEL_RX        17
 #define PIN_KEYB_RX         18
 #define PIN_WPROTECT        19
 #define PIN_TRACK00         20
 #define PIN_INDEX           21
 #define PIN_DENSITY         22
 #define PIN_WDATA           26
-#define PIN_ANALOG_BTNS     27
+#define PIN_CAPTIVE_BTN     27      // button to GND, long press starts the captive portal
 #define PIN_FLCC_OE         28
 
 #define BIT_IS_H(PIN)   (gpio_get(PIN) != 0)

@@ -7,6 +7,7 @@
 #include "connection.h"
 #include "utils.h"
 #include "display.h"
+#include "panel.h"
 #include "ipc.h"
 #include "host_receive.h"
 
@@ -128,6 +129,7 @@ void showImageLoadProgress(void)
     for(int i=0; i<20; i++) {
         progress[i] = (percent > (i * 5)) ? '*' : ' ';
     }
+    sprintf(progress + 20, " %3u%%", (unsigned) MIN(percent, 100));
 
     displayMessage("Loading image", imageFileName, progress);  // show on display
 }
@@ -191,6 +193,7 @@ void handleImageReceived(void)
         diskChanged = true;
         imageState = IMAGE_LOADED;
         showRunningStateOnDisplay();
+        panelBeep(BEEP_IMAGE_LOADED_MS, BEEP_IMAGE_LOADED_HZ);
     }
     else                // image receiving started?
     {

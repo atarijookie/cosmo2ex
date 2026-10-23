@@ -1,78 +1,35 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
-#include "hardware/spi.h"
-#include "hardware/i2c.h"
-#include "hardware/dma.h"
-#include "hardware/timer.h"
-#include "hardware/uart.h"
-#include "hardware/watchdog.h"
 
 #include "defs.h"
 #include "display.h"
 #include "utils.h"
-#include "ssd1306.h"
-#include "adafruit_gfx.h"
-#include "lcdfont.h"
+#include "panel.h"
 
-#define SCREEN_WIDTH 128    // OLED display width, in pixels
-#define SCREEN_HEIGHT 32    // OLED display height, in pixels
+#define DISPLAY_FLUSH_MS    50      // displayMessage() waits at most this long for the panel UART
 
-const uint8_t DISPLAY_I2C_ADDRESS = 0x3C; // Common for SSD1306 displays
-bool displayPresent = false;
-
-SSD1306* display;
-Adafruit_GFX* gfx;
-
-bool isDisplayConnected(uint8_t address)
-{
-    uint8_t rxdata;
-    int ret = i2c_read_blocking(i2c_default, address, &rxdata, 1, false);
-
-    return (ret >= 0);  // -1 on error, zero or positive values mean success
-}
+extern uint16_t version[2];
 
 void displayInit(void)
 {
-    // I2C Initialisation. Using it at 400Khz.
-    i2c_init(I2C_PORT, 400*1000);
+    panelInit();
 
-    gpio_set_function(PIN_SDA, GPIO_FUNC_I2C);
-    gpio_set_function(PIN_SCL, GPIO_FUNC_I2C);
-    gpio_pull_up(PIN_SDA);
-    gpio_pull_up(PIN_SCL);
+    char fw[24];
+    sprintf(fw, "fw 20%02x-%02x-%02x", version[0] & 0xff, version[1] >> 8, version[1] & 0xff);
 
-    display = new SSD1306();
-
-    displayPresent = isDisplayConnected(DISPLAY_I2C_ADDRESS);
-
-    if(!displayPresent) {
-        debug("displayInit - i2c display not connected\n");
-        return;
-    }
-    debug("displayInit - i2c display found\n");
-
-    bool res = display->begin(SSD1306_SWITCHCAPVCC);    // low level OLED library
-    display->clearDisplay();
-    display->display();
-
-    gfx = new Adafruit_GFX(SSD1306_LCDWIDTH, SSD1306_LCDHEIGHT, display);    // font displaying library
-
-    displayMessage("CE starting");
+    panelSetLine(0, PANEL_CENTER, PANEL_DOUBLE | PANEL_BOLD, "COSMO2EX FDD");
+    panelSetLine(2, PANEL_CENTER, 0, fw);
+    panelSetLine(3, PANEL_CENTER, 0, "starting");
+    panelFlush(DISPLAY_FLUSH_MS);
 }
 
+// Up to 3 lines of text, the 4th line is cleared. Sent right away, as the callers often block the main loop after
+// this (connecting to wifi / host).
 void displayMessage(const char* msg1, const char* msg2, const char* msg3)
 {
-    if(!displayPresent) {
-        return;
-    }
-
-    // debug("displayMessage: %s, %s, %s\n", msg1, msg2, msg3);
-
-    // display->clearDisplay();
-
-    // if(msg1) gfx->drawString(0,   CHAR_H, msg1);
-    // if(msg2) gfx->drawString(0, 2*CHAR_H, msg2);
-    // if(msg3) gfx->drawString(0, 3*CHAR_H, msg3);
-
-    // display->display();
+    panelSetLine(0, PANEL_LEFT, 0, msg1 ? msg1 : "");
+    panelSetLine(1, PANEL_LEFT, 0, msg2 ? msg2 : "");
+    panelSetLine(2, PANEL_LEFT, 0, msg3 ? msg3 : "");
+    panelSetLine(3, PANEL_LEFT, 0, "");
+    panelFlush(DISPLAY_FLUSH_MS);
 }

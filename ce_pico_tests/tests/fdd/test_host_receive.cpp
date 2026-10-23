@@ -8,11 +8,13 @@
 #include "doctest.h"
 #include "fakes_fdd.h"
 #include "fake_connection.h"
+#include "fake_panel_uart.h"
 
 #include "defs.h"
 #include "utils.h"
 #include "ipc.h"
 #include "host_receive.h"
+#include "panel.h"
 
 extern IPCbuffer buffersForCore1[IPC_BUFFER_LARGE_COUNT];  // ipc.cpp
 extern int imageState;
@@ -261,6 +263,29 @@ TEST_CASE_FIXTURE(HostReceiveFixture, "image start and end") {
     CHECK(imageState == IMAGE_LOADED);
     CHECK(imgTracks == 80);
     CHECK(imgSectorsPerTrack == 9);
+}
+
+TEST_CASE_FIXTURE(HostReceiveFixture, "loaded image beeps on the front panel, the start doesn't") {
+    fakePanelReset();
+    panelInit();
+    for (int i = 0; i < 100; i++) {
+        panelLoop();
+    }
+
+    fakePanelTx.clear();
+    fakeHostReceive(message(ATN_SEND_WHOLE_IMAGE, imageData(false, "GAME.ST"), imageData(false, "GAME.ST").size()));
+    mainLoop();
+    for (int i = 0; i < 100; i++) {
+        panelLoop();
+    }
+    CHECK(fakePanelTx.find('B') == std::string::npos);
+
+    fakeHostReceive(message(ATN_SEND_WHOLE_IMAGE, imageData(true, "GAME.ST"), imageData(true, "GAME.ST").size()));
+    mainLoop();
+    for (int i = 0; i < 100; i++) {
+        panelLoop();
+    }
+    CHECK(fakePanelTx.find("B50,2700\n") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(HostReceiveFixture, "image message longer than 128 bytes - the rest is dropped, the next message is found") {

@@ -18,6 +18,7 @@
 #include "ipc.h"
 #include "written_sectors.h"
 #include "host_receive.h"
+#include "panel.h"
 
 // Core 1 (setup1() + loop1()) does the floppy streaming and write capture, core 0 (setup() + loop()) the rest.
 // The WiFi chip and lwIP are started by the arduino core before setup(), they run in the background (IRQ) on core 0.
@@ -111,6 +112,7 @@ void setup(void)
     }
 
     displayInit();
+    buttonsInit();
 
     loadSettingsFromEeprom();
 
@@ -250,6 +252,9 @@ void loop(void)
         //---------------------------
         // check the button state and press duration
         handleAllButtons();
+
+        // front panel: send the display changes, receive the key events
+        panelLoop();
 
         // handle ikbd data transfer
         // ikbdHandling();

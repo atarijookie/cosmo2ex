@@ -1,19 +1,12 @@
 #ifndef __BUTTONS_H__
 #define __BUTTONS_H__
 
-#define BTN_PRESS_SHORT     500
-#define BTN_PRESS_SAVE      2000
-#define BTN_PRESS_CAPTIVE   5000
+#define BTN_DEBOUNCE_MS     20
+#define BTN_LONG_PRESS_MS   1000    // same as the long press on the front panel
 
-#define BTN_NONE    0
-#define BTN_PREV    1
-#define BTN_SELECT  2
-#define BTN_NEXT    3
+void buttonsInit(void);
+void handleAllButtons(void);        // the button on the FDD board - call from the main loop
 
-void handleAnalogButtons(void);
-void onButtonStateChanged(int buttonState, uint32_t now, uint32_t& buttonPressTime);
-void duringButtonPressed(uint32_t now, uint32_t& buttonPressTime);
-void handleBootButton(void);
-void handleAllButtons(void);
+void startCaptivePortal(void);
 
 #endif
