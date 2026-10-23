@@ -28,3 +28,6 @@ __pycache__/
 release/out/
 docker/out/
 firmware/out/
+# Eagle backup files
+*.b#[1-9]
+*.s#[1-9]

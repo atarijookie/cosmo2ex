@@ -1,0 +1,120 @@
+#ifndef DEFS_H_
+#define DEFS_H_
+
+#include <Arduino.h>
+
+#define LOG_MORE    1
+#define LOG_LED     1
+// #define LOG_UART    1
+
+#ifndef MIN
+    #define MIN(X,Y)    ((X < Y) ? X : Y)
+#endif
+
+#ifndef MAX
+    #define MAX(X,Y)    ((X > Y) ? X : Y)
+#endif
+
+#define DEV_FEATURE_IKBD    8
+#define DEV_FEATURE_FDD     4
+#define DEV_FEATURE_SCSI    2
+#define DEV_FEATURE_ACSI    1
+
+#define CMD_TIMEOUT_SECS_PER_MB 3
+#define CMD_TIMEOUT_ONESECOND   1000
+#define CMD_TIMEOUT_SHORT       (CMD_TIMEOUT_ONESECOND / 2)     // this period will be 0.5 second
+#define CMD_TIMEOUT_LONG        (CMD_TIMEOUT_ONESECOND * 3)     // this period will be 3.0 second
+
+// commands sent from device to host
+#define ATN_FW_VERSION                      0x01                                // followed by string with FW version (length: 4 uint16_ts - cmd, v[0], v[1], 0)
+#define ATN_ACSI_COMMAND                    0x02
+// #define ATN_READ_MORE_DATA                  0x03
+#define ATN_WRITE_MORE_DATA                 0x04
+// #define ATN_GET_STATUS                      0x05
+
+// commands sent from host to device
+#define CMD_ACSI_CONFIG                     0x10
+#define CMD_DATA_WRITE                      0x20
+#define CMD_DATA_READ_WITH_STATUS           0x30
+#define CMD_SEND_STATUS                     0x40
+#define CMD_DATA_READ_WITHOUT_STATUS        0x50
+#define CMD_FLOPPY_CONFIG                   0x70
+#define CMD_FLOPPY_SWITCH                   0x80
+#define CMD_DATA_MARKER                     0xda
+
+// these states define if the device should get command or transfer data
+#define STATE_GET_COMMAND                       0
+// #define STATE_SEND_COMMAND                   1
+#define STATE_WAIT_COMMAND_RESPONSE             2
+#define STATE_DATA_READ_WITH_STATUS             3
+#define STATE_DATA_READ_WITHOUT_STATUS          4
+#define STATE_DATA_WRITE                        5
+#define STATE_WAIT_FOR_STATUS_ARRIVAL           6
+#define STATE_READ_STATUS                       7
+
+#define STATE_SEND_FW_VER                       10
+#define STATE_SEND_WRITE_MORE_DATA              11
+#define STATE_DATA_READ                         12
+
+///////////////////////////
+
+#define ATN_VARIABLE_LEN                0xffff
+
+#define TX_HEADER_SIZE                  10
+#define ATN_SENDFWVERSION_LEN_TX        (TX_HEADER_SIZE + 12)
+#define ATN_SENDACSICOMMAND_LEN_TX      (TX_HEADER_SIZE + 14)
+
+///////////////////////////
+// pins of the v40_pico_hdd board (devices/v40_pico_hdd) - one PCB, assembled either as ACSI or as SCSI variant.
+// Most of the GPIOs have a different function in each variant, the variant is read from PIN_VARIANT_STRAP on boot.
+
+// common for both variants
+#define PIN_D0              0       // D0..D7 through IC2/IC3 (both variants), DATA_DIR sets their direction
+#define PIN_D1              1
+#define PIN_D2              2
+#define PIN_D3              3
+#define PIN_D4              4
+#define PIN_D5              5
+#define PIN_D6              6
+#define PIN_D7              7
+#define PIN_ACK             10      // in  - SCSI: CACK (through latch IC203), ACSI: ACK (through IC101)
+#define PIN_DATA_DIR        28      // out
+
+#define PIN_NEOPIXEL        9       // out - to the WS2812 through the AND gate IC6, which passes it only while GP12 is H
+#define PIN_VARIANT_STRAP   26      // in on boot - H: ACSI (R125 pull-up), L: SCSI (R225 pull-down)
+
+#define PIN_KEYB_RX         15
+#define PIN_KEYB_TX         22
+#define PIN_KEYB_TX_ORIG    27
+
+#define PIN_DEBUG_TX        25      // with LOG_LED - the LED pin of the module, not on its edge pins
+
+// SCSI variant
+#define PIN_SEL_IO_DP_DS    8
+#define PIN_RST_CD_REQ_CP   9
+#define PIN_IN_OE           11      // out
+#define PIN_OUT_OE          12      // out
+#define PIN_OUT_LE1         13      // out
+#define PIN_OUT_LE2         14      // out
+#define PIN_ATN_MSG         26
+
+// ACSI variant
+#define PIN_A1              8       // in
+#define PIN_CS              11      // in
+#define PIN_INT             12      // out
+#define PIN_DRQ             13      // out
+#define PIN_RESET           14      // in
+
+#define DATA_PINS_MASK          ((1 << PIN_D0) | (1 << PIN_D1) | (1 << PIN_D2) | (1 << PIN_D3) | (1 << PIN_D4) | (1 << PIN_D5) | (1 << PIN_D6) | (1 << PIN_D7))
+#define SCSI_DATA_PINS_MASK     (DATA_PINS_MASK | (1 << PIN_SEL_IO_DP_DS))      // data + DP
+#define SCSI_HANDSHAKE_PINS_MASK    ((1 << PIN_RST_CD_REQ_CP) | (1 << PIN_ACK))
+#define ACSI_HANDSHAKE_OUT_PINS     ((1 << PIN_DRQ) | (1 << PIN_INT))
+
+#define BIT_IS_H(PIN)   (gpio_get(PIN) != 0)
+#define BIT_IS_L(PIN)   (gpio_get(PIN) == 0)
+#define BIT_LEVEL(PIN)  ( (gpio_get(PIN) == 0) ? 0 : 1)
+
+#define BIT_SET(PIN)    gpio_put(PIN, true)
+#define BIT_CLR(PIN)    gpio_put(PIN, false)
+
+#endif /* DEFS_H_ */

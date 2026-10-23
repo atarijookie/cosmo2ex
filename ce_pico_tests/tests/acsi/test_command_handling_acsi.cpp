@@ -1,13 +1,18 @@
 // ce_pico_hdd_acsi/command_handling.cpp - receiving ACSI / ICD commands, data transfers and status towards the Atari
 
 #include "test_helpers.h"
-#include "bridge_fake.h"
+#include <bridge_fake.h>         // tests/<project>/bridge_fake.h - also the merged ce_pico_hdd runs these tests
 #include "bridge.h"
 
 namespace {
 
 struct AcsiFixture : FirmwareFixture {
-    AcsiFixture() { fakeBridge = FakeBridge(); }
+    AcsiFixture() {
+        fakeBridge = FakeBridge();
+#ifdef TEST_PROJECT_HDD
+        hwVariant = VARIANT_ACSI;     // merged firmware - run the ACSI code paths
+#endif
+    }
 };
 
 void fromAtari(const std::vector<uint8_t> &bytes)
