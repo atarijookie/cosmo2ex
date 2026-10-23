@@ -11,6 +11,7 @@
 #include "connection.h"
 #include "portal_form.h"
 #include "captive_portal.h"
+#include "neopixel.h"
 
 #define MAX_NETWORKS    16
 
@@ -24,6 +25,11 @@ static uint32_t lastRequest;
 static bool saved;
 static uint32_t savedTime;
 static std::vector<std::string> networks;     // from the scan before the AP starts, strongest first
+
+static bool noWifiSettings(void)
+{
+    return Settings.ssid[0] == 0;
+}
 
 static void showOnPanel(void)
 {
@@ -122,6 +128,8 @@ void startCaptivePortal(void)
 
     debug("captive portal - starting\n");
     displayMessage("WIFI SETUP", "scanning networks...");
+    ledSetCaptivePortal();
+    neopixelProcess();          // now - the scan takes a few seconds
 
     connectionStop();           // no host while in AP mode
     scanNetworks();
@@ -179,6 +187,11 @@ void stopCaptivePortal(void)
 
 void toggleCaptivePortal(void)
 {
+    if(active && noWifiSettings()) {     // nothing to go back to
+        debug("captive portal - no WiFi settings stored, staying in it\n");
+        return;
+    }
+
     if(active) {
         stopCaptivePortal();
     } else {
@@ -203,8 +216,28 @@ void captivePortalLoop(void)
         return;
     }
 
-    if(!saved && (now - lastRequest) >= PORTAL_TIMEOUT_MS) {
+    if(!saved && !noWifiSettings() && (now - lastRequest) >= PORTAL_TIMEOUT_MS) {
         debug("captive portal - timeout\n");
         stopCaptivePortal();
     }
+}
+
+void captivePortalAutoStart(void)
+{
+    static bool tried = false;
+    static uint32_t lastStart = 0;
+
+    if(active || !noWifiSettings()) {
+        return;
+    }
+
+    uint32_t now = millis();
+    if(tried && (now - lastStart) < PORTAL_RETRY_MS) {     // the AP failed to start last time - not on every pass
+        return;
+    }
+
+    tried = true;
+    lastStart = now;
+    debug("captive portal - no WiFi settings stored, starting it\n");
+    startCaptivePortal();
 }

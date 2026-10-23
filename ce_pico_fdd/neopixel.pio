@@ -1,0 +1,42 @@
+.pio_version 0 // only requires PIO version 0
+
+; WS2812 frame: 24 bits from the TX FIFO (autopull, MSB first), 25 cycles per bit at 20 MHz (1.25 us).
+; 0 = H 300 ns, L 950 ns; 1 = H 650 ns, L 600 ns (WS2812C-2020: T0H 220-380, T1H / T0L / T1L 580-1000 ns).
+; With the FIFO empty it stalls on 'out' with side 0 - the pin stays L after the frame.
+
+.program neopixel
+.side_set 1
+
+.define public T1 6
+.define public T2 7
+.define public T3 12
+
+.wrap_target
+bitloop:
+    out x, 1        side 0 [T3 - 1]
+    jmp !x do_zero  side 1 [T1 - 1]
+do_one:
+    jmp bitloop     side 1 [T2 - 1]
+do_zero:
+    nop             side 0 [T2 - 1]
+.wrap
+
+% c-sdk {
+#include "hardware/clocks.h"
+
+static inline void neopixel_program_init(PIO pio, uint sm, uint offset, uint pin)
+{
+    pio_sm_config c = neopixel_program_get_default_config(offset);
+    sm_config_set_sideset_pins(&c, pin);
+    sm_config_set_out_shift(&c, false, true, 24);           // MSB first, autopull every 24 bits
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+
+    int cyclesPerBit = neopixel_T1 + neopixel_T2 + neopixel_T3;
+    sm_config_set_clkdiv(&c, clock_get_hz(clk_sys) / (800000.0f * cyclesPerBit));
+
+    pio_sm_set_pins_with_mask(pio, sm, 0, 1u << pin);       // L
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);  // output - but only while the pin's function is PIO
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

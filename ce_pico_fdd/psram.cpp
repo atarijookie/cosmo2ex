@@ -9,6 +9,7 @@
 
 #include "defs.h"
 #include "utils.h"
+#include "neopixel.h"
 
 critical_section_t spi_critical_section;
 
@@ -49,6 +50,7 @@ void psramReadId(void)
 
     if(resp[0] != 0x0d) {
         debug("PSRAM init - bad PSRAM ID: %02x. Will fail to work! HALT!\n", resp[0]);
+        ledSetError(LED_ERR_PSRAM);         // core 0 shows it, it waits for core 1 forever now
         while(1);
     }
 
@@ -78,6 +80,7 @@ void psramTest(void)
     if(memcmp(writeBfr, readBfr, TEST_BFR_SIZE) != 0)   // write and read buffers mismatch? fail and halt
     {
         debug("PSRAM not working correctly! HALT\n");
+        ledSetError(LED_ERR_PSRAM);         // core 0 shows it, it waits for core 1 forever now
         while(1);
     }
 

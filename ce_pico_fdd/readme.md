@@ -43,9 +43,22 @@
 
 - the display and buttons are on a separate front panel (ce_pico_display, RP2040-Zero), connected over UART on GP16
   (TX) / GP17 (RX) - see ce_pico_display/protocol.md; panel.cpp has the panel logic, panel_uart.cpp the PIO UART
-- button on GP1 (to GND, instead of the unused debug UART RX - the debug output on GP0 stays): long press (1 s)
-  starts the captive portal (WiFi setup), the same as a long press of enter on the front panel; another long press
-  leaves it without saving
+- button on GP1 (to 3.3V through 1k, 4k7 pull-down - instead of the unused debug UART RX, the debug output on GP0
+  stays): long press (1 s) starts the captive portal (WiFi setup), the same as a long press of enter on the front
+  panel; another long press leaves it without saving
+
+## Status LED (neopixel)
+
+- LED2 (WS2812C-2020) on the same GP1 as the button, through the AND gate IC6 (74AHCT1G08, 3.3V -> 5V levels); the
+  pin is the button input all the time and the PIO output only for the ~30 us of a frame (neopixel_pio.cpp)
+- the same colors as ce_pico_hdd: orange during init, brighter with each step (setup, core 1 running, joining WiFi,
+  looking for the host, connecting to it); green when connected with an image, dim white when connected without one;
+  blue while the captive portal runs
+- red blinks on error, the count of blinks is the code, then a pause: 1 = PSRAM not working (halted), 2 = no WiFi
+  settings and the WiFi setup failed to start (retried every 10 s), 3 = can't join the WiFi (keeps retrying)
+- the color is sent only when it changes, on core 0 - nothing while it stays the same, so the floppy streaming
+  (core 1) doesn't lose any cycles; after a button press it's sent once again, as the LED saw the press as a long H
+- neopixel.cpp - the status and the colors (tested on the host)
 
 ## Beeper
 
@@ -64,6 +77,8 @@
 - Save stores them to EEPROM (the floppy streaming pauses for the flash write), then the FDD goes back to the normal
   mode and connects with them right away
 - without a page request for 5 minutes, the portal ends with the old settings
+- with no WiFi settings stored (first start), the portal starts by itself and stays - no timeout, and the long press
+  doesn't leave it - until the settings are saved
 - the Pico can't be an AP and a station at once - the host connection is down while the portal runs, core 1 keeps
   streaming the current image
 - captive_portal.cpp - AP, DNS and web server (arduino-pico WiFi, DNSServer, WebServer); portal_form.cpp - the pages

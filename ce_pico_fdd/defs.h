@@ -66,7 +66,8 @@
 
 
 #define PIN_TXD_DEBUG       0
-#define PIN_CAPTIVE_BTN     1       // button to GND, long press starts the captive portal - instead of the debug UART RX, which isn't used
+#define PIN_CAPTIVE_BTN     1       // button to 3.3V (H = pressed), long press starts the captive portal - instead of the debug UART RX, which isn't used
+#define PIN_NEOPIXEL        1       // the same pin, to LED2 through the AND gate IC6 - output only while sending a frame, see neopixel_pio.cpp
 #define PIN_DRIVE_SEL       2
 #define PIN_MOT_EN          3
 #define PIN_DIR             4

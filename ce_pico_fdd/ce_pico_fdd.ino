@@ -21,6 +21,7 @@
 #include "panel.h"
 #include "captive_portal.h"
 #include "beeper.h"
+#include "neopixel.h"
 
 // Core 1 (setup1() + loop1()) does the floppy streaming and write capture, core 0 (setup() + loop()) the rest.
 // The WiFi chip and lwIP are started by the arduino core before setup(), they run in the background (IRQ) on core 0.
@@ -70,10 +71,11 @@ void waitForCore1Running(void)
     int loops = 0;
 
     while(true) {
-        sleep_ms(100);
+        sleep_ms(10);
+        neopixelProcess();      // also the PSRAM error, if core 1 halted on it
         loops++;
 
-        if(loops >= 10) {
+        if(loops >= 100) {
             loops = 0;
             debug("CORE 0 waiting for CORE 1\n");
         }
@@ -113,8 +115,11 @@ void setup(void)
     }
 
     beeperInit();
-    displayInit();
     buttonsInit();
+    neopixelInit();             // after buttonsInit() - the same pin
+    ledSetInitStep(LED_STEP_SETUP);
+    neopixelProcess();
+    displayInit();
 
     loadSettingsFromEeprom();
 
@@ -133,6 +138,7 @@ void setup(void)
     // core 1 was started by the arduino core before setup(), it waits for this
     core0ready = true;
     waitForCore1Running();
+    ledSetInitStep(LED_STEP_CORE1);
 
     WiFi.mode(WIFI_STA);
 }
@@ -193,6 +199,9 @@ void loop(void)
             //     }
             // }
         }
+
+        // no WiFi settings stored? WiFi setup until there are some
+        captivePortalAutoStart();
 
         // connect to wifi, discover CE server, connect to CE server - or, in WiFi setup, serve the setup page
         if(captivePortalActive()) {
@@ -261,6 +270,9 @@ void loop(void)
 
         // front panel: send the display changes, receive the key events
         panelLoop();
+
+        // status LED - sends only when the color changes
+        neopixelProcess();
 
         // handle ikbd data transfer
         // ikbdHandling();

@@ -28,8 +28,8 @@ devices/v40_pico_fdd), signal names from the FDD side:
   via PIO (arduino-pico `SerialPIO`, ce_pico_fdd/panel_uart.cpp)
 - FDD: GP27 (the former ANALOG_BTNS, SV2 pin 1) is now the beeper - a buzzer with its own generator, switched on /
   off by the firmware (see ce_pico_fdd/beeper.h), instead of the STEP signal driving it directly
-- FDD: GP1 (the debug UART RX, not used by the firmware) is now the captive portal (WiFi setup) button - a button to
-  GND, internal pull-up; add an external pull-up (e.g. 10k) and 100 nF to GND
+- FDD: GP1 (the debug UART RX, not used by the firmware) is now the captive portal (WiFi setup) button - to 3.3V
+  through 1k, 4k7 pull-down - shared with the status neopixel (see ce_pico_fdd/readme.md)
 
 ### FDD side (ce_pico_fdd/panel.cpp)
 

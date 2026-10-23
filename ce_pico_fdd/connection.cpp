@@ -9,6 +9,7 @@
 #include "display.h"
 #include "panel.h"
 #include "beeper.h"
+#include "neopixel.h"
 #include "ipc.h"
 #include "host_receive.h"
 
@@ -121,6 +122,8 @@ void ceDiscoveryReceive(void)
 }
 
 static uint32_t wifiLastAttempt = 0xffff0000; // -65k
+static bool wifiAttempted = false;      // since the start / the last connectionRestart()
+static bool wifiFailed = false;         // the last attempt didn't get us on the WiFi - for the status LED
 
 // Read wifi settings, connect to wifi if not connected, don't try too often.
 void connectToWifi(void)
@@ -141,6 +144,11 @@ void connectToWifi(void)
         debug("connectToWifi - not connecting to WIFI yet, because no SSID stored\n");
         return;
     }
+
+    if (wifiAttempted) {        // retrying - the previous attempt didn't connect
+        wifiFailed = true;
+    }
+    wifiAttempted = true;
 
     // not connected to wifi yet, try to connect
     int status = WiFi.status();
@@ -317,6 +325,13 @@ void connectToHost(void)
         debug("connectedToWifi: %d\n", connectedToWifi);
     }
 
+    if(connectedToWifi) {
+        wifiFailed = false;
+    }
+
+    ledSetFromConnection(Settings.ssid[0] != 0, wifiFailed, connectedToWifi, hostIpString.length() > 0, connectedToHost,
+                         imageState == IMAGE_LOADED);
+
     // on connected state changed
     if(prevConnectedToHost != connectedToHost)
     {
@@ -366,6 +381,8 @@ void connectionRestart(void)
 {
     connectionStop();
     wifiLastAttempt = millis() - 15000;
+    wifiAttempted = false;      // maybe new settings - orange again until this attempt fails too
+    wifiFailed = false;
 }
 
 // fdd connection to host, for host_receive.cpp
