@@ -55,6 +55,7 @@ public:
     bool getParams(int floppySlotIndex, int &tracks, int &sides, int &sectorsPerTrack);
     std::string getFileName(int floppySlotIndex);
     std::string getBrowsePath(int floppySlotIndex);     // hostPath of a browsable image, "" if nothing to browse
+    bool isSlotEmpty(int floppySlotIndex);              // no image at all (not even a special one)
     uint8_t *getEmptyTrack(void);
 
     void add(int positionIndex, std::string &filename, std::string &hostPath, bool browsable = true);   // browsable = false for special images

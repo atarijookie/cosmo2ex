@@ -50,7 +50,8 @@ func (s *Server) handleGetFDDImage(w http.ResponseWriter, r *http.Request) {
 		image = ""
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"mac": mac, "image": image})
+	// defaultDir - where the file selector starts without an image (the downloaded images)
+	writeJSON(w, http.StatusOK, map[string]string{"mac": mac, "image": image, "defaultDir": floppyImagesDir()})
 }
 
 func (s *Server) handlePutFDDImage(w http.ResponseWriter, r *http.Request) {

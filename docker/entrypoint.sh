@@ -17,18 +17,19 @@ DATA_DIR="${DATA_DIR:-/var/lib/ce}"
 LOG_DIR="${LOG_DIR:-/var/log/ce}"
 PID_DIR="${PID_DIR:-/run/ce}"
 SETTINGS_DIR="${SETTINGS_DIR:-/opt/ce/settings}"
+FLOPPY_IMAGES_DIR="${FLOPPY_IMAGES_DIR:-/opt/ce/floppyImages}"
 CONFIG_DRIVE_PATH="${CONFIG_DRIVE_PATH:-${DATA_DIR}/configdrive}"
 
-mkdir -p "$DATA_DIR" "$LOG_DIR" "$PID_DIR" "$SETTINGS_DIR"
+mkdir -p "$DATA_DIR" "$LOG_DIR" "$PID_DIR" "$SETTINGS_DIR" "$FLOPPY_IMAGES_DIR"
 chmod 0700 "$DATA_DIR"    # owner only - command token
 
 # PID files survive a container restart, and PIDs inside the container repeat,
 # so a stale file would make the apps think another instance is running.
 rm -f "$PID_DIR"/*.pid
 
-# SETTINGS_DIR is a host bind-mount; keep it writable even if the host
-# directory was created with restrictive permissions.
-chmod a+rwx "$SETTINGS_DIR" 2>/dev/null || true
+# SETTINGS_DIR and FLOPPY_IMAGES_DIR are host bind-mounts; keep them writable even if the host
+# directories were created with restrictive permissions.
+chmod a+rwx "$SETTINGS_DIR" "$FLOPPY_IMAGES_DIR" 2>/dev/null || true
 
 # Runtime copy of the config drive, same as shellscripts/ce_start.sh
 if [ -d "$BIN_DIR/configdrive" ]; then

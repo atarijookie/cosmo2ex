@@ -38,6 +38,7 @@ The same output is in docker logs when running with up -d.
 Equivalent docker run:
 docker run --rm --network host \
   -v /opt/ce/settings:/opt/ce/settings \
+  -v /opt/ce/floppyImages:/opt/ce/floppyImages \
   -v /opt/ce/log:/var/log/ce \
   -e CE_LOG_LEVEL=3 \
   -v /:/mnt/hostdrive:rslave \
@@ -48,6 +49,10 @@ docker run --rm --network host \
 
 Settings live on the host at /opt/ce/settings (same as SETTINGS_DIR in .env).
 Override the host path with CE_SETTINGS_HOST=/your/path.
+
+Floppy images downloaded by the webserver (when allowed in its Settings) are on
+the host at /opt/ce/floppyImages, next to the settings (FLOPPY_IMAGES_DIR in
+.env). Override the host path with CE_FLOPPY_HOST=/your/path.
 
 Logs of ce_cores and the webserver are on the host at /opt/ce/log, next to the
 settings (inside the container it is LOG_DIR=/var/log/ce from .env).

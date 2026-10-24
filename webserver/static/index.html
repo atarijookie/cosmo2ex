@@ -88,6 +88,18 @@
                 box-shadow: 0 2px 6px rgba(0,0,0,0.2);
                 transition: background-color 0.3s ease;
             }
+            #settings-banner {
+                display: none;
+                width: 100%;
+                box-sizing: border-box;
+                margin: 10px 0 0 0;
+                padding: 10px 14px;
+                font-size: 14px;
+                background: #fff3cd;
+                border: 1px solid #f0ad4e;
+                border-radius: 6px;
+            }
+            #settings-banner a { color: #0066cc; }
             #logout-button:hover, #password-button:hover {
                 background-color: #555;
             }
@@ -116,14 +128,29 @@
                 gap: 8px;
             }
             #account-buttons #logout-button,
-            #account-buttons #password-button {
+            #account-buttons #password-button,
+            #account-buttons #settings-button {
                 position: static;
+            }
+            #settings-button {
+                padding: 8px 16px;
+                font-size: 14px;
+                background-color: #666;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            }
+            #settings-button:hover {
+                background-color: #555;
             }
         </style>
     </head>
     <body>
     <div class="container">
     <div id="account-buttons">
+        <button id="settings-button" onclick="window.location.href='/settings.html'">Settings</button>
         <button id="password-button" onclick="window.location.href='/set_password.html'">Change password</button>
         <button id="logout-button" onclick="logout()">Logout</button>
     </div>
@@ -132,6 +159,8 @@
                 <div id="breadcrumbs-container"></div>
                 <script src="js/breadcrumbs.js"></script>
                 <h2>Cosmo2ex</h2>
+                <div id="settings-banner">Downloading of floppy images is not set up yet - allow or deny it in the
+                    <a href="/settings.html">settings</a>.</div>
             </div>
         </div>
 
@@ -237,8 +266,21 @@
         });
     }
 
+    // Until the floppy image download is allowed or denied in the settings, remind about it
+    function checkSettingsDecided() {
+        fetch('/settings/general', { credentials: 'include' })
+            .then(function(res) { return res.ok ? res.json() : null; })
+            .then(function(data) {
+                if (data && !data.settings.floppyDownloadDecided) {
+                    document.getElementById('settings-banner').style.display = 'block';
+                }
+            })
+            .catch(function(err) { console.log('Error loading settings:', err); });
+    }
+
     // Load devices when page loads
     document.addEventListener('DOMContentLoaded', loadDevices);
+    document.addEventListener('DOMContentLoaded', checkSettingsDecided);
 
     // Logout function
     function logout() {

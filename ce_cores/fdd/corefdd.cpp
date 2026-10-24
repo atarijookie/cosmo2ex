@@ -370,6 +370,12 @@ void CoreFdd::updateImageListFolder(ClientInfo* ci, std::string& fileName)
         if(folder.empty() && pathAndFile[0] == HOSTPATH_SEPAR_CHAR) {   // image in the root dir
             folder = HOSTPATH_SEPAR_STRING;
         }
+    } else if(imageSilo->isSlotEmpty(ci->floppySlotIndex)) {   // no image in the drive? browse the downloaded images
+        folder = Utils::dotEnvValue("FLOPPY_IMAGES_DIR", "", false);
+
+        while(folder.size() > 1 && folder[folder.size() - 1] == HOSTPATH_SEPAR_CHAR) {    // "/x/" -> "/x", as in the image paths
+            folder.resize(folder.size() - 1);
+        }
     }
 
     browse[ci->index].list.setFolder(folder);

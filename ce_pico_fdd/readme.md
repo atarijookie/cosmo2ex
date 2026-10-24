@@ -51,7 +51,8 @@
   a key goes back to the current image. Same list and order as the prev / next in the web UI: only .st / .msa, sorted
   case insensitive. The host (ce_cores/fdd/imagelist.cpp) sends the list in pages of 16 names, only after the device
   asks for it (with the panel attached), and sends the page again when images are added / deleted / renamed in the
-  folder or the current image changes - the protocol is in image_browser.h. Not for the special images (no folder).
+  folder or the current image changes - the protocol is in image_browser.h. Not for the special images (no folder);
+  without an image in the drive it browses FLOPPY_IMAGES_DIR (.env), where the webserver downloads the images.
 
 ## Status LED (neopixel)
 

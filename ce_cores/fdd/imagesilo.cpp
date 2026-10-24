@@ -281,3 +281,12 @@ std::string ImageSilo::getBrowsePath(int floppySlotIndex)
 
     return slots[floppySlotIndex].hostPath;     // set and read only in the FDD thread, no lock needed
 }
+
+bool ImageSilo::isSlotEmpty(int floppySlotIndex)
+{
+    if(floppySlotIndex < 0 || floppySlotIndex >= SLOT_COUNT) {
+        return true;
+    }
+
+    return slots[floppySlotIndex].hostPath.empty();
+}

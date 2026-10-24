@@ -4,6 +4,9 @@
 # Settings persist on the host (default: /opt/ce/settings, same as .env).
 # Override with CE_SETTINGS_HOST=/some/host/path
 #
+# Downloaded floppy images (FLOPPY_IMAGES_DIR in .env) are kept on the host next to the settings
+# (default: /opt/ce/floppyImages). Override with CE_FLOPPY_HOST=/some/host/path
+#
 # Logs (LOG_DIR in .env, /var/log/ce in the container) are written to the host
 # next to the settings (default: /opt/ce/log). Override with CE_LOG_HOST=/some/host/path
 #
@@ -53,6 +56,12 @@ services:
       - type: bind
         source: ${CE_SETTINGS_HOST:-/opt/ce/settings}
         target: /opt/ce/settings
+        bind:
+          create_host_path: true
+      # Downloaded floppy images (writable). Target matches FLOPPY_IMAGES_DIR in .env.
+      - type: bind
+        source: ${CE_FLOPPY_HOST:-/opt/ce/floppyImages}
+        target: /opt/ce/floppyImages
         bind:
           create_host_path: true
       # Logs of ce_cores and webserver (writable). Target matches LOG_DIR in .env.

@@ -22,6 +22,7 @@
           var dir = "/home";
           var selectedFile = "";
           var currentImagePath = "";
+          var defaultDir = "";          // where the selector starts without an image - the downloaded images
 
           function getURLParameter(name) {
             name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
@@ -56,6 +57,7 @@
             fetch('/fdd/' + encodeURIComponent(mac) + '/image', { method: 'GET' })
               .then(function(res) { return res.json(); })
               .then(function(data) {
+                defaultDir = data.defaultDir || "";
                 updateDisplay(data.image || "");
               })
               .catch(function(err) {
@@ -129,8 +131,7 @@
 
           function openSelector() {
             var info = splitPath(currentImagePath);
-            dir = info.dir || "/home";
-            if (!dir) { dir = "/home"; }
+            dir = info.dir || defaultDir || "/home";
             getDirContent(dir);
             var overlay = document.getElementsByClassName('container-file-selector')[0];
             if (overlay) { overlay.style.display = 'flex'; }
