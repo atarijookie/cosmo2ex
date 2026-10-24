@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 )
 
 // Host-related handlers.
@@ -13,6 +14,7 @@ func (s *Server) handleHostDir(w http.ResponseWriter, r *http.Request) {
 	log.Printf("handleHostDir %s %s", r.Method, r.URL.Path)
 
 	path := r.URL.Query().Get("path")
+	query := strings.ToLower(r.URL.Query().Get("q")) // optional: only the names containing this, case insensitive ("*q*")
 	if path == "" {
 		path = "."
 	}
@@ -26,6 +28,9 @@ func (s *Server) handleHostDir(w http.ResponseWriter, r *http.Request) {
 	dirs := make([]string, 0)
 	files := make([]string, 0)
 	for _, e := range entries {
+		if query != "" && !strings.Contains(strings.ToLower(e.Name()), query) {
+			continue
+		}
 		if e.IsDir() {
 			dirs = append(dirs, e.Name())
 		} else {

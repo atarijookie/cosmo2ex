@@ -66,28 +66,66 @@
               });
           }
 
+          var dirRequestNo = 0;   // only the answer to the last request is shown - typing in search sends many
+          var searchTimer = null;
+
+          // going into another folder - without the search of the previous one
+          function openDir(new_path) {
+            clearTimeout(searchTimer);
+            document.getElementById('search').value = '';
+            getDirContent(new_path);
+          }
+
+          // search typed - list again, after a short pause in typing
+          function onSearchInput() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(function() { getDirContent(dir); }, 250);
+          }
+
+          // .st / .msa, any case - like isFloppyImageName() in fdd.go
+          function isFloppyImageName(name) {
+            return /^.+\.(st|msa)$/i.test(name);
+          }
+
           function getDirContent(new_path) {
             selectedFile = "";
             dir = new_path;
             document.getElementById('currentPath').textContent = dir;
 
+            var query = document.getElementById('search').value.trim();
+            var url = '/host/dir?path=' + encodeURIComponent(new_path);
+            if (query) {
+              url += '&q=' + encodeURIComponent(query);     // backend: names containing it, case insensitive
+            }
+            var requestNo = ++dirRequestNo;
+
             $.ajax({
-              url: '/host/dir?path=' + encodeURIComponent(new_path),
+              url: url,
               type: 'GET',
               dataType: 'json',
               success: function (data) {
+                if (requestNo != dirRequestNo) {
+                  return;
+                }
                 var dirs = data.dirs;
-                var files = data.files;
+                var files = data.files.filter(isFloppyImageName);   // only floppy images, no .zip, .lock, ...
 
                 const itemList = document.getElementById('itemList');
                 itemList.innerHTML = '';
+
+                if (query && dirs.length == 0 && files.length == 0) {
+                  const div = document.createElement('div');
+                  div.className = 'no-match';
+                  div.textContent = "Nothing with '" + query + "' in this folder";
+                  itemList.appendChild(div);
+                }
 
                 dirs.forEach(item => {
                   var fullpath = (new_path == "/") ? ("/" + item) : (new_path + "/" + item);
                   const div = document.createElement('div');
                   div.className = 'item';
                   div.textContent = "[" + item + "]";
-                  div.onclick = () => getDirContent(fullpath);
+                  div.onclick = () => openDir(fullpath);
                   itemList.appendChild(div);
                 });
 
@@ -99,6 +137,19 @@
                   div.onclick = () => onFileSelected(fullpath);
                   itemList.appendChild(div);
                 });
+
+                // the inserted image is in this folder - select it and scroll to it, otherwise start at the top
+                var current = splitPath(currentImagePath);
+                var currentItem = null;
+                if (current.dir == new_path && files.indexOf(current.name) >= 0) {
+                  selectedFile = currentImagePath;
+                  currentItem = selectByText(selectedFile, true);
+                }
+                if (currentItem) {
+                  currentItem.scrollIntoView({ block: 'center' });
+                } else {
+                  itemList.scrollTop = 0;
+                }
               },
               error: function (xhr) {
                 console.log("Error: " + xhr.statusText);
@@ -117,6 +168,7 @@
             }
           }
 
+          // returns the item, null if not found
           function selectByText(fullFilePath, selectNotUnselect) {
             var items = document.getElementsByClassName("item");
             var fileName = fullFilePath.split('/').pop();
@@ -124,18 +176,20 @@
               var item = items[x];
               if (item.textContent == fileName || item.textContent == "[" + fileName + "]") {
                 item.style.backgroundColor = selectNotUnselect ? "#cccccc" : "#ffffff";
-                break;
+                return item;
               }
             }
+            return null;
           }
 
           function openSelector() {
             var info = splitPath(currentImagePath);
             dir = info.dir || defaultDir || "/home";
-            getDirContent(dir);
+            openDir(dir);
             var overlay = document.getElementsByClassName('container-file-selector')[0];
             if (overlay) { overlay.style.display = 'flex'; }
             $("[name=file-selector]").show();
+            document.getElementById('search').focus();
           }
 
           function goUp() {
@@ -147,7 +201,7 @@
             if (new_path == "") {
               new_path = "/";
             }
-            getDirContent(new_path);
+            openDir(new_path);
           }
 
           function onSelectorCancel() {
@@ -200,7 +254,9 @@
                                          : '/fdd/' + encodeURIComponent(mac) + '/image/prev';
             fetch(endpoint, { method: 'GET' })
               .then(function(res) {
-                if (!res.ok) { throw new Error('GET failed ' + res.status); }
+                if (!res.ok) {
+                  return res.text().then(function(t) { throw new Error(t.trim() || ('GET failed ' + res.status)); });
+                }
                 return res.json();
               })
               .then(function(data) {
@@ -365,6 +421,23 @@
             cursor: pointer;
           }
 
+          .search-bar {
+            padding: 8px 16px;
+            border-bottom: 1px solid #ddd;
+          }
+
+          .search-bar input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 6px 8px;
+            font-size: 14px;
+          }
+
+          .no-match {
+            padding: 12px 16px;
+            color: #888;
+          }
+
           .item-list {
             flex-grow: 1;
             overflow-y: auto;
@@ -478,6 +551,10 @@
         <div class="top-bar">
           <div class="path" id="currentPath">/home/user/folder</div>
           <button onclick="goUp()">Up</button>
+        </div>
+
+        <div class="search-bar">
+          <input type="search" id="search" placeholder="Search in this folder..." oninput="onSearchInput()" autocomplete="off">
         </div>
 
         <div class="item-list" id="itemList">

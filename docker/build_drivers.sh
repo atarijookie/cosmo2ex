@@ -9,7 +9,8 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 
 echo "Building Atari drivers"
 make -C "$ROOT/libacsiscsi"
-make -C "$ROOT/ce_dd_bootsectors" all       # builds also ce_dd_prg
+make -C "$ROOT/ce_dd_prg"                   # on its own - ce_dd_bootsectors 'all' builds it only when the boot sectors are built
+make -C "$ROOT/ce_dd_bootsectors" all
 mkdir -p "$ROOT/ce_cores/configdrive/drivers"
 cp "$ROOT/ce_dd_bootsectors/ce_dd.bs" "$ROOT/ce_dd_bootsectors/ce_dd_l2.bs" "$ROOT/ce_dd_prg/ce_dd.prg" \
     "$ROOT/ce_cores/configdrive/drivers/"

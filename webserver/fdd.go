@@ -99,34 +99,47 @@ func (s *Server) handleGetFDDImageStep(w http.ResponseWriter, r *http.Request, s
 
 	mac := chi.URLParam(r, "mac")
 
-	current, err := s.readFddImage(mac)
-	if err != nil || strings.TrimSpace(current) == "" {
-		http.Error(w, "current image not set", http.StatusBadRequest)
-		return
-	}
+	current, _ := s.readFddImage(mac)
 
 	// Stored paths are native paths of this machine ("/home/..." or "C:\Atari\..." on Windows), so use filepath.* for split/join.
-	dir := filepath.Dir(current)
-	base := filepath.Base(current)
-	if dir == "." || base == "." || base == string(filepath.Separator) || base == "" {
-		http.Error(w, "invalid current image path", http.StatusBadRequest)
+	// No image: browse FLOPPY_IMAGES_DIR, like the device does with an empty slot.
+	dir, base := floppyImagesDir(), ""
+	if current != "" {
+		dir = filepath.Dir(current)
+		base = filepath.Base(current)
+		if dir == "." || base == "." || base == string(filepath.Separator) || base == "" {
+			http.Error(w, "invalid current image path", http.StatusBadRequest)
+			return
+		}
+	}
+	if dir == "" {
+		http.Error(w, "no image inserted and FLOPPY_IMAGES_DIR not set", http.StatusNotFound)
 		return
 	}
 
 	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) && base != "" && floppyImagesDir() != "" { // the image's folder is gone (moved, deleted) - browse FLOPPY_IMAGES_DIR
+		dir, base = floppyImagesDir(), ""
+		entries, err = os.ReadDir(dir)
+	}
 	if err != nil {
-		http.Error(w, "cannot read image directory", http.StatusInternalServerError)
+		log.Printf("handleGetFDDImageStep - cannot read image directory %q: %v", dir, err)
+		if os.IsNotExist(err) {
+			http.Error(w, "image directory not found: "+dir, http.StatusNotFound)
+		} else {
+			http.Error(w, "cannot read image directory: "+dir, http.StatusInternalServerError)
+		}
 		return
 	}
 
 	names := floppyImageNames(dir, entries)
 	if len(names) == 0 {
-		http.Error(w, "no floppy images in image directory", http.StatusBadRequest)
+		http.Error(w, "no floppy images in "+dir, http.StatusNotFound)
 		return
 	}
 
-	// Find current file index; if not found, treat as 0.
-	idx := 0
+	// Current file index; not in the list (no image, or it was deleted) - next is the first one, prev the last one.
+	idx := -1
 	for i := 0; i < len(names); i++ {
 		if names[i] == base {
 			idx = i
@@ -134,9 +147,14 @@ func (s *Server) handleGetFDDImageStep(w http.ResponseWriter, r *http.Request, s
 		}
 	}
 
-	nextIdx := (idx + step) % len(names)
-	if nextIdx < 0 {
-		nextIdx += len(names)
+	var nextIdx int
+	switch {
+	case idx < 0 && step > 0:
+		nextIdx = 0
+	case idx < 0:
+		nextIdx = len(names) - 1
+	default:
+		nextIdx = (idx + step + len(names)) % len(names)
 	}
 
 	newImage := filepath.Join(dir, names[nextIdx])
