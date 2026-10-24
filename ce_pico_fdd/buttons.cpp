@@ -6,11 +6,17 @@
 #include "buttons.h"
 #include "captive_portal.h"
 #include "neopixel.h"
+#include "image_browser.h"
 
-// Key events from the front panel. Left / right (and their long press) are free for browsing the images later.
+// Key events from the front panel. Left / right browse the images, enter inserts the shown one (image_browser.cpp).
+// The long presses of left / right are not used.
 void onPanelKey(char button, char event)
 {
     debug("panel key: %c %c\n", button, event);
+
+    if(browserKey(button, event)) {
+        return;
+    }
 
     if(button == 'E' && event == 'H') {     // long press of enter - start the captive portal, or leave it
         toggleCaptivePortal();

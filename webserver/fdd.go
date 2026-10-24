@@ -118,18 +118,11 @@ func (s *Server) handleGetFDDImageStep(w http.ResponseWriter, r *http.Request, s
 		return
 	}
 
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		names = append(names, e.Name())
-	}
+	names := floppyImageNames(dir, entries)
 	if len(names) == 0 {
-		http.Error(w, "no files in image directory", http.StatusBadRequest)
+		http.Error(w, "no floppy images in image directory", http.StatusBadRequest)
 		return
 	}
-	sort.Strings(names)
 
 	// Find current file index; if not found, treat as 0.
 	idx := 0
@@ -160,6 +153,67 @@ func (s *Server) handleGetFDDImageStep(w http.ResponseWriter, r *http.Request, s
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"mac": mac, "image": newImage})
+}
+
+// floppyImageNames returns the floppy images in dir, in the order the device browses them - must stay the same as
+// ImageList in ce_cores/fdd/imagelist.cpp: only .st / .msa (any case), regular files (symlinks followed), names up to
+// 255 bytes, sorted by the ASCII lower case bytes, names which differ only in case by their bytes.
+func floppyImageNames(dir string, entries []os.DirEntry) []string {
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		name := e.Name()
+		if !isFloppyImageName(name) || len(name) > 255 {
+			continue
+		}
+		if !e.Type().IsRegular() {
+			if e.Type()&os.ModeSymlink == 0 { // dir or something special
+				continue
+			}
+			info, err := os.Stat(filepath.Join(dir, name)) // symlink - to a file?
+			if err != nil || !info.Mode().IsRegular() {
+				continue
+			}
+		}
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool { return floppyImageNameLess(names[i], names[j]) })
+	return names
+}
+
+func isFloppyImageName(name string) bool {
+	dot := strings.LastIndexByte(name, '.')
+	if dot <= 0 { // no extension, or nothing before it
+		return false
+	}
+	ext := []byte(name[dot:]) // ASCII only, like strcasecmp() in the core
+	for i := range ext {
+		ext[i] = lowerASCII(ext[i])
+	}
+	return string(ext) == ".st" || string(ext) == ".msa"
+}
+
+func lowerASCII(c byte) byte {
+	if c >= 'A' && c <= 'Z' {
+		return c + ('a' - 'A')
+	}
+	return c
+}
+
+func floppyImageNameLess(a, b string) bool {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	for i := 0; i < n; i++ {
+		ca, cb := lowerASCII(a[i]), lowerASCII(b[i])
+		if ca != cb {
+			return ca < cb
+		}
+	}
+	if len(a) != len(b) {
+		return len(a) < len(b)
+	}
+	return a < b // differ only in case - by bytes, so the order is always the same
 }
 
 // handleFloppyAction sends a floppy action command to the core

@@ -14,12 +14,14 @@
 #include "../misc/utils.h"
 #include "../chipinterface/chipinterface.h"
 #include "../discovery/discovery.h"
+#include "../../libdospath/libdospath.h"
 
 #include "corefdd.h"
 #include "imagesilo.h"
 #include "floppyencoder.h"
 
 #define BFR_SIZE                32      // buffer size for the small requests from device (send track, send whole image)
+#define INSERT_BFR_SIZE         (9 + IMAGE_LIST_NAME_MAX)   // ATN_INSERT_IMAGE request: gen, index, name len, name
 
 extern DebugVars    dbgVars;
 
@@ -53,7 +55,11 @@ void *fddThreadCode(void *ptr)
 
 CoreFdd::CoreFdd()
 {
+    lastImageListCheck = 0;
 
+    for(int i=0; i<MAX_CLIENTS; i++) {
+        imageBrowseReset(i);
+    }
 }
 
 CoreFdd::~CoreFdd()
@@ -88,6 +94,11 @@ void CoreFdd::run(void)
         }
 
         ciFdd->clientsDisconnectInactive();
+
+        if(Utils::elapsedMs(lastImageListCheck) >= IMAGE_LIST_CHECK_MS) {
+            lastImageListCheck = Utils::getCurrentMs();
+            checkImageLists();              // images added / deleted / renamed in the browsed folders? resend the lists
+        }
 
         // check if any slot was just loaded and needs to be sent to device
         for(int i=0; i<SLOT_COUNT; i++) {
@@ -136,6 +147,7 @@ void CoreFdd::run(void)
             int idx = ciFdd->acceptSocketIfNeededAndPossible();
 
             if(idx != FD_EMPTY) {
+                imageBrowseReset(idx);      // new client on this index - doesn't browse until it asks
                 loadLastImageIntoSlot(ciFdd->clientGetByIndex(idx));
             }
         }
@@ -202,6 +214,14 @@ bool CoreFdd::handleFdd(ClientInfo* ci, uint8_t* inBuff)
         isFddCommand = true;
         ciFdd->readRestOfData(ci, inBuf, BFR_SIZE);
         handleSendImageToClient(ci);
+        break;
+
+    case ATN_GET_IMAGE_LIST:
+        handleGetImageList(ci);
+        break;
+
+    case ATN_INSERT_IMAGE:
+        handleInsertImage(ci);
         break;
 
     default:
@@ -319,6 +339,136 @@ void CoreFdd::handleSendImageToClient(ClientInfo* client)
 
     // device switches to the sent image now - sectors it writes from now on belong to this image, the previous one can be released
     imageSilo->setDeviceGen(client->floppySlotIndex, imageGen);
+
+    if(browse[client->index].wanted) {      // device browses the images? the current image (and maybe the folder) changed
+        sendImageList(client);
+    }
+}
+
+void CoreFdd::imageBrowseReset(int clientIndex)
+{
+    if(clientIndex < 0 || clientIndex >= MAX_CLIENTS) {
+        return;
+    }
+
+    ImageBrowse& b = browse[clientIndex];
+    b.wanted = false;
+    b.start = IMAGE_LIST_NONE;
+    b.count = IMAGE_LIST_PAGE_MAX;
+    b.list.setFolder("");               // forget the names of the previous client
+}
+
+void CoreFdd::updateImageListFolder(ClientInfo* ci, std::string& fileName)
+{
+    std::string pathAndFile = imageSilo->getBrowsePath(ci->floppySlotIndex);   // "" for no image / special image
+    std::string folder;
+    fileName.clear();
+
+    if(!pathAndFile.empty()) {
+        Utils::splitFilenameFromPath(pathAndFile, folder, fileName);
+
+        if(folder.empty() && pathAndFile[0] == HOSTPATH_SEPAR_CHAR) {   // image in the root dir
+            folder = HOSTPATH_SEPAR_STRING;
+        }
+    }
+
+    browse[ci->index].list.setFolder(folder);
+}
+
+void CoreFdd::sendImageList(ClientInfo* ci)
+{
+    ImageBrowse& b = browse[ci->index];
+
+    std::string fileName;
+    updateImageListFolder(ci, fileName);
+
+    uint8_t bfr[IMAGE_LIST_PAGE_MAX_SIZE];
+    uint32_t current = fileName.empty() ? IMAGE_LIST_NONE : b.list.indexOf(fileName);
+    uint32_t len = b.list.storePage(bfr, b.start, b.count, current);
+
+    logFdd(LOG_DEBUG, "sendImageList -- client %d: gen %u, total %u, current %d, start %u, count %u", ci->index,
+        Utils::getDword(bfr), Utils::getDword(bfr + 4), (int) Utils::getDword(bfr + 8), Utils::getDword(bfr + 12), Utils::getWord(bfr + 16));
+
+    ciFdd->sendHeaderAndDataToChip(ci->fdClient, ATN_GET_IMAGE_LIST, bfr, len);
+}
+
+void CoreFdd::handleGetImageList(ClientInfo* ci)
+{
+    uint8_t inBuf[BFR_SIZE];
+    int readCnt = ciFdd->readRestOfData(ci, inBuf, BFR_SIZE);
+
+    if(readCnt < 6) {
+        logFdd(LOG_ERROR, "handleGetImageList() -- not enough data received: %d", readCnt);
+        return;
+    }
+
+    ImageBrowse& b = browse[ci->index];
+    b.wanted = true;
+    b.start = Utils::getDword(inBuf);
+    b.count = MIN(Utils::getWord(inBuf + 4), IMAGE_LIST_PAGE_MAX);
+
+    std::string fileName;
+    updateImageListFolder(ci, fileName);
+    b.list.refresh();                       // a change not seen by checkImageLists() yet
+
+    sendImageList(ci);
+}
+
+void CoreFdd::handleInsertImage(ClientInfo* ci)
+{
+    uint8_t inBuf[INSERT_BFR_SIZE + 1];
+    int readCnt = ciFdd->readRestOfData(ci, inBuf, INSERT_BFR_SIZE);
+
+    uint8_t status = INSERT_IMAGE_FAILED;
+    std::string name;
+
+    if(readCnt >= 9 && inBuf[8] > 0 && (9 + inBuf[8]) <= readCnt) {
+        name.assign((const char*) inBuf + 9, inBuf[8]);
+    }
+
+    ImageBrowse& b = browse[ci->index];
+    std::string fileName;
+    updateImageListFolder(ci, fileName);
+
+    if(name.empty() || name.find(HOSTPATH_SEPAR_CHAR) != std::string::npos) {     // no name, or not just a name? bad request
+        logFdd(LOG_ERROR, "handleInsertImage() -- bad request, %d bytes received", readCnt);
+    } else if(b.list.getFolder().empty()) {
+        logFdd(LOG_WARNING, "handleInsertImage() -- %s: current image can't be browsed", name.c_str());
+    } else {
+        b.list.refresh();                   // the device might have seen the list before a change
+
+        if(b.list.indexOf(name) == IMAGE_LIST_NONE) {
+            logFdd(LOG_WARNING, "handleInsertImage() -- %s: not in %s (device gen %u, index %u, list gen %u)", name.c_str(),
+                b.list.getFolder().c_str(), Utils::getDword(inBuf), Utils::getDword(inBuf + 4), b.list.getGen());
+            status = INSERT_IMAGE_NOT_FOUND;
+        } else {
+            std::string pathAndFile = Utils::mergeHostPaths2(b.list.getFolder(), name);
+            logFdd(LOG_DEBUG, "handleInsertImage() -- inserting %s into slot %d", pathAndFile.c_str(), ci->floppySlotIndex);
+            imageSilo->loadImageToSlot(ci->floppySlotIndex, pathAndFile.c_str());     // also stores it for the web UI
+            status = INSERT_IMAGE_OK;
+        }
+    }
+
+    ciFdd->sendHeaderAndDataToChip(ci->fdClient, ATN_INSERT_IMAGE, &status, 1);
+
+    if(status == INSERT_IMAGE_NOT_FOUND && b.wanted) {  // device has an old list? send the current one
+        sendImageList(ci);
+    }
+}
+
+void CoreFdd::checkImageLists(void)
+{
+    for(int i=0; i<MAX_CLIENTS; i++) {
+        ClientInfo* ci = ciFdd->clientGetByIndex(i);
+
+        if(ci->fdClient == FD_EMPTY || !browse[i].wanted) {     // no client, or it doesn't browse? skip it
+            continue;
+        }
+
+        if(browse[i].list.refresh()) {
+            sendImageList(ci);
+        }
+    }
 }
 
 void CoreFdd::handleSectorWritten(ClientInfo* ci)

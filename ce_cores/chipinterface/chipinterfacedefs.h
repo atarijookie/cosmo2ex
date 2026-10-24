@@ -29,6 +29,17 @@
 #define ATN_SECTOR_WRITTEN              0x03        // sent: 3, side (highest bit) + track #, current sector #
 #define ATN_SEND_TRACK                  0x04        // send the whole track
 #define ATN_SEND_WHOLE_IMAGE            0x05        // send the whole image
+#define ATN_GET_IMAGE_LIST              0x06        // page of image names in the folder of the current image, see fdd/imagelist.h
+                                                    //   device: start (4 B, 0xffffffff = around the current image), count (2 B)
+                                                    //   host (the reply, and on its own when the list / current image changes):
+                                                    //   gen, total, current index, start (4 B each), count (2 B), count * [len (1 B), name]
+#define ATN_INSERT_IMAGE                0x07        // insert image from that folder by name
+                                                    //   device: gen, index (4 B each), name len (1 B), name
+                                                    //   host: status (1 B) - INSERT_IMAGE_*
+
+#define INSERT_IMAGE_OK                 0           // found, loading - the image follows as on ATN_SEND_WHOLE_IMAGE
+#define INSERT_IMAGE_NOT_FOUND          1           // no such image in the folder (anymore)
+#define INSERT_IMAGE_FAILED             2           // bad request, or the current image can't be browsed (no image, special image)
 
 //---------------------------------------------
 // CMD codes: commands sent from host to device

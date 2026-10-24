@@ -18,6 +18,7 @@
 #include "ipc.h"
 #include "written_sectors.h"
 #include "host_receive.h"
+#include "image_browser.h"
 #include "panel.h"
 #include "captive_portal.h"
 #include "beeper.h"
@@ -206,6 +207,9 @@ void loop(void)
 
         // handle any data incoming
         handleIncommingData();
+
+        // browsing the images on the front panel - page requests, timeout, display
+        browserLoop();
 
         // send heartbeat (fw version) once a second
         if (connectedToHost && (now - lastSendFwTime) >= 1000)

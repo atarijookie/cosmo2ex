@@ -35,6 +35,12 @@
 #define ATN_SECTOR_WRITTEN      0x03        // sent: 3, side (highest bit) + track #, current sector #
 #define ATN_SEND_TRACK          0x04        // send the whole track
 #define ATN_SEND_WHOLE_IMAGE    0x05        // send the whole image
+#define ATN_GET_IMAGE_LIST      0x06        // page of image names in the folder of the current image - see image_browser.h
+#define ATN_INSERT_IMAGE        0x07        // insert image from that folder by name, the host replies with INSERT_IMAGE_*
+
+#define INSERT_IMAGE_OK         0           // found, loading - the image follows as on ATN_SEND_WHOLE_IMAGE
+#define INSERT_IMAGE_NOT_FOUND  1           // no such image in the folder (anymore)
+#define INSERT_IMAGE_FAILED     2           // bad request, or the current image can't be browsed
 
 // commands sent from host to device
 #define CMD_WRITE_PROTECT_OFF       0x10

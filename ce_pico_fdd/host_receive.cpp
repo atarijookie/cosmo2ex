@@ -10,6 +10,7 @@
 #include "beeper.h"
 #include "ipc.h"
 #include "host_receive.h"
+#include "image_browser.h"
 
 THeader fddHeader;      // keep the header global to preserve syncTag between calls
 static bool headerPending = false;  // header received, but its data not handled yet - no free buffer for it until now
@@ -211,11 +212,30 @@ void handleImageReceived(void)
     debug("handleImageReceived %s, imgTracks: %d, imgSides: %d, imageFileName: %s\n", (tmpBfr[0] == 1) ? "END" : "START", imgTracks, imgSides, imageFileName);
 }
 
+void handleImageListReceived(void)
+{
+    static uint8_t bfr[IMAGE_LIST_PAGE_MAX_SIZE];
+
+    if(readMessageData(bfr, sizeof(bfr), fddHeader.len)) {
+        browserImageListReceived(bfr, MIN(fddHeader.len, sizeof(bfr)));
+    }
+}
+
+void handleInsertImageReceived(void)
+{
+    uint8_t status = INSERT_IMAGE_FAILED;
+
+    if(readMessageData(&status, 1, fddHeader.len) && fddHeader.len >= 1) {
+        browserInsertStatusReceived(status);
+    }
+}
+
 void handleIncommingData(void)
 {
     if(!hostConnected()) {          // not connected? forget the message we were in, the next connection starts from scratch
         headerPending = false;
         fddHeader.syncTag = 0;
+        browserReset();             // and the image list - the host sends it only after it's asked for it
         return;
     }
 
@@ -235,6 +255,16 @@ void handleIncommingData(void)
 
         case ATN_SEND_WHOLE_IMAGE:
             handleImageReceived();
+            headerPending = false;
+            break;
+
+        case ATN_GET_IMAGE_LIST:
+            handleImageListReceived();
+            headerPending = false;
+            break;
+
+        case ATN_INSERT_IMAGE:
+            handleInsertImageReceived();
             headerPending = false;
             break;
 

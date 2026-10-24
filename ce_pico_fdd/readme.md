@@ -46,6 +46,12 @@
 - button on GP1 (to 3.3V through 1k, 4k7 pull-down - instead of the unused debug UART RX, the debug output on GP0
   stays): long press (1 s) starts the captive portal (WiFi setup), the same as a long press of enter on the front
   panel; another long press leaves it without saving
+- browsing the images (image_browser.cpp): left / right on the front panel show the previous / next floppy image in the
+  folder of the current one (wraps around at the ends), with its index (`< 123/3720 >`); enter inserts it, 15 s without
+  a key goes back to the current image. Same list and order as the prev / next in the web UI: only .st / .msa, sorted
+  case insensitive. The host (ce_cores/fdd/imagelist.cpp) sends the list in pages of 16 names, only after the device
+  asks for it (with the panel attached), and sends the page again when images are added / deleted / renamed in the
+  folder or the current image changes - the protocol is in image_browser.h. Not for the special images (no folder).
 
 ## Status LED (neopixel)
 

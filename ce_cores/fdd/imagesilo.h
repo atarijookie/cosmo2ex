@@ -21,6 +21,7 @@ typedef struct
     std::string     imageFile;      // just file name:                     bla.st
     std::string     hostPath;       // for translated disk, host path:     /mnt/sda/gamez/bla.st
                                     // or where uploaded disk where is stored: /tmp/bla.st
+    bool            browsable;      // device can browse the other images in the folder of hostPath - not for the special images
 
     volatile bool   openRequested;  // set to true when doing open file request, set to false after successful open
     uint32_t        openRequestSeq; // incremented (under mutex) on every open request - counter, not time, so 2 requests in the same ms aren't mixed up
@@ -53,9 +54,10 @@ public:
     uint8_t *getEncodedTrack(int floppySlotIndex, int track, int side, int &bytesInBuffer);
     bool getParams(int floppySlotIndex, int &tracks, int &sides, int &sectorsPerTrack);
     std::string getFileName(int floppySlotIndex);
+    std::string getBrowsePath(int floppySlotIndex);     // hostPath of a browsable image, "" if nothing to browse
     uint8_t *getEmptyTrack(void);
 
-    void add(int positionIndex, std::string &filename, std::string &hostPath);
+    void add(int positionIndex, std::string &filename, std::string &hostPath, bool browsable = true);   // browsable = false for special images
     void remove(int index);
 
     std::string getImageFilePathFromSlotNo(int slotNo);

@@ -143,7 +143,7 @@ void ImageSilo::loadImageToSlot(int slotNo, const char* pPathAndFile)
     add(slotNo, file, pathAndFile);        // add this image
 }
 
-void ImageSilo::add(int positionIndex, std::string &filename, std::string &hostPath)
+void ImageSilo::add(int positionIndex, std::string &filename, std::string &hostPath, bool browsable)
 {
     if(positionIndex < 0 || positionIndex >= SLOT_COUNT) {
         return;
@@ -156,6 +156,7 @@ void ImageSilo::add(int positionIndex, std::string &filename, std::string &hostP
     // store the info about slot
     slots[positionIndex].imageFile = filename;  // just file name: bla.st
     slots[positionIndex].hostPath = hostPath;   // where the file is stored on disk
+    slots[positionIndex].browsable = browsable;
 
     // create and add floppy encode request
     floppyEncoder_addEncodeWholeImageRequest(positionIndex, hostPath.c_str());
@@ -184,6 +185,7 @@ void ImageSilo::clearSlot(int index)
 {
     slots[index].imageFile.clear();
     slots[index].hostPath.clear();
+    slots[index].browsable = false;
 }
 
 uint32_t ImageSilo::getImageGen(int slotNo)
@@ -269,4 +271,13 @@ std::string ImageSilo::getFileName(int floppySlotIndex)
 
     logFdd(LOG_DEBUG, "getFileName() -- floppySlotIndex: %d, returning: %s", floppySlotIndex, slots[floppySlotIndex].imageFile.c_str());
     return slots[floppySlotIndex].imageFile;
+}
+
+std::string ImageSilo::getBrowsePath(int floppySlotIndex)
+{
+    if(floppySlotIndex < 0 || floppySlotIndex >= SLOT_COUNT || !slots[floppySlotIndex].browsable) {
+        return std::string();
+    }
+
+    return slots[floppySlotIndex].hostPath;     // set and read only in the FDD thread, no lock needed
 }
