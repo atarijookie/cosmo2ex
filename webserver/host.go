@@ -4,9 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
-	"strings"
 )
 
 // Host-related handlers.
@@ -30,7 +28,7 @@ func (s *Server) handleHostDir(w http.ResponseWriter, r *http.Request) {
 	for _, e := range entries {
 		if e.IsDir() {
 			dirs = append(dirs, e.Name())
-		} else if !isDownloadMark(e) {
+		} else {
 			files = append(files, e.Name())
 		}
 	}
@@ -45,14 +43,4 @@ func (s *Server) handleHostDir(w http.ResponseWriter, r *http.Request) {
 		"files": files,
 	}
 	writeJSON(w, http.StatusOK, response)
-}
-
-// isDownloadMark - an empty .zip is the mark of a zip unpacked by the floppy image downloader (see floppydownload.go),
-// nothing to select
-func isDownloadMark(e os.DirEntry) bool {
-	if !strings.EqualFold(filepath.Ext(e.Name()), ".zip") {
-		return false
-	}
-	info, err := e.Info()
-	return err == nil && info.Mode().IsRegular() && info.Size() == 0
 }

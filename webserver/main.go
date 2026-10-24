@@ -45,7 +45,6 @@ type Server struct {
 	mu            sync.RWMutex
 	authTokens    map[string]struct{}
 	input         *inputClient // connection to input socket of ce_cores, for mouse / keyboard of the web UI
-	downloader    *floppyDownloader
 }
 
 // responseWriter wraps http.ResponseWriter to capture status codes
@@ -124,8 +123,6 @@ func main() {
 
 	s := newServer()
 	s.router.Get("/ca.crt", certs.handleCACert) // public, so the CA can be installed before logging in
-	logFloppyImagesDirSpace()
-	s.downloader.start()
 	fmt.Println("Starting server on", addr)
 	fmt.Println("Navigate to:", url)
 
@@ -165,7 +162,6 @@ func newServer() *Server {
 		router: r,
 		authTokens: map[string]struct{}{},
 		input:      &inputClient{},
-		downloader: newFloppyDownloader(),
 	}
 
 	// browsers must revalidate pages instead of using cached copies (304 if unchanged), otherwise
@@ -232,8 +228,6 @@ func newServer() *Server {
 		protected.Post("/screen/{mac}/vbl", s.handlePostScreenVBL)
 		protected.Get("/screen/{mac}/vbl", s.handleGetScreenVBL)
 		protected.Get("/host/dir", s.handleHostDir)
-		protected.Get("/settings/general", s.handleGetGeneralSettings)
-		protected.Put("/settings/general", s.handlePutGeneralSettings)
 
 		// Serve static files (HTML, JS, images, etc.) from the local "static" directory.
 		// This directory lives next to the Go sources / binary working directory.

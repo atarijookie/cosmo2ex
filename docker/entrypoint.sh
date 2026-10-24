@@ -17,7 +17,7 @@ DATA_DIR="${DATA_DIR:-/var/lib/ce}"
 LOG_DIR="${LOG_DIR:-/var/log/ce}"
 PID_DIR="${PID_DIR:-/run/ce}"
 SETTINGS_DIR="${SETTINGS_DIR:-/opt/ce/settings}"
-FLOPPY_IMAGES_DIR="${FLOPPY_IMAGES_DIR:-/opt/ce/floppyImages}"
+FLOPPY_IMAGES_DIR="${FLOPPY_IMAGES_DIR:-/opt/ce/floppy_images}"
 CONFIG_DRIVE_PATH="${CONFIG_DRIVE_PATH:-${DATA_DIR}/configdrive}"
 
 mkdir -p "$DATA_DIR" "$LOG_DIR" "$PID_DIR" "$SETTINGS_DIR" "$FLOPPY_IMAGES_DIR"

@@ -50,7 +50,7 @@ func (s *Server) handleGetFDDImage(w http.ResponseWriter, r *http.Request) {
 		image = ""
 	}
 
-	// defaultDir - where the file selector starts without an image (the downloaded images)
+	// defaultDir - where the file selector starts without an image
 	writeJSON(w, http.StatusOK, map[string]string{"mac": mac, "image": image, "defaultDir": floppyImagesDir()})
 }
 
@@ -215,6 +215,12 @@ func floppyImageNameLess(a, b string) bool {
 		return len(a) < len(b)
 	}
 	return a < b // differ only in case - by bytes, so the order is always the same
+}
+
+// floppyImagesDir - where the file selector starts without an image (FLOPPY_IMAGES_DIR in .env, next to SETTINGS_DIR),
+// "" if not set
+func floppyImagesDir() string {
+	return os.Getenv("FLOPPY_IMAGES_DIR")
 }
 
 // handleFloppyAction sends a floppy action command to the core
