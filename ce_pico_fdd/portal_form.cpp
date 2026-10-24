@@ -10,8 +10,9 @@ static const char* pageStart =
     "<title>Cosmo2ex FDD</title><style>"
     "body{font-family:sans-serif;max-width:24em;margin:2em auto;padding:0 1em}"
     "input{width:100%;padding:.5em;margin:.3em 0 1em;box-sizing:border-box;font-size:1em}"
+    "input[type=checkbox]{width:auto;margin:0 .5em 0 0}"
     "button{padding:.6em 2em;font-size:1em}.err{color:#c00}"
-    "</style></head><body><h2>Cosmo2ex FDD - WiFi</h2>";
+    "</style></head><body><h2>Cosmo2ex FDD - setup</h2>";
 
 static const char* pageEnd = "</body></html>";
 
@@ -31,7 +32,7 @@ std::string htmlEscape(const char* text)
     return out;
 }
 
-const char* portalApplyCredentials(const char* ssid, const char* password, Settings_t& settings)
+const char* portalApplyForm(const char* ssid, const char* password, bool ikbdEnabled, Settings_t& settings)
 {
     size_t ssidLen = ssid ? strlen(ssid) : 0;
     size_t pswdLen = password ? strlen(password) : 0;
@@ -53,6 +54,7 @@ const char* portalApplyCredentials(const char* ssid, const char* password, Setti
     }                                   // else keep the stored password
 
     strcpy(settings.ssid, ssid);
+    settings.ikbdEnabled = ikbdEnabled ? 1 : 0;
     return NULL;
 }
 
@@ -74,6 +76,9 @@ std::string portalFormPage(const Settings_t& settings, const std::vector<std::st
     page += "</datalist>"
             "<label>Password<input name='password' type='password' maxlength='31'></label>"
             "<p><small>Leave the password empty to keep the stored one (same WiFi name), or for an open network.</small></p>"
+            "<p><label><input name='ikbd' type='checkbox' value='1'";
+    page += settings.ikbdEnabled ? " checked" : "";
+    page += ">Keyboard and mouse via the host (IKBD)</label></p>"
             "<button type='submit'>Save and connect</button></form>";
 
     page += pageEnd;

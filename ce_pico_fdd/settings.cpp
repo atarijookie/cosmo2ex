@@ -38,7 +38,8 @@ void loadSettingsFromEeprom(void)
         return;
     }
 
-    memset(&Settings, 0, sizeof(Settings));
+    memset(&Settings, 0, sizeof(Settings));     // nothing stored - the defaults
+    Settings.ikbdEnabled = 1;
 }
 
 // EEPROM.commit() stops core 1 while the flash is written (core 1 is started via setup1() / loop1(), so the arduino

@@ -68,12 +68,23 @@
   when the host connects, 400 ms when it's lost
 - beeper.cpp - core 1 owns the pin and ends all the beeps in its loop, core 0 only asks for them
 
+## IKBD (keyboard + mouse)
+
+- the board is in the keyboard -> ST path (SV1): KEYB_TX_ORIG (GP9, from the keyboard) and KEYB_TX (GP8, to the ST) on
+  uart1, KEYB_RX (GP18, the ST's commands to the keyboard, only listened to) on a PIO receiver - all 7812 baud
+- IKBD disabled, or no connection to the host: the uart IRQ passes the keyboard data straight to the ST (at most ~4 ms
+  later), even while the main loop is busy (joining the WiFi, connecting)
+- IKBD enabled (`ikbdEnabled` in the settings - on by default, the checkbox on the WiFi setup page) and connected to the host's ikbd port: the keyboard data and the ST
+  commands go to the host, tagged (0xBB / 0xAA, keep alive 0xEE once a second), what the host sends goes to the ST
+- ikbd.cpp, the same protocol as ce_pico_hdd
+
 ## WiFi setup (captive portal)
 
 - the FDD scans the WiFi networks, then starts an open AP `cosmo2ex` (192.168.42.1) - connect a phone or PC to it,
   the setup page opens by itself (every DNS name and URL leads to it), or open http://192.168.42.1
 - the page has the WiFi name (with the scanned networks offered) and password; an empty password keeps the stored one
-  for the same WiFi name, otherwise it means an open network; both max 31 chars, the password at least 8 (WPA2)
+  for the same WiFi name, otherwise it means an open network; both max 31 chars, the password at least 8 (WPA2);
+  and a checkbox for IKBD (keyboard and mouse via the host)
 - Save stores them to EEPROM (the floppy streaming pauses for the flash write), then the FDD goes back to the normal
   mode and connects with them right away
 - without a page request for 5 minutes, the portal ends with the old settings

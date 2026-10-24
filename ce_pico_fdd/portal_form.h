@@ -12,7 +12,7 @@ std::string htmlEscape(const char* text);
 
 // Checks the values from the form and puts them into settings. An empty password keeps the stored one when the SSID
 // didn't change, otherwise it means an open network. Returns NULL when ok, or the error to show - settings unchanged then.
-const char* portalApplyCredentials(const char* ssid, const char* password, Settings_t& settings);
+const char* portalApplyForm(const char* ssid, const char* password, bool ikbdEnabled, Settings_t& settings);
 
 std::string portalFormPage(const Settings_t& settings, const std::vector<std::string>& networks, const char* error);
 std::string portalSavedPage(const char* ssid);

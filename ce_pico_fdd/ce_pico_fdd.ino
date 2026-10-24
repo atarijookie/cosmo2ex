@@ -56,7 +56,6 @@ bool diskChanged = false;
 bool diskChangeActive = false;  // pins inverted for the disk change now
 uint32_t diskChangeStart;
 
-void pio_uart_setup(void);
 
 /*
     Notes on serial output via USB + UART
@@ -125,13 +124,8 @@ void setup(void)
 
     setupAtnBuffers();
 
-    // Initialise UART 1
-    gpio_set_function(PIN_KEYB_TX, UART_FUNCSEL_NUM(uart1, PIN_KEYB_TX));
-    gpio_set_function(PIN_KEYB_TX_ORIG, UART_FUNCSEL_NUM(uart1, PIN_KEYB_TX_ORIG));
-    uart_init(uart1, 7812);
-
-    // initialize additional UART RX via PIO and IRQ
-    // pio_uart_setup();
+    // keyboard: uart1 on KEYB_TX / KEYB_TX_ORIG, PIO receiver on KEYB_RX - passes the keyboard data to the ST from now on
+    ikbdInit();
 
     ipcInit();
 
@@ -274,8 +268,8 @@ void loop(void)
         // status LED - sends only when the color changes
         neopixelProcess();
 
-        // handle ikbd data transfer
-        // ikbdHandling();
+        // keyboard data: to / from the host when IKBD is enabled (otherwise passed to the ST in the uart IRQ)
+        ikbdProcessing();
     }
 }
 
