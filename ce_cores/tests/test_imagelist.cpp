@@ -210,7 +210,11 @@ TEST_CASE_FIXTURE(ListTmpDir, "image list: change with the same folder mtime is 
     struct stat before;
     REQUIRE(stat(dir.c_str(), &before) == 0);
     touch("b.st");
+#if defined(__APPLE__)
+    struct timespec ts[2] = { before.st_mtimespec, before.st_mtimespec };  // the same mtime as before - like the 2 s tick of FAT
+#else
     struct timespec ts[2] = { before.st_mtim, before.st_mtim };    // the same mtime as before - like the 2 s tick of FAT
+#endif
     REQUIRE(utimensat(AT_FDCWD, dir.c_str(), ts, 0) == 0);
 
     CHECK(list.refresh());                      // scanned again, as the last scan was racy
