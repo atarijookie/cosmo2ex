@@ -143,6 +143,8 @@ Timing (panel side, not visible to the FDD):
   gets immediate feedback; the release after that sends nothing
 - short press = released before 1000 ms, sent on release
 - no auto-repeat in v1
+- enter held on for 10 s flips the screen (panel-local, nothing is sent for it); after the flash write the panel sends
+  `I...` again, so the FDD resends the whole screen
 
 ## 6. Startup
 
@@ -156,4 +158,5 @@ Timing (panel side, not visible to the FDD):
 
 - burn-in: the panel dims the display after a few minutes without a change, and restores it on the next change
   or key press
+- screen orientation (normal / upside down, default upside down) - 10 s hold of enter, stored on the panel
 - the panel never blocks the FDD - all messages are fire-and-forget

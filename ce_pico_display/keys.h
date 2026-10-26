@@ -8,6 +8,7 @@
 #define KEY_EVENT_NONE      0
 #define KEY_EVENT_SHORT     'S'     // released before LONG_PRESS_MS
 #define KEY_EVENT_LONG      'H'     // held for LONG_PRESS_MS - sent right then, the release after it sends nothing
+#define KEY_EVENT_VERY_LONG 'V'     // still held at VERY_LONG_PRESS_MS (after the long one) - handled on the panel
 
 class Key
 {
@@ -21,6 +22,7 @@ private:
     bool     stableState;
     uint32_t pressTime;
     bool     longSent;
+    bool     veryLongSent;
 };
 
 class QuadDecoder

@@ -62,6 +62,10 @@ The key events (`KES`, `KLH`, ...) and the `I...` answer show up in the terminal
 - another display: change the U8g2 constructor, the fonts and LINE_HEIGHT in screen.cpp - the FDD adapts to the lines
   and columns the panel reports in its `I` message
 - strap (read at start): GP29 to GND = rotary encoder instead of the buttons
+- screen orientation: upside down by default (how the encoder panel is mounted); hold enter (button or encoder push)
+  for 10 s to flip it - it turns right away and is stored in the emulated EEPROM (last flash sector, settings.cpp).
+  The long press at 1 s is still sent to the FDD on the way (starts / leaves the WiFi setup), so a press of enter
+  just to change the orientation also toggles that
 - encoder direction / clicks: ENC_REVERSE and ENC_STEPS_PER_DETENT in defs.h
 
 ## License

@@ -113,6 +113,14 @@ void screenSetBrightness(uint8_t value, uint32_t now)
     lastActivity = now;
 }
 
+void screenSetFlipped(bool flipped, uint32_t now)
+{
+    u8g2.setDisplayRotation(flipped ? U8G2_R2 : U8G2_R0);
+    dirty = true;
+    lastChange = now - REDRAW_DELAY_MS;     // no reason to wait
+    screenActivity(now);
+}
+
 void screenActivity(uint32_t now)
 {
     lastActivity = now;

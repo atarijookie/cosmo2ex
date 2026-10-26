@@ -1,7 +1,8 @@
 #include "defs.h"
 #include "keys.h"
 
-Key::Key() : rawState(false), rawChangeTime(0), stableState(false), pressTime(0), longSent(false)
+Key::Key() : rawState(false), rawChangeTime(0), stableState(false), pressTime(0), longSent(false),
+         veryLongSent(false)
 {
 }
 
@@ -19,6 +20,7 @@ char Key::update(bool pressed, uint32_t now)
         if(stableState) {
             pressTime = now;
             longSent = false;
+            veryLongSent = false;
         } else if(!longSent) {
             return KEY_EVENT_SHORT;
         }
@@ -27,6 +29,11 @@ char Key::update(bool pressed, uint32_t now)
     if(stableState && !longSent && now - pressTime >= LONG_PRESS_MS) {
         longSent = true;
         return KEY_EVENT_LONG;
+    }
+
+    if(stableState && longSent && !veryLongSent && now - pressTime >= VERY_LONG_PRESS_MS) {
+        veryLongSent = true;
+        return KEY_EVENT_VERY_LONG;
     }
 
     return KEY_EVENT_NONE;

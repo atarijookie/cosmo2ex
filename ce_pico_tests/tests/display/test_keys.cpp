@@ -67,6 +67,46 @@ TEST_CASE("long press is sent when the threshold is reached, the release sends n
     CHECK(run(key, false, 1500, 1600) == "S");
 }
 
+TEST_CASE("very long press - held on after the long press, sent once at the threshold, the release sends nothing")
+{
+    Key key;
+    run(key, false, 0, 100);
+
+    std::string events;
+    uint32_t veryLongAt = 0;
+    for (uint32_t t = 100; t < 100 + VERY_LONG_PRESS_MS + 1000; t++) {
+        char e = key.update(true, t);
+        if (e != KEY_EVENT_NONE) {
+            events += e;
+        }
+        if (e == KEY_EVENT_VERY_LONG) {
+            veryLongAt = t;
+        }
+    }
+    CHECK(events == "HV");
+    CHECK(veryLongAt == 100 + DEBOUNCE_MS + VERY_LONG_PRESS_MS);
+
+    uint32_t end = 100 + VERY_LONG_PRESS_MS + 1000;
+    CHECK(run(key, false, end, end + 100) == "");
+}
+
+TEST_CASE("released before the very long press - just the long press")
+{
+    Key key;
+    run(key, false, 0, 100);
+    CHECK(run(key, true, 100, 100 + VERY_LONG_PRESS_MS / 2) == "H");
+    CHECK(run(key, false, 100 + VERY_LONG_PRESS_MS / 2, VERY_LONG_PRESS_MS * 2) == "");
+}
+
+TEST_CASE("very long press - again on the next press")
+{
+    Key key;
+    run(key, false, 0, 100);
+    CHECK(run(key, true, 100, 100 + VERY_LONG_PRESS_MS + 100) == "HV");
+    CHECK(run(key, false, 100 + VERY_LONG_PRESS_MS + 100, 20000) == "");
+    CHECK(run(key, true, 20000, 20000 + VERY_LONG_PRESS_MS + 100) == "HV");
+}
+
 TEST_CASE("bounces shorter than the debounce time are ignored")
 {
     Key key;

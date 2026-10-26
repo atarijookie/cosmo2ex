@@ -21,6 +21,7 @@
 // keys
 #define DEBOUNCE_MS         20
 #define LONG_PRESS_MS       1000
+#define VERY_LONG_PRESS_MS  10000   // enter held this long - flips the screen (the long press was sent at 1 s already)
 #define ENC_STEPS_PER_DETENT 4      // quadrature transitions per click, some encoders have 2
 #define ENC_REVERSE         0       // 1 if CW turn gives left on your encoder
 
@@ -31,5 +32,6 @@
 #define DIM_AFTER_MS        (5 * 60 * 1000)     // burn-in: dim after this long without change or key press
 #define DIM_CONTRAST        1
 #define DEFAULT_CONTRAST    255
+#define DEFAULT_FLIPPED     1       // upside down (U8G2_R2) until changed - the way the encoder panel is mounted
 
 #endif

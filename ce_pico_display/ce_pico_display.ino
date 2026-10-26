@@ -9,6 +9,7 @@
 #include "protocol.h"
 #include "keys.h"
 #include "screen.h"
+#include "settings.h"
 
 static bool hasEncoder;
 
@@ -82,11 +83,26 @@ static void encoderIsr(void)
     encoderDetents += ENC_REVERSE ? -step : step;
 }
 
+// enter held for VERY_LONG_PRESS_MS - upside down <-> normal, stored
+static void flipScreen(uint32_t now)
+{
+    bool flipped = !settingsFlipped();
+    screenSetFlipped(flipped, now);
+    screenLoop(now);                    // shown before the flash write, which stops everything for a moment
+
+    settingsSetFlipped(flipped);
+    sendIdentify();                     // the FDD sends the whole screen again - in case a line was lost meanwhile
+}
+
 static void handleKey(Key& key, int pin, char button, uint32_t now)
 {
     char event = key.update(digitalRead(pin) == LOW, now);      // pressed = pulled to GND
 
-    if(event != KEY_EVENT_NONE) {
+    if(event == KEY_EVENT_VERY_LONG) {  // not for the FDD
+        if(button == 'E') {
+            flipScreen(now);
+        }
+    } else if(event != KEY_EVENT_NONE) {
         screenActivity(now);
         sendKey(button, event);
     }
@@ -126,7 +142,9 @@ void setup(void)
     Serial1.begin(UART_BAUD);
     gpio_pull_up(PIN_UART_RX);          // the pads default to pull-down - with no FDD that's a break, not idle
 
+    settingsInit();
     screenInit();
+    screenSetFlipped(settingsFlipped(), millis());
 
     if(hasEncoder) {
         attachInterrupt(digitalPinToInterrupt(PIN_BTN_LEFT), encoderIsr, CHANGE);
