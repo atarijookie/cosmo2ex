@@ -9058,14 +9058,14 @@ Source: &lt;a href="https://www.tme.eu/Document/3355ee49dae2859b0bf824db7ca698f7
 <part name="GND1" library="supply1" deviceset="GND" device=""/>
 <part name="D1" library="diode" deviceset="DIODE-" device="DO214AC" value="SK110-DIO"/>
 <part name="GND2" library="supply1" deviceset="GND" device=""/>
-<part name="R3" library="resistor" deviceset="R-EU_" device="R0603" value="0R"/>
+<part name="R3" library="resistor" deviceset="R-EU_" device="R0603" value="1k"/>
 <part name="GND3" library="supply1" deviceset="GND" device=""/>
 <part name="U$1" library="OLED" deviceset="OLED" device=""/>
 <part name="GND8" library="supply1" deviceset="GND" device=""/>
 <part name="GND30" library="supply1" deviceset="GND" device=""/>
 <part name="P+22" library="supply1" deviceset="VCC" device=""/>
 <part name="P+1" library="supply1" deviceset="VCC" device=""/>
-<part name="C1" library="rcl" deviceset="C-EU" device="C0603"/>
+<part name="C1" library="rcl" deviceset="C-EU" device="C0603" value="100nF"/>
 <part name="R5" library="resistor" deviceset="R-EU_" device="R0603" value="2k2"/>
 <part name="R6" library="resistor" deviceset="R-EU_" device="R0603" value="2k2"/>
 <part name="P+2" library="supply1" deviceset="VCC" device=""/>
@@ -9313,6 +9313,11 @@ Source: &lt;a href="https://www.tme.eu/Document/3355ee49dae2859b0bf824db7ca698f7
 <pinref part="U1" gate="G$1" pin="GP27"/>
 <wire x1="91.44" y1="22.86" x2="101.6" y2="22.86" width="0.1524" layer="91"/>
 <label x="91.694" y="23.368" size="0.8128" layer="95" font="vector"/>
+</segment>
+<segment>
+<pinref part="U2" gate="G$1" pin="S1"/>
+<wire x1="193.04" y1="15.24" x2="193.04" y2="25.4" width="0.1524" layer="91"/>
+<label x="192.532" y="23.368" size="0.8128" layer="95" font="vector" rot="R90"/>
 </segment>
 </net>
 <net name="BTN_RIGHT_ENC_B" class="0">

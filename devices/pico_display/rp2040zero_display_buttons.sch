@@ -9047,8 +9047,6 @@ Source: AVX .. aphvc.pdf</description>
 <part name="GND1" library="supply1" deviceset="GND" device=""/>
 <part name="D1" library="diode" deviceset="DIODE-" device="DO214AC" value="SK110-DIO"/>
 <part name="GND2" library="supply1" deviceset="GND" device=""/>
-<part name="R3" library="resistor" deviceset="R-EU_" device="R0603" value="0R"/>
-<part name="GND3" library="supply1" deviceset="GND" device=""/>
 <part name="S1" library="DTSM-62N-V-B" deviceset="DTSM-62N-V-B" device=""/>
 <part name="S2" library="DTSM-62N-V-B" deviceset="DTSM-62N-V-B" device=""/>
 <part name="S3" library="DTSM-62N-V-B" deviceset="DTSM-62N-V-B" device=""/>
@@ -9060,7 +9058,7 @@ Source: AVX .. aphvc.pdf</description>
 <part name="GND30" library="supply1" deviceset="GND" device=""/>
 <part name="P+22" library="supply1" deviceset="VCC" device=""/>
 <part name="P+1" library="supply1" deviceset="VCC" device=""/>
-<part name="C1" library="rcl" deviceset="C-EU" device="C0603"/>
+<part name="C1" library="rcl" deviceset="C-EU" device="C0603" value="100nF"/>
 <part name="R5" library="resistor" deviceset="R-EU_" device="R0603" value="2k2"/>
 <part name="R6" library="resistor" deviceset="R-EU_" device="R0603" value="2k2"/>
 <part name="P+2" library="supply1" deviceset="VCC" device=""/>
@@ -9080,7 +9078,7 @@ Source: AVX .. aphvc.pdf</description>
 <wire x1="24.384" y1="41.402" x2="25.4" y2="41.656" width="0.1524" layer="94"/>
 <wire x1="25.4" y1="41.656" x2="25.4" y2="41.148" width="0.1524" layer="94"/>
 <wire x1="25.4" y1="41.148" x2="24.384" y2="41.402" width="0.1524" layer="94"/>
-<text x="124.46" y="17.78" size="0.8128" layer="94" font="vector">open = 3 buttons, GND = encoder</text>
+<text x="104.14" y="18.288" size="0.8128" layer="94" font="vector">open = 3 buttons, GND = encoder</text>
 </plain>
 <instances>
 <instance part="U1" gate="G$1" x="73.66" y="30.48"/>
@@ -9097,8 +9095,6 @@ Source: AVX .. aphvc.pdf</description>
 <attribute name="NAME" x="99.06" y="47.7774" size="1.778" layer="95" rot="R180"/>
 </instance>
 <instance part="GND2" gate="1" x="93.98" y="0"/>
-<instance part="R3" gate="G$1" x="109.22" y="17.78" rot="R180"/>
-<instance part="GND3" gate="1" x="119.38" y="17.78" rot="R90"/>
 <instance part="S1" gate="G$1" x="172.72" y="25.4" rot="R270"/>
 <instance part="S2" gate="G$1" x="190.5" y="25.4" rot="R270"/>
 <instance part="S3" gate="G$1" x="208.28" y="25.4" rot="R270"/>
@@ -9180,11 +9176,6 @@ Source: AVX .. aphvc.pdf</description>
 <wire x1="91.44" y1="12.7" x2="93.98" y2="12.7" width="0.1524" layer="91"/>
 <wire x1="93.98" y1="12.7" x2="93.98" y2="2.54" width="0.1524" layer="91"/>
 <pinref part="GND2" gate="1" pin="GND"/>
-</segment>
-<segment>
-<pinref part="R3" gate="G$1" pin="1"/>
-<pinref part="GND3" gate="1" pin="GND"/>
-<wire x1="114.3" y1="17.78" x2="116.84" y2="17.78" width="0.1524" layer="91"/>
 </segment>
 <segment>
 <pinref part="S1" gate="G$1" pin="NO_2"/>
@@ -9314,9 +9305,8 @@ Source: AVX .. aphvc.pdf</description>
 <net name="STRAP_INPUT_TYPE" class="0">
 <segment>
 <pinref part="U1" gate="G$1" pin="GP29"/>
-<wire x1="91.44" y1="17.78" x2="104.14" y2="17.78" width="0.1524" layer="91"/>
+<wire x1="91.44" y1="17.78" x2="101.6" y2="17.78" width="0.1524" layer="91"/>
 <label x="91.694" y="18.288" size="0.8128" layer="95" font="vector"/>
-<pinref part="R3" gate="G$1" pin="2"/>
 </segment>
 </net>
 <net name="N$3" class="0">
