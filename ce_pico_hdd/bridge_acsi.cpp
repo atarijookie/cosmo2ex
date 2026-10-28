@@ -20,7 +20,7 @@ static uint offsetAcsiWrite, offsetAcsiRead;
 
 int readInProgressCount = 0;
 
-static void setDataDirection(uint8_t sendNotRecv, PIO pio)
+static void setDataDirection(uint8_t sendNotRecv, PIO pio, uint sm)
 {
     static uint8_t sendNotRecvNow = 0xff; // init with no data direction set yet
     static PIO pioNow = nullptr;
@@ -43,6 +43,10 @@ static void setDataDirection(uint8_t sendNotRecv, PIO pio)
         gpio_set_dir_in_masked(DATA_PINS_MASK);
     }
 
+    // pin directions in PIO are per PIO block, not per SM - all the ACSI SMs share one block, so the data pins set as
+    // outputs for READ / STATUS would stay outputs for CMD / WRITE too, fighting IC2/IC3 while they drive the data from ST
+    pio_sm_set_pindirs_with_mask64(pio, sm, (sendNotRecv == DIR_SEND) ? DATA_PINS_MASK : 0, DATA_PINS_MASK);
+
     int pio_data_pins[8] = {PIN_D0, PIN_D1, PIN_D2, PIN_D3, PIN_D4, PIN_D5, PIN_D6, PIN_D7};
     for (int i = 0; i < 8; i++) {
         pio_gpio_init(pio, pio_data_pins[i]);
@@ -52,6 +56,19 @@ static void setDataDirection(uint8_t sendNotRecv, PIO pio)
     if (sendNotRecv == DIR_RECV) {
         BIT_CLR(PIN_DATA_DIR);
     }
+}
+
+// Like pio_sm_init() with a config, but its JMP to the program start is executed with side-set 1. pio_sm_init() executes it
+// with side-set 0, which pulses the handshake pin (INT / DRQ, already switched to PIO) L before the program runs - then
+// the ST takes a byte too early, e.g. a garbage 1st byte of DMA read, and the rest of the data is shifted by one.
+static void smInitWithHandshakeH(PIO pio, uint sm, uint offset, const pio_sm_config *cfg)
+{
+    pio_sm_set_enabled(pio, sm, false);
+    pio_sm_set_config(pio, sm, cfg);
+    pio_sm_clear_fifos(pio, sm);
+    pio_sm_restart(pio, sm);
+    pio_sm_clkdiv_restart(pio, sm);
+    pio_sm_exec(pio, sm, pio_encode_jmp(offset) | pio_encode_sideset(1, 1));     // .side_set 1 in acsi_write / acsi_read
 }
 
 void acsiPioConfigAll(void)
@@ -162,7 +179,7 @@ int acsiPioConfig(int newMode, bool force)
 
     // data direction RECV for CMD and WRITE, data direction SEND for READ and STATUS
     uint8_t sendNotRecv = (newMode == MODE_DMA_READ || newMode == MODE_STATUS) ? DIR_SEND : DIR_RECV;
-    setDataDirection(sendNotRecv, whichPio);
+    setDataDirection(sendNotRecv, whichPio, whichSm);
 
     // if we're in the reset mode, don't enabble any PIO SM
     if(newMode == MODE_RESET) {
@@ -170,7 +187,7 @@ int acsiPioConfig(int newMode, bool force)
     }
 
     if(whichCfg) {      // shared state machine - load the config with the handshake pins for this mode, start from the beginning, clear FIFOs
-        pio_sm_init(whichPio, whichSm, whichOffset, whichCfg);
+        smInitWithHandshakeH(whichPio, whichSm, whichOffset, whichCfg);
     } else {            // restart state machine, clear FIFOs
         pio_sm_restart(whichPio, whichSm);
         pio_sm_clear_fifos(whichPio, whichSm);
@@ -293,6 +310,46 @@ void acsiDMA_read(uint8_t val)
     }
 }
 
+// Like acsiDMA_read() for each byte, but in one loop running from RAM - the call per byte (through bridge.cpp) and flash
+// cache misses (the XIP cache is shared with core 0) made the CPU too slow to keep the TX FIFO from running empty.
+void __not_in_flash_func(acsiDMA_readBlock)(const uint8_t* bfr, uint32_t cnt)
+{
+    // FIFO registers directly - the pio_sm_*() inline functions might end up as calls to flash with opt=Small
+    PIO pio = pioAcsiRead;
+    io_ro_32 *rxf = &pio->rxf[smAcsiRead];
+    io_wo_32 *txf = &pio->txf[smAcsiRead];
+    const uint32_t rxEmpty = 1u << (PIO_FSTAT_RXEMPTY_LSB + smAcsiRead);
+    const uint32_t txFull  = 1u << (PIO_FSTAT_TXFULL_LSB + smAcsiRead);
+
+    int inProgress = readInProgressCount;
+    uint32_t i = 0;
+
+    while(i < cnt) {
+        uint32_t fstat = pio->fstat;
+
+        // RX FIFO not empty? read it, decrement inProgress
+        if(!(fstat & rxEmpty)) {
+            (void) *rxf;
+            inProgress--;
+        }
+
+        // TX FIFO not full, we can push to fifo
+        if(!(fstat & txFull)) {
+            *txf = bfr[i];
+            i++;
+            inProgress++;
+            continue;
+        }
+
+        if(hasTimedOut) {       // on timeout
+            brStat = E_TimeOut; // set the bridge status
+            break;
+        }
+    }
+
+    readInProgressCount = inProgress;
+}
+
 void acsiDMA_write_startWithCount(uint32_t transfersCount)
 {
     if(transfersCount == 0) {   // PIO program would get 0xffffffff and wait for 4 G bytes with DRQ / REQ active
@@ -318,6 +375,25 @@ uint8_t acsiDMA_write(void)
     }
 
     return ((uint8_t) (pio_sm_get(pioAcsiWrite, smAcsiWrite) >> 24));
+}
+
+// Like acsiDMA_write() for each byte, but in one loop running from RAM - see acsiDMA_readBlock()
+void __not_in_flash_func(acsiDMA_writeBlock)(uint8_t* bfr, uint32_t cnt)
+{
+    PIO pio = pioAcsiWrite;
+    io_ro_32 *rxf = &pio->rxf[smAcsiWrite];
+    const uint32_t rxEmpty = 1u << (PIO_FSTAT_RXEMPTY_LSB + smAcsiWrite);
+
+    for(uint32_t i = 0; i < cnt; i++) {
+        while(pio->fstat & rxEmpty) {   // wait for byte from ST
+            if(hasTimedOut) {           // on timeout
+                brStat = E_TimeOut;     // set the bridge status
+                return;
+            }
+        }
+
+        bfr[i] = (uint8_t) (*rxf >> 24);
+    }
 }
 
 void acsiResetBridge(void)

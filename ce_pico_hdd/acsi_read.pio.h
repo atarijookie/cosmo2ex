@@ -22,7 +22,7 @@ static const uint16_t acsi_read_program_instructions[] = {
     0x7008, //  1: out    pins, 8         side 1
     0x2020, //  2: wait   0 pin, 0        side 0
     0xb942, //  3: nop                    side 1 [9]
-    0x32a0, //  4: wait   1 pin, 0        side 1 [2]
+    0x39a0, //  4: wait   1 pin, 0        side 1 [9]
     0x9020, //  5: push   block           side 1
             //     .wrap
 };

@@ -8,7 +8,9 @@ start:
 
         wait 0 pin 0    side 0          ; side set INT / DRQ to L, then wait for CS / ACK pin to become L
         nop             side 1  [9]     ; side set INT / DRQ to H, delay 200 ns to skip signal transitions / glitches
-        wait 1 pin 0    side 1  [2]     ; then wait for CS / ACK pin to become H, with additional delay to keep data longer present on ACSI bus
+        wait 1 pin 0    side 1  [9]     ; then wait for CS / ACK pin to become H, with additional delay to keep data longer present on ACSI bus
+                                        ; and to keep INT / DRQ released for >= 280 ns before the next byte (line is pulled up only by ST)
+                                        ; - this also limits the speed to about 1200 kB/s (was 1460 kB/s with [2])
 
         push            side 1          ; Push the contents of the ISR into the RX FIFO. We don't care about the value, it's just a flag that the transfer has finished
 

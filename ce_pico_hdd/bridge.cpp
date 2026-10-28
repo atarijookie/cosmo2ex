@@ -55,10 +55,22 @@ uint8_t DMA_write(void)
     return IS_ACSI ? acsiDMA_write() : scsiDMA_write();
 }
 
+void DMA_writeBlock(uint8_t* bfr, uint32_t cnt)
+{
+    if(IS_ACSI) acsiDMA_writeBlock(bfr, cnt);
+    else        scsiDMA_writeBlock(bfr, cnt);
+}
+
 void DMA_read(uint8_t val)
 {
     if(IS_ACSI) acsiDMA_read(val);
     else        scsiDMA_read(val);
+}
+
+void DMA_readBlock(const uint8_t* bfr, uint32_t cnt)
+{
+    if(IS_ACSI) acsiDMA_readBlock(bfr, cnt);
+    else        scsiDMA_readBlock(bfr, cnt);
 }
 
 void DMA_read_waitForEnd(void)

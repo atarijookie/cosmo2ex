@@ -127,7 +127,7 @@ void core1_main_loop(void)
                 // read data to Atari
                 case STATE_DATA_READ:
                 {
-                    timeoutStart(100);
+                    timeoutStart(CMD_TIMEOUT_ONESECOND);    // next chunk from host must come in time - 100 ms was too short e.g. for a TCP retransmit (>= 200 ms)
 
                     bool res = onDataRead(bfr->length, bfr->data);
 

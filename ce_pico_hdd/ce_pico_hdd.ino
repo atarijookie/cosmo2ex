@@ -12,6 +12,7 @@
 #include "ipc.h"
 #include "ikbd.h"
 #include "neopixel.h"
+#include "pin_test.h"
 
 uint16_t version[2] = {0xa026, 0x1022}; // this means: hAns, 2026-10-22
 
@@ -95,6 +96,9 @@ void setup(void)
 
     debugInit();
     debug("\n\n------------\nCORE 0 setup - %s variant\n", IS_ACSI ? "ACSI" : "SCSI");
+
+    // TEMPORARY - endless test of the bus pins (shorts / open pins), uncomment only for testing the board
+    // if(IS_ACSI) pinTestAcsi();
 
     loadSettings();
     debug("enabledIDs: %02X\n", settings.enabledIDs);

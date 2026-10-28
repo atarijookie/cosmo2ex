@@ -25,7 +25,7 @@ static const uint16_t acsi_write_program_instructions[] = {
     0x5008, //  4: in     pins, 8         side 1
     0x10c7, //  5: jmp    pin, 7          side 1
     0x1005, //  6: jmp    5               side 1
-    0x9020, //  7: push   block           side 1
+    0x9720, //  7: push   block           side 1 [7]
     0x1042, //  8: jmp    x--, 2          side 1
             //     .wrap
 };

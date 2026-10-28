@@ -13,7 +13,8 @@ wait4L: jmp pin wait4L      side 0          ; set INT / DRQ to L, keep waiting h
 wait4H: jmp pin wr_end      side 1          ; wait here for CS / ACK to become H
         jmp wait4H          side 1
 
-wr_end: push                side 1          ; Push the contents of the ISR into the RX FIFO. Intentionally late in the routine to signal transfer end
+wr_end: push                side 1  [7]     ; Push the contents of the ISR into the RX FIFO. Intentionally late in the routine to signal transfer end
+                                            ; delay - keep INT / DRQ released for >= 240 ns before the next byte (line is pulled up only by ST)
 
         jmp x-- wait4L      side 1          ; If X is not zero, decrement and jump to get one more byte. X must be loaded to value N-1, if you want to load N bytes.
 

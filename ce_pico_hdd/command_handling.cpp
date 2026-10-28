@@ -185,14 +185,12 @@ bool onDataRead(uint32_t cnt, uint8_t* bfr)
 
     pioConfig(MODE_DMA_READ);
 
-    for(uint32_t i=0; i<cnt; i++) {    // send all the data from buffer to Atari
-        DMA_read(bfr[i]);
+    DMA_readBlock(bfr, cnt);        // send all the data from buffer to Atari
 
-        if (brStat == E_TimeOut)
-        {
-            debug("onDataRead TO 1\n");
-            return false;
-        }
+    if (brStat == E_TimeOut)
+    {
+        debug("onDataRead TO 1\n");
+        return false;
     }
 
     DMA_read_waitForEnd();
@@ -240,18 +238,15 @@ bool onDataWrite(uint32_t dataCnt)
             return false;
         }
 
-        for(int i = 0; i < cntNow; i++)
-        {
-            bfr->data[i] = DMA_write();          // get data from Atari
+        DMA_writeBlock(bfr->data, cntNow);      // get data from Atari
 
-            if (brStat == E_TimeOut)
-            {                              // if timeout occured
+        if (brStat == E_TimeOut)
+        {                              // if timeout occured
 #ifdef LOG_MORE
     debug("onDataWrite timeout on DMA_write");
 #endif
-                ipcReleaseBuffer(bfr);          // buffer not sent to core 0, return it to the pool
-                return false; // transfer failed, don't send status, just get next command
-            }
+            ipcReleaseBuffer(bfr);          // buffer not sent to core 0, return it to the pool
+            return false; // transfer failed, don't send status, just get next command
         }
 
         ipcSetBufferAndPutToFifo(bfr, 0, STATE_DATA_WRITE, cntNow, NULL, 0);

@@ -12,6 +12,7 @@ extern uint8_t brStat; // status from bridge
 
 static PIO pioScsiWrite, pioScsiRead;
 static uint smScsiWrite, smScsiRead;
+static uint offsetScsiWrite, offsetScsiRead;
 
 uint16_t byteWithParity[256];
 
@@ -170,15 +171,14 @@ static void setDataDirection(uint8_t sendNotRecv, PIO pio, uint sm)
 void scsiPioConfigAll(void)
 {
     bool success;
-    uint offset;
 
-    success = pio_claim_free_sm_and_add_program_for_gpio_range(&scsi_write_program, &pioScsiWrite, &smScsiWrite, &offset, PIN_D0, 11, true);
+    success = pio_claim_free_sm_and_add_program_for_gpio_range(&scsi_write_program, &pioScsiWrite, &smScsiWrite, &offsetScsiWrite, PIN_D0, 11, true);
     if(!success) { debug("Failed to claim PIO SM 1\n"); haltWithError(LED_ERR_PIO); }
-    scsi_write_program_init(pioScsiWrite, smScsiWrite, offset);
+    scsi_write_program_init(pioScsiWrite, smScsiWrite, offsetScsiWrite);
 
-    success = pio_claim_free_sm_and_add_program_for_gpio_range(&scsi_read_program, &pioScsiRead, &smScsiRead, &offset, PIN_D0, 11, true);
+    success = pio_claim_free_sm_and_add_program_for_gpio_range(&scsi_read_program, &pioScsiRead, &smScsiRead, &offsetScsiRead, PIN_D0, 11, true);
     if(!success) { debug("Failed to claim PIO SM 2\n"); haltWithError(LED_ERR_PIO); }
-    scsi_read_program_init(pioScsiRead, smScsiRead, offset);
+    scsi_read_program_init(pioScsiRead, smScsiRead, offsetScsiRead);
 
     prefillBytesWithParityTable();
 }
@@ -201,6 +201,7 @@ int scsiPioConfig(int newMode, bool force)
 
     PIO whichPio = NULL;
     uint whichSm = 0;
+    uint whichOffset = 0;
 
     switch(newMode)
     {
@@ -215,6 +216,7 @@ int scsiPioConfig(int newMode, bool force)
         case MODE_MSG_OUT:
             whichPio = pioScsiWrite;
             whichSm = smScsiWrite;
+            whichOffset = offsetScsiWrite;
             break;
 
         // read modes
@@ -225,6 +227,7 @@ int scsiPioConfig(int newMode, bool force)
 
             whichPio = pioScsiRead;
             whichSm = smScsiRead;
+            whichOffset = offsetScsiRead;
             break;
 
         default:            // unknown mode - leave both state machines halted and release the bus, as in selection
@@ -249,6 +252,11 @@ int scsiPioConfig(int newMode, bool force)
     // restart state machine, clear FIFOs, enable state machine
     pio_sm_restart(whichPio, whichSm);
     pio_sm_clear_fifos(whichPio, whichSm);
+
+    // pio_sm_restart() doesn't touch PC and X - after an aborted transfer (timeout) the program would continue where it stopped,
+    // e.g. scsi_write in wait4L with REQ L and the old byte count. So jump to the start, with side-set 1 to keep REQ released.
+    pio_sm_exec(whichPio, whichSm, pio_encode_jmp(whichOffset) | pio_encode_sideset(1, 1));     // .side_set 1 in scsi_write / scsi_read
+
     pio_sm_set_enabled(whichPio, whichSm, true);
 
     return oldMode;
@@ -409,6 +417,32 @@ void scsiDMA_read(uint8_t val)
     }
 }
 
+// Like scsiDMA_read() for each byte, but in one loop running from RAM - see acsiDMA_readBlock()
+void __not_in_flash_func(scsiDMA_readBlock)(const uint8_t* bfr, uint32_t cnt)
+{
+    // FIFO registers directly - the pio_sm_*() inline functions might end up as calls to flash with opt=Small
+    PIO pio = pioScsiRead;
+    io_wo_32 *txf = &pio->txf[smScsiRead];
+    const uint32_t txFull = 1u << (PIO_FSTAT_TXFULL_LSB + smScsiRead);
+
+    uint32_t i = 0;
+
+    while(i < cnt) {
+        // TX FIFO not full, we can push to fifo
+        if(!(pio->fstat & txFull)) {
+            *txf = byteWithParity[bfr[i]];
+            i++;
+            continue;
+        }
+
+        if(hasTimedOut) {       // on timeout
+            debug("DMA_read T/O\n");
+            brStat = E_TimeOut; // set the bridge status
+            return;
+        }
+    }
+}
+
 void scsiDMA_write_startWithCount(uint32_t transfersCount)
 {
     if(transfersCount == 0) {   // PIO program would get 0xffffffff and wait for 4 G bytes with DRQ / REQ active
@@ -436,6 +470,25 @@ uint8_t scsiDMA_write(void)
     uint8_t val = ((uint8_t) (pio_sm_get(pioScsiWrite, smScsiWrite) >> 24));
     val = ~val;
     return val;
+}
+
+// Like scsiDMA_write() for each byte, but in one loop running from RAM - see acsiDMA_readBlock()
+void __not_in_flash_func(scsiDMA_writeBlock)(uint8_t* bfr, uint32_t cnt)
+{
+    PIO pio = pioScsiWrite;
+    io_ro_32 *rxf = &pio->rxf[smScsiWrite];
+    const uint32_t rxEmpty = 1u << (PIO_FSTAT_RXEMPTY_LSB + smScsiWrite);
+
+    for(uint32_t i = 0; i < cnt; i++) {
+        while(pio->fstat & rxEmpty) {   // wait for byte from ST
+            if(hasTimedOut) {           // on timeout
+                brStat = E_TimeOut;     // set the bridge status
+                return;
+            }
+        }
+
+        bfr[i] = ~((uint8_t) (*rxf >> 24));     // invert data
+    }
 }
 
 void scsiResetBridge(void)

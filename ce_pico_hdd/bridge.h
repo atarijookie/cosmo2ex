@@ -52,8 +52,10 @@ void statusAndMsgRead(uint8_t scsiStatusByte); // send status byte to ST, on SCS
 
 void DMA_write_startWithCount(uint32_t transfersCount);     // set how many bytes we will transfer, before calling DMA_write()
 uint8_t DMA_write(void);            // get byte from ST using DMA
+void DMA_writeBlock(uint8_t* bfr, uint32_t cnt);        // get cnt bytes from ST using DMA, stops on timeout (brStat == E_TimeOut)
 
 void DMA_read(uint8_t val);         // send byte to ST using DMA
+void DMA_readBlock(const uint8_t* bfr, uint32_t cnt);   // send cnt bytes to ST using DMA, stops on timeout (brStat == E_TimeOut)
 void DMA_read_waitForEnd(void);
 
 void neopixelOutput(uint32_t grb);  // send the color to the neopixel - call only while the bus is idle
@@ -81,7 +83,9 @@ uint8_t acsiPIO_write(void);
 void acsiStatusRead(uint8_t scsiStatusByte);
 void acsiDMA_write_startWithCount(uint32_t transfersCount);
 uint8_t acsiDMA_write(void);
+void acsiDMA_writeBlock(uint8_t* bfr, uint32_t cnt);
 void acsiDMA_read(uint8_t val);
+void acsiDMA_readBlock(const uint8_t* bfr, uint32_t cnt);
 void acsiDMA_read_waitForEnd(void);
 void acsiNeopixelOutput(uint32_t grb);
 
@@ -92,7 +96,9 @@ uint8_t scsiPIO_write(void);
 void scsiStatusAndMsgRead(uint8_t scsiStatusByte);
 void scsiDMA_write_startWithCount(uint32_t transfersCount);
 uint8_t scsiDMA_write(void);
+void scsiDMA_writeBlock(uint8_t* bfr, uint32_t cnt);
 void scsiDMA_read(uint8_t val);
+void scsiDMA_readBlock(const uint8_t* bfr, uint32_t cnt);
 void scsiDMA_read_waitForEnd(void);
 void scsiNeopixelOutput(uint32_t grb);
 
