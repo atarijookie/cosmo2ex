@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"net/http"
 	"os"
 	"sort"
@@ -11,7 +10,7 @@ import (
 // Host-related handlers.
 
 func (s *Server) handleHostDir(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleHostDir %s %s", r.Method, r.URL.Path)
+	logDebugf("handleHostDir %s %s", r.Method, r.URL.Path)
 
 	path := r.URL.Query().Get("path")
 	query := strings.ToLower(r.URL.Query().Get("q")) // optional: only the names containing this, case insensitive ("*q*")

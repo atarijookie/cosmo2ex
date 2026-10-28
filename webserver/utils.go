@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -24,17 +23,17 @@ func getPIDFilePath() string {
 // writePIDFile writes own PID to pidFilePath, creating the directory if needed. Failures are only logged.
 func writePIDFile(pidFilePath string) {
 	if err := os.MkdirAll(filepath.Dir(pidFilePath), 0o755); err != nil {
-		log.Printf("writePIDFile - failed to create PID directory for %s: %v", pidFilePath, err)
+		logErrorf("writePIDFile - failed to create PID directory for %s: %v", pidFilePath, err)
 		return
 	}
 
 	selfPid := os.Getpid()
 	if err := os.WriteFile(pidFilePath, []byte(fmt.Sprintf("%d\n", selfPid)), 0o644); err != nil {
-		log.Printf("writePIDFile - failed to write PID file %s: %v", pidFilePath, err)
+		logErrorf("writePIDFile - failed to write PID file %s: %v", pidFilePath, err)
 		return
 	}
 
-	log.Printf("writePIDFile - pid %d written to %s", selfPid, pidFilePath)
+	logInfof("writePIDFile - pid %d written to %s", selfPid, pidFilePath)
 }
 
 // rotatingFileWriter is an io.Writer that writes to a single log file and

@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,7 +15,7 @@ import (
 // HDD-related handlers.
 
 func (s *Server) handleGetHDDRaw(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleGetHDDRaw %s %s", r.Method, r.URL.Path)
+	logDebugf("handleGetHDDRaw %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 	
@@ -64,16 +63,16 @@ func (s *Server) handleGetHDDRaw(w http.ResponseWriter, r *http.Request) {
 	
 	// Log JSON data before sending
 	if jsonData, err := json.Marshal(response); err == nil {
-		log.Printf("handleGetHDDRaw - sending JSON: %s", string(jsonData))
+		logDebugf("handleGetHDDRaw - sending JSON: %s", string(jsonData))
 	} else {
-		log.Printf("handleGetHDDRaw - error marshaling JSON: %v", err)
+		logErrorf("handleGetHDDRaw - error marshaling JSON: %v", err)
 	}
 	
 	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) handlePutHDDRaw(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handlePutHDDRaw %s %s", r.Method, r.URL.Path)
+	logDebugf("handlePutHDDRaw %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 	
@@ -83,12 +82,12 @@ func (s *Server) handlePutHDDRaw(w http.ResponseWriter, r *http.Request) {
 		var err error
 		bodyBytes, err = io.ReadAll(r.Body)
 		if err != nil {
-			log.Printf("handlePutHDDRaw - error reading request body: %v", err)
+			logErrorf("handlePutHDDRaw - error reading request body: %v", err)
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
 		// Log received JSON data
-		log.Printf("handlePutHDDRaw - received JSON: %s", string(bodyBytes))
+		logDebugf("handlePutHDDRaw - received JSON: %s", string(bodyBytes))
 		// Create a new reader from the bytes for decoding
 		r.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
 	}
@@ -128,7 +127,7 @@ func (s *Server) handlePutHDDRaw(w http.ResponseWriter, r *http.Request) {
 	
 	// Create device directory if it doesn't exist
 	if err := os.MkdirAll(deviceDir, 0o755); err != nil {
-		log.Printf("handlePutHDDRaw - error creating directory %s: %v", deviceDir, err)
+		logErrorf("handlePutHDDRaw - error creating directory %s: %v", deviceDir, err)
 		http.Error(w, "cannot create device directory", http.StatusInternalServerError)
 		return
 	}
@@ -138,7 +137,7 @@ func (s *Server) handlePutHDDRaw(w http.ResponseWriter, r *http.Request) {
 		// Write PATH_RAW_{i}
 		pathRawFile := filepath.Join(deviceDir, "PATH_RAW_"+strconv.Itoa(i))
 		if err := os.WriteFile(pathRawFile, []byte(payload.Paths[i]), 0o644); err != nil {
-			log.Printf("handlePutHDDRaw - error writing file %s: %v", pathRawFile, err)
+			logErrorf("handlePutHDDRaw - error writing file %s: %v", pathRawFile, err)
 			http.Error(w, "cannot write path file", http.StatusInternalServerError)
 			return
 		}
@@ -147,7 +146,7 @@ func (s *Server) handlePutHDDRaw(w http.ResponseWriter, r *http.Request) {
 		devTypeFile := filepath.Join(deviceDir, "ACSI_DEVTYPE_"+strconv.Itoa(i))
 		devTypeStr := strconv.Itoa(payload.DevTypes[i])
 		if err := os.WriteFile(devTypeFile, []byte(devTypeStr), 0o644); err != nil {
-			log.Printf("handlePutHDDRaw - error writing file %s: %v", devTypeFile, err)
+			logErrorf("handlePutHDDRaw - error writing file %s: %v", devTypeFile, err)
 			http.Error(w, "cannot write dev_type file", http.StatusInternalServerError)
 			return
 		}
@@ -157,7 +156,7 @@ func (s *Server) handlePutHDDRaw(w http.ResponseWriter, r *http.Request) {
 	cmd := map[string]string{"module": "disks", "action": "reload_raw"}
 	if cmdJSON, err := json.Marshal(cmd); err == nil {
 		if err := sendToCmdSocket(string(cmdJSON)); err != nil {
-			log.Printf("handlePutHDDRaw - failed to send cmd socket: %v", err)
+			logErrorf("handlePutHDDRaw - failed to send cmd socket: %v", err)
 		}
 	}
 	
@@ -165,7 +164,7 @@ func (s *Server) handlePutHDDRaw(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetHDDTranslated(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleGetHDDTranslated %s %s", r.Method, r.URL.Path)
+	logDebugf("handleGetHDDTranslated %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 	
@@ -229,16 +228,16 @@ func (s *Server) handleGetHDDTranslated(w http.ResponseWriter, r *http.Request) 
 	
 	// Log JSON data before sending
 	if jsonData, err := json.Marshal(response); err == nil {
-		log.Printf("handleGetHDDTranslated - sending JSON: %s", string(jsonData))
+		logDebugf("handleGetHDDTranslated - sending JSON: %s", string(jsonData))
 	} else {
-		log.Printf("handleGetHDDTranslated - error marshaling JSON: %v", err)
+		logErrorf("handleGetHDDTranslated - error marshaling JSON: %v", err)
 	}
 	
 	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) handlePutHDDTranslated(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handlePutHDDTranslated %s %s", r.Method, r.URL.Path)
+	logDebugf("handlePutHDDTranslated %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 	
@@ -248,12 +247,12 @@ func (s *Server) handlePutHDDTranslated(w http.ResponseWriter, r *http.Request) 
 		var err error
 		bodyBytes, err = io.ReadAll(r.Body)
 		if err != nil {
-			log.Printf("handlePutHDDTranslated - error reading request body: %v", err)
+			logDebugf("handlePutHDDTranslated - error reading request body: %v", err)
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
 		// Log received JSON data
-		log.Printf("handlePutHDDTranslated - received JSON: %s", string(bodyBytes))
+		logDebugf("handlePutHDDTranslated - received JSON: %s", string(bodyBytes))
 		// Create a new reader from the bytes for decoding
 		r.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
 	}
@@ -285,7 +284,7 @@ func (s *Server) handlePutHDDTranslated(w http.ResponseWriter, r *http.Request) 
 	
 	// Create device directory if it doesn't exist
 	if err := os.MkdirAll(deviceDir, 0o755); err != nil {
-		log.Printf("handlePutHDDTranslated - error creating directory %s: %v", deviceDir, err)
+		logErrorf("handlePutHDDTranslated - error creating directory %s: %v", deviceDir, err)
 		http.Error(w, "cannot create device directory", http.StatusInternalServerError)
 		return
 	}
@@ -304,14 +303,14 @@ func (s *Server) handlePutHDDTranslated(w http.ResponseWriter, r *http.Request) 
 		case 0:
 			// Drive type 0: off - make path empty (delete file or write empty)
 			if err := os.WriteFile(pathGemFile, []byte(""), 0o644); err != nil {
-				log.Printf("handlePutHDDTranslated - error writing file %s: %v", pathGemFile, err)
+				logErrorf("handlePutHDDTranslated - error writing file %s: %v", pathGemFile, err)
 				http.Error(w, "cannot write path file", http.StatusInternalServerError)
 				return
 			}
 		case 1:
 			// Drive type 1: normal drive - save path to PATH_GEM_{letter}
 			if err := os.WriteFile(pathGemFile, []byte(path), 0o644); err != nil {
-				log.Printf("handlePutHDDTranslated - error writing file %s: %v", pathGemFile, err)
+				logErrorf("handlePutHDDTranslated - error writing file %s: %v", pathGemFile, err)
 				http.Error(w, "cannot write path file", http.StatusInternalServerError)
 				return
 			}
@@ -321,7 +320,7 @@ func (s *Server) handlePutHDDTranslated(w http.ResponseWriter, r *http.Request) 
 			// Also save the path if provided
 			if path != "" {
 				if err := os.WriteFile(pathGemFile, []byte(path), 0o644); err != nil {
-					log.Printf("handlePutHDDTranslated - error writing file %s: %v", pathGemFile, err)
+					logErrorf("handlePutHDDTranslated - error writing file %s: %v", pathGemFile, err)
 					http.Error(w, "cannot write path file", http.StatusInternalServerError)
 					return
 				}
@@ -333,14 +332,14 @@ func (s *Server) handlePutHDDTranslated(w http.ResponseWriter, r *http.Request) 
 	confDriveFile := filepath.Join(deviceDir, "DRIVELETTER_CONFDRIVE")
 	if configDriveLetter != "" {
 		if err := os.WriteFile(confDriveFile, []byte(configDriveLetter), 0o644); err != nil {
-			log.Printf("handlePutHDDTranslated - error writing file %s: %v", confDriveFile, err)
+			logErrorf("handlePutHDDTranslated - error writing file %s: %v", confDriveFile, err)
 			http.Error(w, "cannot write config drive file", http.StatusInternalServerError)
 			return
 		}
 	} else {
 		// If no config drive, delete or write empty file
 		if err := os.WriteFile(confDriveFile, []byte(""), 0o644); err != nil {
-			log.Printf("handlePutHDDTranslated - error writing file %s: %v", confDriveFile, err)
+			logErrorf("handlePutHDDTranslated - error writing file %s: %v", confDriveFile, err)
 			http.Error(w, "cannot write config drive file", http.StatusInternalServerError)
 			return
 		}
@@ -350,7 +349,7 @@ func (s *Server) handlePutHDDTranslated(w http.ResponseWriter, r *http.Request) 
 	cmd := map[string]string{"module": "disks", "action": "reload_trans"}
 	if cmdJSON, err := json.Marshal(cmd); err == nil {
 		if err := sendToCmdSocket(string(cmdJSON)); err != nil {
-			log.Printf("handlePutHDDTranslated - failed to send cmd socket: %v", err)
+			logErrorf("handlePutHDDTranslated - failed to send cmd socket: %v", err)
 		}
 	}
 	

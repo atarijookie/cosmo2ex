@@ -103,6 +103,7 @@ The release workflow does both (`macos` job, then `tarballs`).
 - `files/ce_run.sh` - runs `ce_cores` + `webserver` in the foreground, used by the service
 - `files/ce.service` - the systemd unit
 - `builder/build_windows.sh` - builds the Windows programs, in Cygwin
+- `builder/build_windows_cross.sh` - builds the Windows programs on Linux from the current sources, for development
 - `builder/build_macos.sh` - builds the macOS programs as universal binaries, on a Mac
 - `files/windows.env`, `files/windows-README.txt` - `.env` and `README.txt` of the Windows zip
 - `files/macos.env`, `files/macos-README.txt`, `files/CosmosEx.command` - the same for the macOS zip
@@ -142,6 +143,24 @@ Building takes two steps, as the Atari programs need the m68k-atari-mint toolcha
 2. on Linux: `WINDOWS_BIN=<that output dir> release/build.sh windows` - makes the zip (needs `python3`)
 
 The release workflow does both (`windows` job, then `tarballs`).
+
+### Windows build on Linux, for development
+
+`release/builder/build_windows_cross.sh` builds the Windows programs from the current sources (uncommitted changes
+included) without Windows, push or release, into `release/out/windows-dev/` - a ready to run folder, copy it to
+Windows and start `ce_run.exe`:
+
+```
+release/builder/build_windows_cross.sh              # incremental - only what changed is compiled again
+release/builder/build_windows_cross.sh --clean      # full rebuild
+```
+
+It uses a Cygwin cross compiler (`x86_64-pc-cygwin-gcc`, from the `yselkowitz/cygwin` COPR repo) in the
+`ce-windows-cross` docker image (`builder/windows_cross.Dockerfile`), with the Cygwin DLLs of that compiler. The
+sources are synced into the `ce-windows-cross-build` docker volume and built there, the Linux build outputs in the
+checkout are not used or changed. `ce_cores.exe` is not stripped (for `gdb`), there are no licenses, and the Atari
+programs on the config drive are taken from the checkout if they were built there. `.env` is created only once, your
+changes to it are kept. Releases are still built by `build_windows.sh` in a real Cygwin.
 
 ## License
 

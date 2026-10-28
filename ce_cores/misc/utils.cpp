@@ -756,6 +756,17 @@ int Utils::acceptCloexec(int fdListen, struct sockaddr *addr, socklen_t *addrLen
     }
 #endif
     socketNoSigpipe(fd);        // accepted socket doesn't inherit it from the listening one
+
+    // On Linux the accepted socket is always blocking, but on Cygwin / BSD / macOS it inherits O_NONBLOCK from the
+    // (non-blocking) listening socket - then SO_RCVTIMEO doesn't apply and recv() fails with EAGAIN right away when
+    // the data isn't there yet. Make it blocking everywhere, like on Linux; callers which want it non-blocking set it.
+    if(fd >= 0) {
+        int flags = fcntl(fd, F_GETFL);
+        if(flags != -1 && (flags & O_NONBLOCK)) {
+            fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
+        }
+    }
+
     return fd;
 }
 

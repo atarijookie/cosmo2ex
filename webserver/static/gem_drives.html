@@ -122,7 +122,7 @@
           #device-ids-table tr.drive-type-off:hover td {
             background-color: #e0e0e0;
           }
-          /* password + logout buttons next to each other in the top right corner */
+          /* settings + logout buttons next to each other in the top right corner */
           #account-buttons {
               position: absolute;
               top: 15px;
@@ -132,7 +132,7 @@
               gap: 8px;
           }
           #account-buttons #logout-button,
-          #account-buttons #password-button {
+          #account-buttons #settings-button {
               position: static;
           }
         </style>
@@ -223,7 +223,7 @@
             padding: 6px 12px;
             cursor: pointer;
           }
-          #logout-button, #password-button {
+          #logout-button, #settings-button {
             position: absolute;
             top: 15px;
             right: 15px;
@@ -238,7 +238,7 @@
             box-shadow: 0 2px 6px rgba(0,0,0,0.2);
             transition: background-color 0.3s ease;
           }
-          #logout-button:hover, #password-button:hover {
+          #logout-button:hover, #settings-button:hover {
             background-color: #555;
           }
           .footer-links {
@@ -266,7 +266,7 @@
     <body>
     <div class="container">
     <div id="account-buttons">
-        <button id="password-button" onclick="window.location.href='/set_password.html'">Change password</button>
+        <button id="settings-button" onclick="window.location.href='/settings.html'">Settings</button>
         <button id="logout-button" onclick="logout()">Logout</button>
     </div>
         <div class="row">

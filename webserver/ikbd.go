@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -27,7 +26,7 @@ type IKBDSettings struct {
 }
 
 func (s *Server) handleGetIKBD(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleGetIKBD %s %s", r.Method, r.URL.Path)
+	logDebugf("handleGetIKBD %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 	macNoColons := stripMACColons(mac)
@@ -52,7 +51,7 @@ func (s *Server) handleGetIKBD(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePutIKBD(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handlePutIKBD %s %s", r.Method, r.URL.Path)
+	logDebugf("handlePutIKBD %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 	macNoColons := stripMACColons(mac)
@@ -78,7 +77,7 @@ func (s *Server) handlePutIKBD(w http.ResponseWriter, r *http.Request) {
 	deviceDir := filepath.Join(settingsDir, macNoColons)
 
 	if err := os.MkdirAll(deviceDir, 0o755); err != nil {
-		log.Printf("handlePutIKBD - error creating directory %s: %v", deviceDir, err)
+		logErrorf("handlePutIKBD - error creating directory %s: %v", deviceDir, err)
 		http.Error(w, "cannot create device directory", http.StatusInternalServerError)
 		return
 	}
@@ -112,7 +111,7 @@ func (s *Server) handlePutIKBD(w http.ResponseWriter, r *http.Request) {
 	cmd := map[string]string{"module": "ikbd", "action": "reload"}
 	if cmdJSON, err := json.Marshal(cmd); err == nil {
 		if err := sendToCmdSocket(string(cmdJSON)); err != nil {
-			log.Printf("handlePutIKBD - failed to send cmd socket: %v", err)
+			logErrorf("handlePutIKBD - failed to send cmd socket: %v", err)
 		}
 	}
 

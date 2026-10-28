@@ -79,7 +79,7 @@ func main() {
 	writePIDFile(pidFilePath)
 	defer func() {
 		if err := os.Remove(pidFilePath); err != nil && !os.IsNotExist(err) {
-			log.Printf("Failed to remove PID file %s: %v", pidFilePath, err)
+			logErrorf("Failed to remove PID file %s: %v", pidFilePath, err)
 		}
 	}()
 
@@ -89,7 +89,7 @@ func main() {
 	go func() {
 		<-sigChan
 		if err := os.Remove(pidFilePath); err != nil && !os.IsNotExist(err) {
-			log.Printf("Failed to remove PID file %s: %v", pidFilePath, err)
+			logErrorf("Failed to remove PID file %s: %v", pidFilePath, err)
 		}
 		os.Exit(0)
 	}()
@@ -97,16 +97,17 @@ func main() {
 	// Configure logging to file with optional LOG_DIR override and rotation.
 	logDir := envDir("LOG_DIR")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
-		log.Printf("failed to create log directory %q: %v", logDir, err)
+		logErrorf("failed to create log directory %q: %v", logDir, err)
 	} else {
 		w, err := newRotatingFileWriter(logDir, "webserver.log", 1*1024*1024)
 		if err != nil {
-			log.Printf("failed to initialize log file writer: %v", err)
+			logErrorf("failed to initialize log file writer: %v", err)
 		} else {
 			log.SetOutput(w)
 		}
 	}
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	logLevelFromDotEnv() // after log output is set, so the level change goes to the log file
 
 	// Get local IP address for URL
 	localIP := getLocalIP()
@@ -198,7 +199,7 @@ func newServer() *Server {
 		// Log all requests first
 		protected.Use(func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				log.Printf("request - %s %s", r.Method, r.URL.Path)
+				logDebugf("request - %s %s", r.Method, r.URL.Path)
 				next.ServeHTTP(w, r)
 			})
 		})
@@ -222,12 +223,15 @@ func newServer() *Server {
 		protected.Get("/status/{mac}", s.handleGetStatus)
 		protected.Get("/device/{mac}/name", s.handleGetDeviceName)
 		protected.Put("/device/{mac}/name", s.handlePutDeviceName)
+		protected.Delete("/device/{mac}", s.handleDeleteDevice)
 		protected.Get("/device/{mac}/features", s.handleGetDeviceFeatures)
 		protected.Get("/screen/{mac}", s.handleGetScreen)
 		protected.Post("/screen/{mac}/screenshot", s.handlePostScreenScreenshot)
 		protected.Post("/screen/{mac}/vbl", s.handlePostScreenVBL)
 		protected.Get("/screen/{mac}/vbl", s.handleGetScreenVBL)
 		protected.Get("/host/dir", s.handleHostDir)
+		protected.Get("/settings/loglevel", s.handleGetLogLevel)
+		protected.Put("/settings/loglevel", s.handlePutLogLevel)
 
 		// Serve static files (HTML, JS, images, etc.) from the local "static" directory.
 		// This directory lives next to the Go sources / binary working directory.
@@ -236,7 +240,7 @@ func newServer() *Server {
 		protected.Handle("/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Get the file path from the URL
 			filePath := "static" + r.URL.Path
-			log.Printf("fileServer - request path: %s, file path: %s", r.URL.Path, filePath)
+			logDebugf("fileServer - request path: %s, file path: %s", r.URL.Path, filePath)
 
 			// Check if file exists
 			info, err := os.Stat(filePath)
@@ -246,7 +250,7 @@ func newServer() *Server {
 					http.NotFound(w, r)
 					return
 				}
-				log.Printf("fileServer - file not found: %s (requested: %s)", filePath, r.URL.Path)
+				logWarningf("fileServer - file not found: %s (requested: %s)", filePath, r.URL.Path)
 				http.NotFound(w, r)
 				return
 			}
@@ -257,11 +261,11 @@ func newServer() *Server {
 				return
 			}
 
-			log.Printf("fileServer - serving %s", r.URL.Path)
+			logDebugf("fileServer - serving %s", r.URL.Path)
 			// Open and serve the file directly to avoid any redirects
 			file, err := os.Open(filePath)
 			if err != nil {
-				log.Printf("fileServer - error opening file: %v", err)
+				logErrorf("fileServer - error opening file: %v", err)
 				http.Error(w, "Internal server error", http.StatusInternalServerError)
 				return
 			}
@@ -283,7 +287,7 @@ func newServer() *Server {
 			}
 
 			http.ServeContent(w, r, info.Name(), info.ModTime(), file)
-			log.Printf("fileServer - served %s successfully", r.URL.Path)
+			logDebugf("fileServer - served %s successfully", r.URL.Path)
 		}))
 	})
 
@@ -297,26 +301,26 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			// Try to get token from cookie
 			if cookie, err := r.Cookie("auth_token"); err == nil {
 				token = cookie.Value
-				log.Printf("authMiddleware - found token in cookie for path %s", r.URL.Path)
+				logDebugf("authMiddleware - found token in cookie for path %s", r.URL.Path)
 			} else {
-				log.Printf("authMiddleware - no cookie found (err: %v) for path %s", err, r.URL.Path)
+				logDebugf("authMiddleware - no cookie found (err: %v) for path %s", err, r.URL.Path)
 			}
 		} else {
-			log.Printf("authMiddleware - found token in Authorization header for path %s", r.URL.Path)
+			logDebugf("authMiddleware - found token in Authorization header for path %s", r.URL.Path)
 		}
 		if token == "" || !s.tokenValid(token) {
-			log.Printf("authMiddleware - token invalid or missing (token empty: %v, valid: %v) for path %s", token == "", token != "" && s.tokenValid(token), r.URL.Path)
+			logWarningf("authMiddleware - token invalid or missing (token empty: %v, valid: %v) for path %s", token == "", token != "" && s.tokenValid(token), r.URL.Path)
 			// Redirect to login page instead of returning 401.
 			http.Redirect(w, r, "/login.html", http.StatusFound)
 			return
 		}
 		// while the default password is used, only allow setting a new password (and logout)
 		if !passwordAllowedPath(r.URL.Path) && !passwordIsSet() {
-			log.Printf("authMiddleware - no password set yet, redirecting %s to %s", r.URL.Path, setPasswordPage)
+			logDebugf("authMiddleware - no password set yet, redirecting %s to %s", r.URL.Path, setPasswordPage)
 			http.Redirect(w, r, setPasswordPage, http.StatusFound)
 			return
 		}
-		log.Printf("authMiddleware - token valid, allowing access to %s", r.URL.Path)
+		logDebugf("authMiddleware - token valid, allowing access to %s", r.URL.Path)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -363,7 +367,7 @@ func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		log.Printf("failed to write response: %v", err)
+		logErrorf("failed to write response: %v", err)
 	}
 }
 

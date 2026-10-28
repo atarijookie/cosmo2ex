@@ -2,8 +2,8 @@ package main
 
 import (
 	"io"
-	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -54,7 +54,7 @@ func connectedMACs() map[string]bool {
 }
 
 func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleListDevices %s %s", r.Method, r.URL.Path)
+	logDebugf("handleListDevices %s %s", r.Method, r.URL.Path)
 
 	// Get SETTINGS_DIR from environment, default to current directory if not set
 	settingsDir := os.Getenv("SETTINGS_DIR")
@@ -65,7 +65,7 @@ func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
 	// Read directory entries
 	entries, err := os.ReadDir(settingsDir)
 	if err != nil {
-		log.Printf("handleListDevices - error reading directory %s: %v", settingsDir, err)
+		logErrorf("handleListDevices - error reading directory %s: %v", settingsDir, err)
 		http.Error(w, "cannot read settings directory", http.StatusInternalServerError)
 		return
 	}
@@ -124,7 +124,7 @@ func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetDeviceName(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleGetDeviceName %s %s", r.Method, r.URL.Path)
+	logDebugf("handleGetDeviceName %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 	// Strip colons from MAC for file path (MAC in URL might have colons)
@@ -158,7 +158,7 @@ func (s *Server) handleGetDeviceName(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePutDeviceName(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handlePutDeviceName %s %s", r.Method, r.URL.Path)
+	logDebugf("handlePutDeviceName %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 	// Strip colons from MAC for file path (MAC in URL might have colons)
@@ -184,14 +184,14 @@ func (s *Server) handlePutDeviceName(w http.ResponseWriter, r *http.Request) {
 
 	// Create device directory if it doesn't exist
 	if err := os.MkdirAll(deviceDir, 0o755); err != nil {
-		log.Printf("handlePutDeviceName - error creating device directory %s: %v", deviceDir, err)
+		logErrorf("handlePutDeviceName - error creating device directory %s: %v", deviceDir, err)
 		http.Error(w, "cannot create device directory", http.StatusInternalServerError)
 		return
 	}
 
 	// Write device name to file
 	if err := os.WriteFile(deviceNameFile, []byte(deviceName), 0o644); err != nil {
-		log.Printf("handlePutDeviceName - error writing file %s: %v", deviceNameFile, err)
+		logErrorf("handlePutDeviceName - error writing file %s: %v", deviceNameFile, err)
 		http.Error(w, "cannot write device_name", http.StatusInternalServerError)
 		return
 	}
@@ -200,7 +200,7 @@ func (s *Server) handlePutDeviceName(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetDeviceFeatures(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleGetDeviceFeatures %s %s", r.Method, r.URL.Path)
+	logDebugf("handleGetDeviceFeatures %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 	// Strip colons from MAC for file path (MAC in URL might have colons)
@@ -241,4 +241,61 @@ func (s *Server) handleGetDeviceFeatures(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeJSON(w, http.StatusOK, response)
+}
+
+// handleDeleteDevice removes the whole settings dir of the device (SETTINGS_DIR/{mac}), but only when the device is not
+// connected right now - ce_cores would just create the dir again while it's using the device.
+func (s *Server) handleDeleteDevice(w http.ResponseWriter, r *http.Request) {
+	logDebugf("handleDeleteDevice %s %s", r.Method, r.URL.Path)
+
+	// chi gives the param still escaped when the path had escaped chars, e.g. "F4%3A12%3A..." from encodeURIComponent()
+	mac, err := url.PathUnescape(chi.URLParam(r, "mac"))
+	if err != nil {
+		http.Error(w, "invalid MAC address", http.StatusBadRequest)
+		return
+	}
+
+	mac = strings.ToUpper(stripMACColons(mac))
+	if !isValidMACFormat(mac) || mac == "000000000000" { // only device dirs, never anything else in SETTINGS_DIR
+		http.Error(w, "invalid MAC address", http.StatusBadRequest)
+		return
+	}
+
+	if connectedMACs()[mac] {
+		logWarningf("handleDeleteDevice - device %s is connected, not deleting", mac)
+		http.Error(w, "device is connected, disconnect it first", http.StatusConflict)
+		return
+	}
+
+	settingsDir := os.Getenv("SETTINGS_DIR")
+	if settingsDir == "" {
+		settingsDir = "."
+	}
+
+	// find the dir case insensitive - MAC in URL and dir name might differ in case
+	entries, err := os.ReadDir(settingsDir)
+	if err != nil {
+		logErrorf("handleDeleteDevice - error reading directory %s: %v", settingsDir, err)
+		http.Error(w, "cannot read settings directory", http.StatusInternalServerError)
+		return
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.EqualFold(entry.Name(), mac) {
+			continue
+		}
+
+		deviceDir := filepath.Join(settingsDir, entry.Name())
+		if err := os.RemoveAll(deviceDir); err != nil {
+			logErrorf("handleDeleteDevice - error removing %s: %v", deviceDir, err)
+			http.Error(w, "cannot delete device settings", http.StatusInternalServerError)
+			return
+		}
+
+		logInfof("handleDeleteDevice - deleted settings of device %s (%s)", mac, deviceDir)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	http.Error(w, "device not found", http.StatusNotFound)
 }

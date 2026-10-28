@@ -95,6 +95,7 @@ function getCurrentPageName(path) {
         '/status.html': 'Status',
         '/remote.html': 'ScreenCast',
         '/credits.html': 'Credits',
+        '/settings.html': 'Settings',
         '/login.html': 'Login'
     };
 

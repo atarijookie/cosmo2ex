@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -79,11 +78,11 @@ func readScreenFrame(conn net.Conn) ([]byte, error) {
 }
 
 func (s *Server) handleGetScreen(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleGetScreen %s %s", r.Method, r.URL.Path)
+	logDebugf("handleGetScreen %s %s", r.Method, r.URL.Path)
 
 	data, err := requestScreenFrame()
 	if err != nil {
-		log.Printf("handleGetScreen - failed to get frame from core: %v", err)
+		logErrorf("handleGetScreen - failed to get frame from core: %v", err)
 		http.Error(w, "screen frame not available", http.StatusServiceUnavailable)
 		return
 	}
@@ -97,21 +96,21 @@ func (s *Server) handleGetScreen(w http.ResponseWriter, r *http.Request) {
 	// Write the data
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(data); err != nil {
-		log.Printf("handleGetScreen - failed to write response: %v", err)
+		logErrorf("handleGetScreen - failed to write response: %v", err)
 	}
 }
 
 func (s *Server) handlePostScreenScreenshot(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handlePostScreenScreenshot %s %s", r.Method, r.URL.Path)
+	logDebugf("handlePostScreenScreenshot %s %s", r.Method, r.URL.Path)
 
 	// Send screenshot command to core (log error but don't fail the request)
 	cmd := map[string]string{"module": "screencast", "action": "do_screenshot"}
 	cmdJSON, err := json.Marshal(cmd)
 	if err != nil {
-		log.Printf("handlePostScreenScreenshot - error marshaling command: %v", err)
+		logErrorf("handlePostScreenScreenshot - error marshaling command: %v", err)
 	} else {
 		if err := sendToCmdSocket(string(cmdJSON)); err != nil {
-			log.Printf("handlePostScreenScreenshot - failed to send cmd socket: %v", err)
+			logErrorf("handlePostScreenScreenshot - failed to send cmd socket: %v", err)
 		}
 	}
 
@@ -119,7 +118,7 @@ func (s *Server) handlePostScreenScreenshot(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handlePostScreenVBL(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handlePostScreenVBL %s %s", r.Method, r.URL.Path)
+	logDebugf("handlePostScreenVBL %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 	macWithoutColons := stripMACColons(mac)
@@ -142,7 +141,7 @@ func (s *Server) handlePostScreenVBL(w http.ResponseWriter, r *http.Request) {
 
 	// Create device directory if it doesn't exist
 	if err := os.MkdirAll(deviceDir, 0o755); err != nil {
-		log.Printf("handlePostScreenVBL - error creating device directory %s: %v", deviceDir, err)
+		logErrorf("handlePostScreenVBL - error creating device directory %s: %v", deviceDir, err)
 		http.Error(w, "cannot create device directory", http.StatusInternalServerError)
 		return
 	}
@@ -155,7 +154,7 @@ func (s *Server) handlePostScreenVBL(w http.ResponseWriter, r *http.Request) {
 
 	// Write VBL value to file (0 or 1)
 	if err := os.WriteFile(vblFile, []byte(vblValue), 0o644); err != nil {
-		log.Printf("handlePostScreenVBL - error writing file %s: %v", vblFile, err)
+		logErrorf("handlePostScreenVBL - error writing file %s: %v", vblFile, err)
 		http.Error(w, "cannot write vbl", http.StatusInternalServerError)
 		return
 	}
@@ -168,10 +167,10 @@ func (s *Server) handlePostScreenVBL(w http.ResponseWriter, r *http.Request) {
 	cmd := map[string]interface{}{"module": "screencast", "action": "vbl", "value": vblInt}
 	cmdJSON, err := json.Marshal(cmd)
 	if err != nil {
-		log.Printf("handlePostScreenVBL - error marshaling command: %v", err)
+		logErrorf("handlePostScreenVBL - error marshaling command: %v", err)
 	} else {
 		if err := sendToCmdSocket(string(cmdJSON)); err != nil {
-			log.Printf("handlePostScreenVBL - failed to send cmd socket: %v", err)
+			logErrorf("handlePostScreenVBL - failed to send cmd socket: %v", err)
 		}
 	}
 
@@ -179,7 +178,7 @@ func (s *Server) handlePostScreenVBL(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetScreenVBL(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleGetScreenVBL %s %s", r.Method, r.URL.Path)
+	logDebugf("handleGetScreenVBL %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 	macWithoutColons := stripMACColons(mac)

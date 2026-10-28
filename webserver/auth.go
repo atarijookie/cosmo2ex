@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -72,7 +71,7 @@ func storePassword(password string) error {
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleLogin %s %s", r.Method, r.URL.Path)
+	logDebugf("handleLogin %s %s", r.Method, r.URL.Path)
 
 	var req LoginRequest
 
@@ -82,7 +81,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		// Parse form data
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
-			log.Printf("handleLogin - invalid request body - form")
+			logWarningf("handleLogin - invalid request body - form")
 			return
 		}
 		req.Password = r.FormValue("password")
@@ -90,21 +89,21 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		// Parse JSON
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
-			log.Printf("handleLogin - invalid request body - json")
+			logWarningf("handleLogin - invalid request body - json")
 			return
 		}
 	}
 
 	if !checkPassword(req.Password) {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
-		log.Printf("handleLogin - invalid credentials")
+		logWarningf("handleLogin - invalid credentials")
 		return
 	}
 
 	token, err := generateToken()
 	if err != nil {
 		http.Error(w, "could not create session", http.StatusInternalServerError)
-		log.Printf("handleLogin - could not create session")
+		logErrorf("handleLogin - could not create session")
 		return
 	}
 
@@ -136,18 +135,18 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		if mustSetPassword {
 			target = setPasswordPage
 		}
-		log.Printf("handleLogin - OK, token stored: %s..., redirecting to %s", tokenPreview, target)
+		logInfof("handleLogin - OK, token stored: %s..., redirecting to %s", tokenPreview, target)
 		http.Redirect(w, r, target, http.StatusFound)
 		return
 	}
 
 	// For JSON requests, return JSON response (cookie is already set)
-	log.Printf("handleLogin - OK and writeJSON")
+	logDebugf("handleLogin - OK and writeJSON")
 	writeJSON(w, http.StatusOK, LoginResponse{Token: token, MustSetPassword: mustSetPassword})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleLogout %s %s", r.Method, r.URL.Path)
+	logInfof("handleLogout %s %s", r.Method, r.URL.Path)
 
 	token := requestToken(r)
 	if token == "" {
@@ -176,30 +175,30 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 // handleSetPassword changes the management password; requires the current (or default) password.
 func (s *Server) handleSetPassword(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleSetPassword %s %s", r.Method, r.URL.Path)
+	logDebugf("handleSetPassword %s %s", r.Method, r.URL.Path)
 
 	var req SetPasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
-		log.Printf("handleSetPassword - invalid request body")
+		logWarningf("handleSetPassword - invalid request body")
 		return
 	}
 
 	if !checkPassword(req.OldPassword) {
 		http.Error(w, "invalid old password", http.StatusUnauthorized)
-		log.Printf("handleSetPassword - invalid old password")
+		logWarningf("handleSetPassword - invalid old password")
 		return
 	}
 
 	if req.NewPassword == "" {
 		http.Error(w, "new password must not be empty", http.StatusBadRequest)
-		log.Printf("handleSetPassword - empty new password")
+		logWarningf("handleSetPassword - empty new password")
 		return
 	}
 
 	if err := storePassword(req.NewPassword); err != nil {
 		http.Error(w, "could not store password", http.StatusInternalServerError)
-		log.Printf("handleSetPassword - could not store password: %v", err)
+		logErrorf("handleSetPassword - could not store password: %v", err)
 		return
 	}
 
@@ -213,7 +212,7 @@ func (s *Server) handleSetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 
-	log.Printf("handleSetPassword - password changed")
+	logInfof("handleSetPassword - password changed")
 	w.WriteHeader(http.StatusNoContent)
 }
 

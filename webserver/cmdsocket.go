@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"strings"
@@ -51,6 +50,6 @@ func sendToCmdSocket(msg string) error {
 	}
 	defer conn.Close()
 
-	log.Printf("cmdsocket: sent to %s: %q", conn.RemoteAddr(), msg)
+	logDebugf("cmdsocket: sent to %s: %q", conn.RemoteAddr(), msg)
 	return nil
 }

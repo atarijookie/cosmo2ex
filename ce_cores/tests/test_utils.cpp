@@ -199,6 +199,42 @@ TEST_CASE("socketCloexec / acceptCloexec - fds are not inherited by processes st
     close(fdListen);
 }
 
+TEST_CASE("acceptCloexec - accepted socket is blocking also when the listening one is non-blocking")
+{
+    // like ChipInterface: non-blocking listening socket, but recv() on the client must wait up to SO_RCVTIMEO -
+    // on Cygwin / BSD / macOS accept() would inherit O_NONBLOCK, and recv() would fail with EAGAIN right away
+    int fdListen = Utils::socketCloexec(AF_INET, SOCK_STREAM, 0);
+    REQUIRE(fdListen >= 0);
+    fcntl(fdListen, F_SETFL, O_NONBLOCK);
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;                                  // any free port
+    REQUIRE(bind(fdListen, (struct sockaddr *) &addr, sizeof(addr)) == 0);
+    REQUIRE(listen(fdListen, 1) == 0);
+    socklen_t len = sizeof(addr);
+    REQUIRE(getsockname(fdListen, (struct sockaddr *) &addr, &len) == 0);
+
+    int fdClient = socket(AF_INET, SOCK_STREAM, 0);
+    REQUIRE(connect(fdClient, (struct sockaddr *) &addr, sizeof(addr)) == 0);
+
+    int fdAccepted = -1;
+    for(int i = 0; i < 100 && fdAccepted < 0; i++) {    // non-blocking accept() - the connection might not be queued yet
+        fdAccepted = Utils::acceptCloexec(fdListen, NULL, NULL);
+        if(fdAccepted < 0) {
+            usleep(10000);
+        }
+    }
+    REQUIRE(fdAccepted >= 0);
+    CHECK((fcntl(fdAccepted, F_GETFL) & O_NONBLOCK) == 0);
+
+    close(fdAccepted);
+    close(fdClient);
+    close(fdListen);
+}
+
 TEST_CASE("isWindowsPath / pathFromUi / pathToUi - Windows paths detected, other systems use paths unchanged")
 {
     CHECK(Utils::isWindowsPath("C:\\Atari\\hdd"));

@@ -69,5 +69,22 @@ void DMA_read(uint8_t val)
     fakeBridge.dmaToAtari.push_back(val);
 }
 
+// block versions - byte by byte through the fakes above, stop on the first timeout like the real ones
+void DMA_writeBlock(uint8_t* bfr, uint32_t cnt)
+{
+    for (uint32_t i = 0; i < cnt; i++) {
+        bfr[i] = DMA_write();
+        if (brStat == E_TimeOut) return;
+    }
+}
+
+void DMA_readBlock(const uint8_t* bfr, uint32_t cnt)
+{
+    for (uint32_t i = 0; i < cnt; i++) {
+        DMA_read(bfr[i]);
+        if (brStat == E_TimeOut) return;
+    }
+}
+
 void DMA_read_waitForEnd(void) { brStat = fakeBridge.waitForEndFails ? E_TimeOut : E_OK; }
 void neopixelOutput(uint32_t) {}

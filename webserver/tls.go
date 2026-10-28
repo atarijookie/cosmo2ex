@@ -11,7 +11,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"log"
 	"math/big"
 	"net"
 	"net/http"
@@ -86,7 +85,7 @@ func newCertManager() (*certManager, error) {
 		defer ticker.Stop()
 		for range ticker.C {
 			if err := m.refresh(); err != nil {
-				log.Printf("certManager - refresh failed: %v", err)
+				logErrorf("certManager - refresh failed: %v", err)
 			}
 		}
 	}()
@@ -107,7 +106,7 @@ func (m *certManager) loadOrCreateCA() error {
 		m.ca, m.caKey, m.caPEM = ca, caKey, caPEM
 		return nil
 	}
-	log.Printf("certManager - creating new CA (reason: %v)", errOrExpired(err))
+	logInfof("certManager - creating new CA (reason: %v)", errOrExpired(err))
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -182,7 +181,7 @@ func (m *certManager) refresh() error {
 	}
 
 	if reason != "" {
-		log.Printf("certManager - issuing server certificate for %v %v (reason: %s)", dnsNames, ips, reason)
+		logInfof("certManager - issuing server certificate for %v %v (reason: %s)", dnsNames, ips, reason)
 		if cert, key, err = m.issueServerCert(dnsNames, ips); err != nil {
 			return err
 		}
@@ -473,7 +472,7 @@ func sniffConn(conn net.Conn, tlsLn, plainLn *chanListener) {
 
 func redirectToHTTPS(w http.ResponseWriter, r *http.Request) {
 	target := "https://" + r.Host + r.URL.RequestURI()
-	log.Printf("redirectToHTTPS - %s %s -> %s", r.Method, r.URL.RequestURI(), target)
+	logDebugf("redirectToHTTPS - %s %s -> %s", r.Method, r.URL.RequestURI(), target)
 	// 307 keeps the method (POST stays POST) and isn't cached permanently by browsers
 	http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 }

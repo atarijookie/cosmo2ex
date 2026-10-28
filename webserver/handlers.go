@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,7 +19,7 @@ func stripMACColons(mac string) string {
 
 
 func (s *Server) handleGetStatus(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleGetStatus %s %s", r.Method, r.URL.Path)
+	logDebugf("handleGetStatus %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 	logDir := envDir("LOG_DIR")
@@ -29,7 +28,7 @@ func (s *Server) handleGetStatus(w http.ResponseWriter, r *http.Request) {
 	content, err := os.ReadFile(statusFile)
 	if err != nil {
 		msg := "File " + statusFile + " not present."
-		log.Printf("handleGetStatus - %s", msg)
+		logWarningf("handleGetStatus - %s", msg)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(msg))
 		return
@@ -38,7 +37,7 @@ func (s *Server) handleGetStatus(w http.ResponseWriter, r *http.Request) {
 	cmd := map[string]string{"module": "all", "action": "generate_status", "mac": mac}
 	if cmdJSON, err := json.Marshal(cmd); err == nil {
 		if err := sendToCmdSocket(string(cmdJSON)); err != nil {
-			log.Printf("handleGetStatus - failed to send cmd socket: %v", err)
+			logErrorf("handleGetStatus - failed to send cmd socket: %v", err)
 		}
 	}
 

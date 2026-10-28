@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -41,7 +40,7 @@ func (s *Server) writeFddImage(mac, image string) error {
 }
 
 func (s *Server) handleGetFDDImage(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleGetFDDImage %s %s", r.Method, r.URL.Path)
+	logDebugf("handleGetFDDImage %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 
@@ -55,7 +54,7 @@ func (s *Server) handleGetFDDImage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePutFDDImage(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handlePutFDDImage %s %s", r.Method, r.URL.Path)
+	logDebugf("handlePutFDDImage %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 	var body struct {
@@ -79,7 +78,7 @@ func (s *Server) handlePutFDDImage(w http.ResponseWriter, r *http.Request) {
 	cmd := map[string]string{"module": "floppy", "action": "insert", "mac": mac}
 	if cmdJSON, err := json.Marshal(cmd); err == nil {
 		if err := sendToCmdSocket(string(cmdJSON)); err != nil {
-			log.Printf("handlePutFDDImage - failed to send cmd socket: %v", err)
+			logErrorf("handlePutFDDImage - failed to send cmd socket: %v", err)
 		}
 	}
 
@@ -95,7 +94,7 @@ func (s *Server) handleGetFDDImagePrev(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetFDDImageStep(w http.ResponseWriter, r *http.Request, step int) {
-	log.Printf("handleGetFDDImageStep %s %s step=%d", r.Method, r.URL.Path, step)
+	logDebugf("handleGetFDDImageStep %s %s step=%d", r.Method, r.URL.Path, step)
 
 	mac := chi.URLParam(r, "mac")
 
@@ -123,7 +122,7 @@ func (s *Server) handleGetFDDImageStep(w http.ResponseWriter, r *http.Request, s
 		entries, err = os.ReadDir(dir)
 	}
 	if err != nil {
-		log.Printf("handleGetFDDImageStep - cannot read image directory %q: %v", dir, err)
+		logErrorf("handleGetFDDImageStep - cannot read image directory %q: %v", dir, err)
 		if os.IsNotExist(err) {
 			http.Error(w, "image directory not found: "+dir, http.StatusNotFound)
 		} else {
@@ -167,7 +166,7 @@ func (s *Server) handleGetFDDImageStep(w http.ResponseWriter, r *http.Request, s
 	cmd := map[string]string{"module": "floppy", "action": "insert", "mac": mac}
 	if cmdJSON, err := json.Marshal(cmd); err == nil {
 		if err := sendToCmdSocket(string(cmdJSON)); err != nil {
-			log.Printf("handleGetFDDImageStep - failed to send cmd socket: %v", err)
+			logErrorf("handleGetFDDImageStep - failed to send cmd socket: %v", err)
 		}
 	}
 
@@ -249,25 +248,25 @@ func handleFloppyAction(action, mac string) error {
 		return err
 	}
 	if err := sendToCmdSocket(string(cmdJSON)); err != nil {
-		log.Printf("handleFloppyAction - failed to send cmd socket: %v", err)
+		logErrorf("handleFloppyAction - failed to send cmd socket: %v", err)
 		return err
 	}
 	return nil
 }
 
 func (s *Server) handleDeleteFDDImage(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handleDeleteFDDImage %s %s", r.Method, r.URL.Path)
+	logDebugf("handleDeleteFDDImage %s %s", r.Method, r.URL.Path)
 
 	mac := chi.URLParam(r, "mac")
 
 	// Send eject command to core (log error but don't fail the request)
 	if err := handleFloppyAction("eject", mac); err != nil {
-		log.Printf("handleDeleteFDDImage - failed to send eject command: %v", err)
+		logErrorf("handleDeleteFDDImage - failed to send eject command: %v", err)
 	}
 
 	// Clear the floppy image setting file
 	if err := s.writeFddImage(mac, ""); err != nil {
-		log.Printf("handleDeleteFDDImage - failed to write empty FLOPPY_IMAGE: %v", err)
+		logErrorf("handleDeleteFDDImage - failed to write empty FLOPPY_IMAGE: %v", err)
 		http.Error(w, "cannot write FLOPPY_IMAGE", http.StatusInternalServerError)
 		return
 	}

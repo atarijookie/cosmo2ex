@@ -87,7 +87,8 @@ public:
     static bool dirExists(std::string& path);
     static bool devExists(std::string& path);
 
-    // socket() / accept() whose fd is not inherited by processes started by system() - atomically where the system can
+    // socket() / accept() whose fd is not inherited by processes started by system() - atomically where the system can;
+    // the accepted socket is always blocking (on Cygwin / BSD / macOS it would inherit O_NONBLOCK of the listening one)
     static int socketCloexec(int domain, int type, int protocol);
     static int acceptCloexec(int fdListen, struct sockaddr *addr, socklen_t *addrLen);
     static void toUpperCaseString(std::string &st);

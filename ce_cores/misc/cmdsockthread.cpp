@@ -24,7 +24,7 @@
 
 using json = nlohmann::json;
 
-void handleGenericAction(std::string& action, json& data);
+void handleGenericAction(std::string& action, json& data, int sock, const struct sockaddr_in& from);
 void handleSceencastAction(std::string& action, json& data, int sock, const struct sockaddr_in& from);
 void handleDisksAction(std::string& action, json& data);
 void handleFloppyAction(std::string& action, json& data);
@@ -216,7 +216,7 @@ void *cmdSockThreadCode(void *ptr)
                 Debug::out(whichLog, LOG_DEBUG, "cmdSockThreadCode: module: %s, action: %s", module.c_str(), action.c_str());
 
                 if (module == "all") {                  // generic / all modules?
-                    handleGenericAction(action, data);
+                    handleGenericAction(action, data, sock, from);
                 } else if (module == "disks") {         // disk modules?
                     handleDisksAction(action, data);
                 } else if(module == "screencast") {
@@ -248,10 +248,22 @@ void *cmdSockThreadCode(void *ptr)
     return 0;
 }
 
-void handleGenericAction(std::string& action, json& data)
+// reply to 'get_loglevel' - current log level as json datagram back to the sender, e.g. {"loglevel":3}
+static void sendLogLevel(int sock, const struct sockaddr_in& to)
+{
+    std::string reply = json({{"loglevel", logLevel}}).dump();
+
+    if(sendto(sock, reply.c_str(), reply.length(), 0, (const struct sockaddr *) &to, sizeof(to)) < 0) {
+        logHdd(LOG_ERROR, "sendLogLevel: sendto failed: %s", strerror(errno));
+    }
+}
+
+void handleGenericAction(std::string& action, json& data, int sock, const struct sockaddr_in& from)
 {
     if(action == "generate_status") {
         StatusReport::createReportFiles();
+    } else if(action == "get_loglevel") {
+        sendLogLevel(sock, from);
     } else if(action == "set_loglevel") {
         int loglevel = 1;
 
