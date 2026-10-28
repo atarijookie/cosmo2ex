@@ -20,6 +20,7 @@
 #include "misc/debug.h"
 #include "misc/version.h"
 #include "misc/cmdsockthread.h"
+#include "misc/connecteddevices.h"
 #include "chipinterface/chipinterface.h"
 #include "../libdospath/libdospath.h"
 #include "discovery/discovery.h"
@@ -109,6 +110,7 @@ int main(int argc, char *argv[])
         return 1;                       // failure - so a supervisor (systemd, docker) sees that this start didn't work
     }
     writePidFile();
+    ConnectedDevices::clear();          // no device is connected yet - the file might be a leftover from a crash
 
     logHdd(LOG_INFO, "logLevel: %d", logLevel);
 
@@ -145,6 +147,8 @@ int main(int argc, char *argv[])
     pthread_kill_join("floppy core", fddThreadInfo);
     pthread_kill_join("command socket", cmdSockThreadInfo);
     pthread_kill_join("discovery service", discoveryThreadInfo);
+
+    ConnectedDevices::clear();          // all cores stopped, nothing is connected anymore
 
     if(fatalErrorOccurred) {     // terminated because of an error? report failure, so a supervisor (e.g. systemd) can see it
         ret = 1;

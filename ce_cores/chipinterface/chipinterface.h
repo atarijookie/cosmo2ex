@@ -89,6 +89,7 @@ public:
     void storeHeaderToBuffer(uint16_t cmdCode, uint32_t futureDatalen, uint8_t* buffer);
 
     int setAllClientFds(fd_set* readfds);
+    void reportConnectedDevices(void);      // MACs of connected clients to ConnectedDevices, done by setAllClientFds() too
     int acceptSocketIfNeededAndPossible(void);
 
     // ikbd related

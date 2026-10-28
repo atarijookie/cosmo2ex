@@ -139,9 +139,7 @@ void StatusReport::storeIpAndFwVer(uint8_t* mac, uint32_t ipAddr, char* fwVer, u
         statuses[idx].timestamp = time(NULL);
         statuses[idx].features = features;
 
-        if(isNew) {
-            createSingleReportFile(idx);
-        }
+        createSingleReportFile(idx);    // keep the file current - it's written only when the report text changed
     }
 
     pthread_mutex_unlock(&statusesMutex);
@@ -159,9 +157,7 @@ void StatusReport::storeTosAndMachine(uint8_t* mac, uint16_t tosVersion, int scs
         statuses[idx].tosVersion = tosVersion;
         statuses[idx].scsiMachine = scsiMachine;
 
-        if(isNew) {
-            createSingleReportFile(idx);
-        }
+        createSingleReportFile(idx);    // keep the file current - it's written only when the report text changed
     }
 
     pthread_mutex_unlock(&statusesMutex);

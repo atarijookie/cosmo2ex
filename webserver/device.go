@@ -28,6 +28,31 @@ func formatMACWithColons(mac string) string {
 	return mac[0:2] + ":" + mac[2:4] + ":" + mac[4:6] + ":" + mac[6:8] + ":" + mac[8:10] + ":" + mac[10:12]
 }
 
+// connectedMACs returns MACs (12 hex chars, upper case, like the device dirs in SETTINGS_DIR) of the devices
+// which have at least one HDD / FDD / IKBD connection to ce_cores right now. ce_cores writes them to
+// CONNECTED_DEVICES_FILE, one per line; no file (e.g. ce_cores not running) = nothing is connected.
+func connectedMACs() map[string]bool {
+	macs := make(map[string]bool)
+
+	path := os.Getenv("CONNECTED_DEVICES_FILE")
+	if path == "" {
+		return macs
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return macs
+	}
+
+	for _, line := range strings.Split(string(content), "\n") {
+		mac := strings.ToUpper(strings.TrimSpace(line))
+		if isValidMACFormat(mac) {
+			macs[mac] = true
+		}
+	}
+	return macs
+}
+
 func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
 	log.Printf("handleListDevices %s %s", r.Method, r.URL.Path)
 
@@ -44,6 +69,8 @@ func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "cannot read settings directory", http.StatusInternalServerError)
 		return
 	}
+
+	connected := connectedMACs()
 
 	// Filter directories that look like MAC addresses (12 hex characters)
 	devices := make([]Device, 0)
@@ -76,7 +103,7 @@ func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
 			devices = append(devices, Device{
 				MAC:       macFormatted,
 				Name:      deviceName,
-				Connected: false, // Default to not connected, can be updated later
+				Connected: connected[strings.ToUpper(folderName)],
 			})
 		}
 	}

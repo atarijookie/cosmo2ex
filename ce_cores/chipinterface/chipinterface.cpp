@@ -21,6 +21,7 @@
 #include "../misc/global.h"
 #include "../misc/version.h"
 #include "../misc/statusreport.h"
+#include "../misc/connecteddevices.h"
 #include "../discovery/discovery.h"
 
 ChipInterface::ChipInterface(int whichLogFile, int whichAtnCode, uint32_t whichSyncTagCode, uint16_t portListen)
@@ -48,6 +49,7 @@ ChipInterface::ChipInterface(int whichLogFile, int whichAtnCode, uint32_t whichS
 
 ChipInterface::~ChipInterface()
 {
+    ConnectedDevices::update(this, std::set<std::string>());     // this core has no clients anymore
     delete []bufOut;
     delete []bufIn;
 }
@@ -165,10 +167,15 @@ void ChipInterface::ciClose(void)
     for(int i=0; i<MAX_CLIENTS; i++) {
        clientsCloseOne(&clients[i]);
     }
+
+    reportConnectedDevices();
 }
 
 int ChipInterface::setAllClientFds(fd_set* readfds)
 {
+    // called from each core's main loop before select() - after any connect / disconnect / mac change of this loop pass
+    reportConnectedDevices();
+
     int maxFd = FD_EMPTY;
 
     for(int i=0; i<MAX_CLIENTS; i++) {
@@ -180,6 +187,26 @@ int ChipInterface::setAllClientFds(fd_set* readfds)
     }
 
     return maxFd;
+}
+
+// report MACs of all connected clients - clients get closed in many places (send failures, inactivity, reconnects),
+// so the whole table is reported instead of tracking each of them
+void ChipInterface::reportConnectedDevices(void)
+{
+    std::set<std::string> macs;
+
+    for(int i=0; i<MAX_CLIENTS; i++) {
+        if(clients[i].fdClient == FD_EMPTY) {
+            continue;
+        }
+
+        std::string mac = ConnectedDevices::macToString(clients[i].mac);
+        if(!mac.empty()) {          // mac not known yet? it comes with the FW version packet, reported next time
+            macs.insert(mac);
+        }
+    }
+
+    ConnectedDevices::update(this, macs);
 }
 
 bool ChipInterface::actionNeeded(ClientInfo* ci, uint8_t *inBuf)

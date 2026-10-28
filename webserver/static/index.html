@@ -102,10 +102,6 @@
                 opacity: 1 !important;
                 filter: none !important;
             }
-            button.device-button:not([style*="opacity: 0.7"]),
-            button.device-action-button:not([style*="opacity: 0.7"]) {
-                opacity: 1 !important;
-            }
             /* password + logout buttons next to each other in the top right corner */
             #account-buttons {
                 position: absolute;
@@ -177,7 +173,9 @@
                 // Set base styles
                 button.style.padding = '15px 25px';
                 button.style.cursor = 'pointer';
-                button.style.color = 'white';
+                // connected (to any core) - green like device.html, not connected right now - light gray
+                var bgColor = device.connected ? '#3baf16' : '#d6d9d6';
+                button.style.color = device.connected ? 'white' : '#555';
                 button.style.border = 'none';
                 button.style.borderRadius = '4px';
                 button.style.textAlign = 'center';
@@ -187,9 +185,9 @@
                 button.style.alignItems = 'center';
                 button.style.justifyContent = 'center';
                 button.style.fontSize = '16px';
-                // Set background color with !important to override any CSS - use same color as device.html
-                button.style.setProperty('background-color', '#3baf16', 'important');
-                button.style.setProperty('background', '#3baf16', 'important');
+                // Set background color with !important to override any CSS
+                button.style.setProperty('background-color', bgColor, 'important');
+                button.style.setProperty('background', bgColor, 'important');
                 button.style.setProperty('box-shadow', 'none', 'important');
                 button.style.setProperty('-webkit-box-shadow', 'none', 'important');
                 button.style.setProperty('-moz-box-shadow', 'none', 'important');
@@ -220,13 +218,6 @@
                     }
                     window.location.href = url;
                 };
-
-                // Style based on connection status (always green; optional visual hint via opacity)
-                if (!device.connected) {
-                    button.style.opacity = '0.7';
-                } else {
-                    button.style.setProperty('opacity', '1', 'important');
-                }
 
                 container.appendChild(button);
             });
