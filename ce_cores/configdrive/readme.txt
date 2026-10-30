@@ -42,27 +42,37 @@ ce_dd.prg - You only need this in
             to touch it. CE_DD 
             (builtin and standalone)
             handles the more advanced
-            features of your Cosmo2ex 
-            like accessing thumb drives, 
-            making screenshots and 
-            keeping the current date - 
-            it's kind of a supercharger
-            for TOS.
-            Neither version is needed 
-            if you only want to use 
-            RAW disk images and 
+            features of your Cosmo2ex
+            like accessing thumb drives,
+            screencast / screenshots
+            and keeping the current
+            date - it's kind of a
+            supercharger for TOS.
+            Neither version is needed
+            if you only want to use
+            RAW disk images and
             none of the other features.
+
+            Screencast and screenshots:
+            with CE_DD running, open
+            the ScreenCast page in the
+            web interface and click
+            "Start Screencast" to see
+            your ST / TT screen live in
+            the browser, or "Take
+            Screenshot" for a single
+            screen, saved as PNG. No
+            extra program is needed on
+            the ST - CE_DD sends the
+            screen only while the page
+            asks for it.
 
 
 ce_sting.prg - Highly experimental STiNG
                replacement for net-
-               working. Not needed for 
+               working. Not needed for
                mounting networked drives
                (see CE_DD.PRG for that).
-
-ce_cast.prg  - Screencast your STs desk-
-               top to your web browser 
-               and remote control it
 
 
 Folder TESTS\ 

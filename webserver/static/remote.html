@@ -43,39 +43,233 @@
         var demoScreen = null;
         var currentRes = -1;
         var counter = new Date().getTime() * 10;
-        var reloadMs = 200;
         var isScreencastRunning = false;
 
-        function onLoadScreen() {
-          var dv = new DataView(this.response);
-          if (dv.byteLength === 32033) {
-            var res = dv.getInt8(0);
-            if (res !== currentRes && dv.byteLength > 0) {
-              console.log('screen resolution changed');
-              $('#demo_placeholder').html('');
-              demoScreen = null;
+        // Resolution type in frame byte 0 - SCREENCAST_RES_* from ce_dd_prg/screencast.h
+        var RES_ST_LOW = 0x00, RES_ST_MID = 0x01, RES_ST_HIGH = 0x02;
+        var RES_TT_LOW = 0x10, RES_TT_MID = 0x11, RES_TT_HIGH = 0x12;
+        var RES_FALCON = 0x80;              // bit field: bit 6 width, bits 5-4 height, bits 2-0 bits per pixel
+        var RES_UNKNOWN = 0xff;
+        var FALCON_HEIGHTS = [200, 240, 400, 480];
+        var FALCON_BPPS = [1, 2, 4, 8, 16];
+
+        // max throughput of the bus the transfer rate is compared to, and the VBL rate the frame skip is counted in (like ce_cores does)
+        var ACSI_BANDWIDTH_KB = 1250;
+        var SCSI_BANDWIDTH_KB = 1600;
+        var VBL_HZ = 50;
+        var busName = 'ACSI';               // which bus the device runs on - from device features, ACSI until known
+        var busBandwidthKb = ACSI_BANDWIDTH_KB;
+
+        // device in SCSI mode reports only SCSI feature (ACSI mode only ACSI, unknown device both)
+        function loadDeviceBus() {
+          fetch('/device/' + encodeURIComponent(mac) + '/features', { method: 'GET' })
+            .then(function(res) {
+              if (!res.ok) { throw new Error('HTTP ' + res.status); }
+              return res.json();
+            })
+            .then(function(features) {
+              var isScsi = features.scsi && !features.acsi;
+              busName = isScsi ? 'SCSI' : 'ACSI';
+              busBandwidthKb = isScsi ? SCSI_BANDWIDTH_KB : ACSI_BANDWIDTH_KB;
+              applyFpsLimit();
+              updateScreencastInfo();
+            })
+            .catch(function(err) {
+              console.error('device features load error:', err);
+            });
+        }
+
+        // returns { name, width, height, bpp } of the resolution type, or null when not known
+        function describeRes(res) {
+          switch (res) {
+            case RES_ST_LOW:  return { name: 'ST low',  width: 320,  height: 200, bpp: 4 };
+            case RES_ST_MID:  return { name: 'ST mid',  width: 640,  height: 200, bpp: 2 };
+            case RES_ST_HIGH: return { name: 'ST high', width: 640,  height: 400, bpp: 1 };
+            case RES_TT_LOW:  return { name: 'TT low',  width: 320,  height: 480, bpp: 8 };
+            case RES_TT_MID:  return { name: 'TT mid',  width: 640,  height: 480, bpp: 4 };
+            case RES_TT_HIGH: return { name: 'TT high', width: 1280, height: 960, bpp: 1 };
+          }
+          if (res !== RES_UNKNOWN && (res & RES_FALCON) && (res & 0x07) < FALCON_BPPS.length) {
+            return {
+              name: 'Falcon',
+              width: (res & 0x40) ? 640 : 320,
+              height: FALCON_HEIGHTS[(res >> 4) & 0x03],
+              bpp: FALCON_BPPS[res & 0x07]
+            };
+          }
+          return null;
+        }
+
+        function formatNumber(value) {    // whole numbers as they are, others with one decimal
+          return (Math.round(value * 10) % 10 === 0) ? String(Math.round(value)) : value.toFixed(1);
+        }
+
+        var MAX_FPS = 25;
+        var MAX_BANDWIDTH_USE = 0.9;        // don't let screencast take more than this part of the bus bandwidth
+
+        function realFpsOf(fps) {           // ce_cores sends the fps to ST as whole VBLs between frames
+          return VBL_HZ / Math.max(1, Math.round(VBL_HZ / fps));
+        }
+
+        // highest fps which keeps the transfer of current resolution under MAX_BANDWIDTH_USE of the bus (at least 1 fps)
+        function maxFpsFor(res) {
+          var r = describeRes(res);
+          if (!r) {                         // resolution not known - nothing to limit by
+            return MAX_FPS;
+          }
+          var sizeKb = r.width * r.height * r.bpp / 8 / 1000;
+          for (var fps = MAX_FPS; fps > 1; fps--) {
+            if (realFpsOf(fps) * sizeKb <= busBandwidthKb * MAX_BANDWIDTH_USE) {
+              return fps;
+            }
+          }
+          return 1;
+        }
+
+        var applyFpsLimit = function() {};  // set by initScreencastFps() - call when resolution or bus changes
+
+        // light gray info under the frame rate: resolution, size of one screen, transfer rate
+        function updateScreencastInfo() {
+          var info = document.getElementById('screencast-info');
+          var slider = document.getElementById('screencast-fps');
+          if (!info || !slider) {
+            return;
+          }
+
+          var r = describeRes(currentRes);
+          if (!r) {
+            info.textContent = 'Resolution: ' + (currentRes < 0 ? 'not known yet' : 'unknown (0x' + currentRes.toString(16) + ')');
+            return;
+          }
+
+          var colors = (r.bpp === 16) ? 'true color' : (Math.pow(2, r.bpp) + ' colors');
+          var sizeKb = r.width * r.height * r.bpp / 8 / 1000;
+
+          var fps = parseInt(slider.value, 10);
+          var realFps = realFpsOf(fps);
+          var rateKb = realFps * sizeKb;
+          var percent = Math.round(rateKb * 100 / busBandwidthKb);
+
+          info.textContent = 'Resolution: ' + r.name + ' (' + r.width + ' x ' + r.height + ', ' + colors + ')' +
+            ' \u00b7 Screen: ' + formatNumber(sizeKb) + ' kB' +
+            ' \u00b7 Transfer: ' + formatNumber(realFps) + ' fps x ' + formatNumber(sizeKb) + ' kB = ' +
+            Math.round(rateKb) + ' kB/s - ' + percent + '% of ' + busName + ' bandwidth' +
+            ' (max ' + maxFpsFor(currentRes) + ' fps - ' + Math.round(MAX_BANDWIDTH_USE * 100) + '% of bandwidth)';
+        }
+
+        // frame from ce_cores: resolution (1) + palette (512, room for 256 TT colors) + screen data (ST or TT size)
+        var FRAME_PALETTE_OFFSET = 1;
+        var FRAME_SCREEN_OFFSET = 1 + 512;
+
+        function isStRes(res) {
+          return res === RES_ST_LOW || res === RES_ST_MID || res === RES_ST_HIGH;
+        }
+
+        function isTtRes(res) {
+          return res === RES_TT_LOW || res === RES_TT_MID || res === RES_TT_HIGH;
+        }
+
+        function frameSize(res) {     // not supported yet resolutions come with ST screen
+          return FRAME_SCREEN_OFFSET + (isTtRes(res) ? 153600 : 32000);
+        }
+
+        // TT resolutions drawer - same interface as AtariScreen (which knows ST resolutions only)
+        function TtScreen(res, parent) {
+          var r = describeRes(res);
+          var canvas = document.createElement('canvas');
+          canvas.width = r.width;
+          canvas.height = r.height;
+          canvas.style.aspectRatio = '4 / 3';             // TT low pixels are twice as wide as tall
+          canvas.style.width = Math.max(r.width, 640) + 'px';
+          canvas.style.imageRendering = 'pixelated';
+          parent.appendChild(canvas);
+
+          var ctx = canvas.getContext('2d');
+          var image = ctx.createImageData(r.width, r.height);
+          var colors = 1 << r.bpp;
+          var palette = new Array(colors);                 // [r, g, b] for each color index
+
+          this.ExtractPalette = function(dv, offset) {
+            for (var i = 0; i < colors; i++) {
+              if (res === RES_TT_HIGH) {                   // TT high is black and white: 0 white, 1 black
+                palette[i] = (i === 0) ? [255, 255, 255] : [0, 0, 0];
+                continue;
+              }
+              var c = dv.getUint16(offset + i * 2);        // TT palette: 0000 RRRR GGGG BBBB
+              palette[i] = [((c >> 8) & 0x0f) * 17, ((c >> 4) & 0x0f) * 17, (c & 0x0f) * 17];
+            }
+          };
+
+          // screen is bit planes interleaved in words, like on ST: for each 16 pixels one word of each plane
+          this.ExtractPlanarScreen = function(dv, offset) {
+            var planes = r.bpp;
+            var data = image.data;
+            var pixel = 0;
+            var pixelCount = r.width * r.height;
+
+            for (var pos = offset; pixel < pixelCount; pos += planes * 2) {
+              var words = [];
+              for (var p = 0; p < planes; p++) {
+                words.push(dv.getUint16(pos + p * 2));
+              }
+              for (var bit = 15; bit >= 0; bit--) {
+                var index = 0;
+                for (p = 0; p < planes; p++) {
+                  index |= ((words[p] >> bit) & 1) << p;
+                }
+                var rgb = palette[index];
+                var d = pixel * 4;
+                data[d] = rgb[0];
+                data[d + 1] = rgb[1];
+                data[d + 2] = rgb[2];
+                data[d + 3] = 255;
+                pixel++;
+              }
+            }
+          };
+
+          this.Display = function() {
+            ctx.putImageData(image, 0, 0);
+          };
+        }
+
+        // show the frame from ce_cores - ST and TT resolutions are drawn, others just show what they are
+        function showFrame(dv, forceNewScreen) {
+          var res = dv.getUint8(0);
+          var canDraw = isStRes(res) || isTtRes(res);
+
+          if (res !== currentRes || forceNewScreen) {
+            console.log('screen resolution changed');
+            $('#demo_placeholder').html(canDraw ? '' : '<p class="screencast-nodraw">This resolution can\'t be shown yet.</p>');
+            demoScreen = null;
+            if (isStRes(res)) {
               demoScreen = new AtariScreen(res, element, 'demo');
-              currentRes = res;
+            } else if (isTtRes(res)) {
+              demoScreen = new TtScreen(res, element);
             }
-            if (demoScreen !== null) {
-              demoScreen.ExtractPalette(dv, 1);
-              demoScreen.ExtractPlanarScreen(dv, 16 * 2 + 1);
-              demoScreen.Display();
-            }
+            currentRes = res;
+            applyFpsLimit();
+            updateScreencastInfo();
           }
-          dv = null;
-          if (isScreencastRunning) {
-            setTimeout(loadScreen, reloadMs);
+
+          if (demoScreen !== null) {
+            demoScreen.ExtractPalette(dv, FRAME_PALETTE_OFFSET);
+            demoScreen.ExtractPlanarScreen(dv, FRAME_SCREEN_OFFSET);
+            demoScreen.Display();
           }
+        }
+
+        function isWholeFrame(dv) {
+          return dv.byteLength > 0 && dv.byteLength === frameSize(dv.getUint8(0));
         }
 
         function onErrorScreen() {
           if (isScreencastRunning) {
-            setTimeout(loadScreen, reloadMs);
+            setTimeout(loadScreen, screencastReloadMs());
           }
         }
 
-        function loadScreen() {
+        function getFrame(live, onFrame, onFail) {
           if (!element) {
             element = document.getElementById('demo_placeholder');
             if (!element) {
@@ -84,71 +278,302 @@
           }
           var xhr = new XMLHttpRequest();
           counter++;
-          xhr.open('GET', '/screen/' + encodeURIComponent(mac) + '?' + counter, true);
+          // live: frame for running screencast - keeps ST sending frames (stops a few seconds after the last live request)
+          xhr.open('GET', '/screen/' + encodeURIComponent(mac) + '?' + (live ? 'live=1&' : '') + counter, true);
           xhr.responseType = 'arraybuffer';
-          xhr.onerror = onErrorScreen;
-          xhr.onload = onLoadScreen;
-          xhr.send(null);
-        }
-
-        function loadScreenOnce() {
-          if (!element) {
-            element = document.getElementById('demo_placeholder');
-            if (!element) {
-              return;
-            }
-          }
-          var xhr = new XMLHttpRequest();
-          counter++;
-          xhr.open('GET', '/screen/' + encodeURIComponent(mac) + '?' + counter, true);
-          xhr.responseType = 'arraybuffer';
+          xhr.onerror = onFail;
           xhr.onload = function() {
-            var dv = new DataView(this.response);
-            if (dv.byteLength === 32033) {
-              var res = dv.getInt8(0);
-              $('#demo_placeholder').html('');
-              demoScreen = null;
-              demoScreen = new AtariScreen(res, element, 'demo');
-              currentRes = res;
-              if (demoScreen !== null) {
-                demoScreen.ExtractPalette(dv, 1);
-                demoScreen.ExtractPlanarScreen(dv, 16 * 2 + 1);
-                demoScreen.Display();
-              }
+            if (this.status === 200) {
+              // frame sequence number - changes with each new frame from ST, also when the screen looks the same
+              onFrame(new DataView(this.response), this.getResponseHeader('X-Frame-Seq'));
+            } else if (onFail) {
+              onFail();
             }
           };
           xhr.send(null);
         }
 
-        function startMacScreencast() {
-          if (!element) {
-            element = document.getElementById('demo_placeholder');
-          }
-          if (!element) {
+        function loadScreen() {
+          getFrame(true, function(dv) {
+            if (isWholeFrame(dv)) {
+              showFrame(dv, false);
+            }
+            if (isScreencastRunning) {
+              setTimeout(loadScreen, screencastReloadMs());
+            }
+          }, onErrorScreen);
+        }
+
+        function loadScreenOnce() {
+          getFrame(false, function(dv) {
+            if (isWholeFrame(dv)) {
+              showFrame(dv, true);
+            }
+          });
+        }
+
+        // web UI asks for frames as often as ST sends them (but not more often than 25 times per second)
+        function screencastReloadMs() {
+          var slider = document.getElementById('screencast-fps');
+          var fps = slider ? parseInt(slider.value, 10) : 3;
+          return Math.max(40, Math.round(1000 / realFpsOf(fps)));
+        }
+
+        // shown screen is current only while screencast runs or after a screenshot arrived - otherwise it's dimmed with a note,
+        // as it's just the last frame ce_cores has (maybe from long ago) and nothing new comes until screencast / screenshot
+        function setScreenCurrent(isCurrent, note) {
+          var wrap = document.getElementById('screen-wrap');
+          var noteEl = document.getElementById('screen-off-note');
+          if (!wrap || !noteEl) {
             return;
           }
+          if (isCurrent) {
+            wrap.classList.remove('screen-off');
+          } else {
+            wrap.classList.add('screen-off');
+            noteEl.textContent = note || 'Screencast is off - click "Start Screencast" or "Take Screenshot" to see the current screen.';
+          }
+        }
+
+        function startMacScreencast() {
           isScreencastRunning = true;
+          setScreenCurrent(true);
           loadScreen();
         }
 
+        function stopMacScreencast() {
+          isScreencastRunning = false;
+          setScreenCurrent(false);
+          fetch('/screen/' + encodeURIComponent(mac) + '/stop', { method: 'POST' })   // ST stops right away, not after timeout
+            .catch(function(err) { console.error('screencast stop error:', err); });
+        }
+
+        // one screenshot: ST sends a single screen on its next check (CE_DD.PRG checks every 3 seconds), then the frame
+        // is retrieved a few times until a new one arrived (its sequence number changed), or until it surely had to arrive
+        var SCREENSHOT_WAIT_MS = 8000;
+        var SCREENSHOT_RETRY_MS = 500;
+
+        // size of saved PNG for each resolution - Atari pixels aren't square, so the screen is scaled (by whole numbers,
+        // without smoothing) to the shape it has on the monitor: ST 320x200 / 640x200 -> 640x400, TT low 320x480 -> 640x480
+        var PNG_SIZES = {};
+        PNG_SIZES[RES_ST_LOW]  = [640, 400];
+        PNG_SIZES[RES_ST_MID]  = [640, 400];
+        PNG_SIZES[RES_ST_HIGH] = [640, 400];
+        PNG_SIZES[RES_TT_LOW]  = [640, 480];
+        PNG_SIZES[RES_TT_MID]  = [640, 480];
+        PNG_SIZES[RES_TT_HIGH] = [1280, 960];
+
+        function pad2(n) {
+          return (n < 10 ? '0' : '') + n;
+        }
+
+        // save the shown screen as PNG to browser's download folder, e.g. cosmo2ex-screenshot-2026-10-30_14-39-02.png;
+        // returns false when there's nothing that could be saved
+        function saveScreenshotPng() {
+          var src = document.querySelector('#demo_placeholder canvas');
+          var size = PNG_SIZES[currentRes];
+          if (!src || !size) {
+            return false;
+          }
+
+          var out = document.createElement('canvas');
+          out.width = size[0];
+          out.height = size[1];
+          var ctx = out.getContext('2d');
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(src, 0, 0, size[0], size[1]);
+
+          var d = new Date();
+          var fileName = 'cosmo2ex-screenshot-' + d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) +
+            '_' + pad2(d.getHours()) + '-' + pad2(d.getMinutes()) + '-' + pad2(d.getSeconds()) + '.png';
+
+          out.toBlob(function(blob) {
+            var url = URL.createObjectURL(blob);
+            var link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            link.addEventListener('click', function(e) { e.stopPropagation(); });   // not a click for the ST
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(function() { URL.revokeObjectURL(url); }, 10000);
+          }, 'image/png');
+          return true;
+        }
+
+        function takeScreenshot(onDone) {
+          var seqBefore = null;
+          var started = Date.now();
+
+          function retry() {
+            getFrame(false, function(dv, seq) {
+              var arrived = (seq !== seqBefore) && isWholeFrame(dv);
+              if (arrived) {
+                showFrame(dv, false);
+              }
+              if (arrived || Date.now() - started > SCREENSHOT_WAIT_MS) {
+                onDone(arrived);
+              } else {
+                setTimeout(retry, SCREENSHOT_RETRY_MS);
+              }
+            }, function() {
+              onDone(false);
+            });
+          }
+
+          getFrame(false, function(dv, seq) {   // sequence number of the frame we have now - to know when the new one arrived
+            seqBefore = seq;
+            fetch('/screen/' + encodeURIComponent(mac) + '/screenshot', { method: 'POST' })
+              .then(function(res) {
+                if (!res.ok) { throw new Error('HTTP ' + res.status); }
+                setTimeout(retry, SCREENSHOT_RETRY_MS);
+              })
+              .catch(function(err) {
+                console.error('screenshot request error:', err);
+                onDone(false);
+              });
+          }, function() {
+            onDone(false);
+          });
+        }
+
+        // screencast frames per second - stored per device, CE_DD.PRG picks the change up while running (within ~3 s)
+        function initScreencastFps() {
+          var fpsUrl = '/screen/' + encodeURIComponent(mac) + '/fps';
+          var container = document.getElementById('screencast-settings');
+          var slider = document.getElementById('screencast-fps');
+          var valueLabel = document.getElementById('screencast-fps-value');
+          var statusLabel = document.getElementById('screencast-fps-status');
+
+          // remote control handlers on window turn mouse / touch / keys into ST input (and prevent defaults),
+          // keep them away from this control so the slider works and doesn't click / type on the ST
+          ['mousedown', 'mouseup', 'click', 'touchstart', 'touchmove', 'touchend', 'keydown', 'keyup'].forEach(function(name) {
+            container.addEventListener(name, function(e) { e.stopPropagation(); });
+          });
+
+          var savedFps = null;              // fps stored on server, null until loaded
+
+          function showFps(fps) {
+            slider.value = fps;             // browser keeps it within slider.max
+            valueLabel.textContent = slider.value + ' fps';
+            updateScreencastInfo();
+          }
+
+          function showStatus(text) {
+            statusLabel.textContent = text;
+          }
+
+          function saveFps(fps) {
+            showStatus('saving...');
+            fetch(fpsUrl, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fps: fps })
+            })
+              .then(function(res) {
+                if (!res.ok) { throw new Error('HTTP ' + res.status); }
+                return res.json();
+              })
+              .then(function(data) {
+                savedFps = data.fps;
+                showFps(data.fps);
+                showStatus('saved');
+              })
+              .catch(function(err) {
+                console.error('screencast fps save error:', err);
+                showStatus('failed to save');
+              });
+          }
+
+          // slider can't go above what current resolution and bus allow; stored value above that is lowered and saved
+          applyFpsLimit = function() {
+            var max = maxFpsFor(currentRes);
+            slider.max = max;
+            if (savedFps !== null && savedFps > max) {
+              saveFps(max);
+            } else if (savedFps !== null) {
+              showFps(savedFps);
+            }
+          };
+
+          fetch(fpsUrl, { method: 'GET' })
+            .then(function(res) {
+              if (!res.ok) { throw new Error('HTTP ' + res.status); }
+              return res.json();
+            })
+            .then(function(data) {
+              savedFps = data.fps;
+              applyFpsLimit();
+              showFps(Math.min(savedFps, maxFpsFor(currentRes)));
+            })
+            .catch(function(err) {
+              console.error('screencast fps load error:', err);
+              showStatus('failed to load');
+            });
+
+          applyFpsLimit();
+
+          slider.addEventListener('input', function() {    // while dragging - just show the value
+            valueLabel.textContent = slider.value + ' fps';
+            updateScreencastInfo();
+          });
+
+          slider.addEventListener('change', function() {   // released - save it
+            saveFps(parseInt(slider.value, 10));
+          });
+        }
+
         $(document).ready(function () {
+          setScreenCurrent(false);
+          initScreencastFps();
+          loadDeviceBus();
+
           // Load initial screen on page load
           loadScreenOnce();
 
-          var $btn = $('button#screencast');
-          // remove existing handlers from CosmosEx.Remote.init for this button
-          $btn.off();
-          $btn.on('touchstart mousedown click', function(e) {
+          // keep mouse / touch on the buttons away from the remote control handlers, which would click on the ST
+          var $buttons = $('button#screencast, button#screenshot');
+          $buttons.off();
+          $buttons.on('touchstart touchend mousedown mouseup', function(e) {
+            e.stopPropagation();
+          });
+
+          var $castBtn = $('button#screencast');
+          $castBtn.on('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            if ($(this).hasClass('disabled')) {
+            if (isScreencastRunning) {
+              stopMacScreencast();
+              $castBtn.html('Start Screencast');
+            } else {
+              startMacScreencast();
+              $castBtn.html('Stop Screencast');
+            }
+            return false;
+          });
+
+          var $shotBtn = $('button#screenshot');
+          $shotBtn.on('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if ($shotBtn.hasClass('disabled')) {
               return false;
             }
-            $(this)
-              .addClass('disabled')
-              .attr('disabled', 'disabled')
-              .html('Screencast running...');
-            startMacScreencast();
+            // spinner until the screen arrives - ST sends it on its next check, which can take up to 3 seconds
+            $shotBtn.addClass('disabled').attr('disabled', 'disabled')
+              .html('<span class="btn-spinner"></span>Taking screenshot...');
+            takeScreenshot(function(gotNew) {
+              $shotBtn.removeClass('disabled').removeAttr('disabled').html('Take Screenshot');
+              if (gotNew) {
+                setScreenCurrent(true);
+                if (saveScreenshotPng()) {           // also save it as PNG, no extra click needed
+                  $shotBtn.html('Saved as PNG');
+                  setTimeout(function() { $shotBtn.html('Take Screenshot'); }, 2000);
+                }
+              } else if (!isScreencastRunning) {     // ST didn't send it
+                setScreenCurrent(false, 'No screenshot arrived - is CE_DD.PRG running on the ST?');
+              }
+            });
             return false;
           });
         });
@@ -210,6 +635,104 @@
             justify-content: center;
             margin: 20px 0;
         }
+        #screencast-settings {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        #screencast-fps-value {
+            min-width: 50px;
+            text-align: left;
+            font-weight: bold;
+        }
+        #screencast-fps-status {
+            min-width: 90px;
+            text-align: left;
+            color: #666;
+        }
+        .btn-spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin-right: 8px;
+            vertical-align: -2px;
+            border: 2px solid rgba(0, 0, 0, 0.2);
+            border-top-color: #333;
+            border-radius: 50%;
+            animation: btn-spin 0.8s linear infinite;
+        }
+        @keyframes btn-spin {
+            to { transform: rotate(360deg); }
+        }
+        #screencast-info {
+            margin-top: 4px;
+            font-size: 12px;
+            color: #999;
+        }
+        .screencast-nodraw {
+            color: #999;
+            font-size: 14px;
+        }
+        #screen-wrap {
+            position: relative;
+            width: 100%;
+        }
+        #screen-wrap.screen-off {
+            min-height: 200px;          /* room for the note even before any frame loaded */
+        }
+        #screen-wrap.screen-off #demo_placeholder {
+            opacity: 0.25;
+            filter: grayscale(100%);
+        }
+        #screen-off-note {
+            display: none;
+        }
+        /* faint diagonal hatch over the dimmed screen - so it's clearly the web page covering it, not the ST picture */
+        #screen-wrap.screen-off::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(45deg, rgba(30, 111, 217, 0.08) 0 10px, transparent 10px 20px);
+            pointer-events: none;
+        }
+        #screen-wrap.screen-off #screen-off-note {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+            width: max-content;
+            max-width: 80%;
+            padding: 14px 22px;
+            background: #1e6fd9;
+            color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            line-height: 1.4;
+            text-align: left;
+            pointer-events: none;
+        }
+        #screen-wrap.screen-off #screen-off-note::before {
+            content: '\23F8';           /* pause sign */
+            flex: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            font-size: 16px;
+        }
         #demo_placeholder {
             width: 100%;
             margin: 20px 0;
@@ -265,6 +788,48 @@
         .footer-links span {
             color: #999;
             margin: 0 5px;
+        }
+        /* help - a dialog in the middle of the window, over everything, with the page dimmed behind it */
+        .alert.help {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2000;
+            width: min(700px, 92vw);
+            max-height: 85vh;
+            overflow-y: auto;
+            box-sizing: border-box;
+            margin: 0;
+            padding: 20px 28px;
+            text-align: left;
+            background: #fff;
+            opacity: 1;                 /* combined.css makes alerts a bit see-through, the page would show through the dialog */
+            color: #333;
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45), 0 10px 40px rgba(0, 0, 0, 0.4);
+        }
+        .alert.help a.close {
+            position: sticky;
+            top: 0;
+            float: right;
+            margin: -8px -14px 0 0;
+            width: 32px;
+            height: 32px;
+            line-height: 30px;
+            text-align: center;
+            font-size: 22px;
+            color: #555;
+            background: #eee;
+            border-radius: 50%;
+            cursor: pointer;
+            text-decoration: none;
+            opacity: 1;
+        }
+        .alert.help a.close:hover {
+            background: #ddd;
+            color: #000;
         }
         .help.hidden {
             display: none !important;
@@ -336,16 +901,28 @@
             </div>
         </div>
 
+        <div id="screencast-settings">
+            <label for="screencast-fps">Screencast frame rate:</label>
+            <input type="range" id="screencast-fps" min="1" max="25" step="1" value="3">
+            <span id="screencast-fps-value">3 fps</span>
+            <span id="screencast-fps-status"></span>
+        </div>
+        <div id="screencast-info"></div>
+
         <div id="remote-buttons">
             <button id="showkeyboard" class="btn">Toggle system keyboard</button>
             <button id="showstkeyboard" class="btn">Toggle ST keyboard</button>
             <button id="lockpointer" class="btn">Grab mouse</button>
             <button id="keyctrlaltdel" class="btn">CTRL+ALT+DEL</button>
             <button id="screencast" class="btn">Start Screencast</button>
+            <button id="screenshot" class="btn">Take Screenshot</button>
             <button id="help" class="btn">Help!</button>
         </div>
 
-        <div id="demo_placeholder"></div>
+        <div id="screen-wrap">
+            <div id="demo_placeholder"></div>
+            <div id="screen-off-note"></div>
+        </div>
         <div id="info-features" class="hidden alert alert-warning">
             <a class="close">×</a>
             <p><strong>You are missing out on features!</strong> We can't grab your mouse pointer with your current browser, so you are likely to leave the window with your mouse and disrupt mouse movement. Please use <a href="https://www.mozilla.org/en/firefox/new/" target="_blank">Firefox</a> or <a href="https://download-chromium.appspot.com/" target="_blank">Chromium</a> for mouse grab support.</p>
@@ -363,7 +940,7 @@
             <li>use the ST Keyboard image to type. Just tap the Key you want to enter. You can tap multiple keys (e.g. CTRL ALT DEL for reset if your TOS supports it)</li>
             <li>hide ST keyboard with "Toggle ST Keyboard"</li>
             <li>show the touch devices keyboard with "Toggle system keyboard"</li>
-            <li>recieve a screencast from ST (you must have started ce_cast.prg on the ST) by tapping "Start Screencast"</li>
+            <li>recieve a screencast from ST (you must have CE_DD.PRG running on the ST) by tapping "Start Screencast", or a single screenshot by tapping "Take Screenshot"</li>
             </ul>
             <p>
             There is now Joystick support in this remote.
@@ -372,7 +949,7 @@
             <strong>ST Screencast</strong>
             </p>
             <p>
-            This is a highly experimental feature and will cause instabilities with older software. You will need a bleeding edge browser for this (read: Chrome or Safari). It only works with "clean" ST software, it will not work with games or demos. Do not start ce_cast.prg in your AUTO folder.
+            This is a highly experimental feature and will cause instabilities with older software. You will need a bleeding edge browser for this (read: Chrome or Safari). It only works with "clean" ST software, it will not work with games or demos.
             </p>
             <p>
             Problems? Read <a href="http://joo.kie.sk/?page_id=529" target="_blank">this</a>. If this doesn't solve the issue, send a <a href="mailto:ce_remote@absent.de">mail</a>!
@@ -390,7 +967,7 @@
             <li>click "Grab mouse" (if available in your browser) to attach your mouse to the browser, so you won't leave its boundaries. Press ESC to leave this mode.</li>
             <li>use your PCs keyboard to type</li>
             <li>for Special Keys you can click "Toggle ST keyboard" to show a ST Keyboard. Just click the Key you want to enter</li>
-            <li>recieve a screencast from ST (you must have started ce_cast.prg on the ST) by clicking "Start Screencast"</li>
+            <li>recieve a screencast from ST (you must have CE_DD.PRG running on the ST) by clicking "Start Screencast", or a single screenshot by clicking "Take Screenshot"</li>
             </ul>
             <p>
             There is now Joystick support in this remote.
@@ -399,7 +976,7 @@
             <strong>ST Screencast</strong>
             </p>
             <p>
-            This is a highly experimental feature and will cause instabilities with older software. You will need a bleeding edge browser for this (read: Chromium or Chrome). It only works with "clean" ST software, it will not work with games or demos. It will only work with the most current HDDRIVER. Do not start ce_cast.prg in your AUTO folder.
+            This is a highly experimental feature and will cause instabilities with older software. You will need a bleeding edge browser for this (read: Chromium or Chrome). It only works with "clean" ST software, it will not work with games or demos. It will only work with the most current HDDRIVER.
             </p>
             <p>
             Problems? Read <a href="http://joo.kie.sk/?page_id=529" target="_blank">this</a>. If this doesn't solve the issue, send a <a href="mailto:ce_remote@absent.de">mail</a>!

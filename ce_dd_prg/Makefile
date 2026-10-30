@@ -40,11 +40,11 @@ AT = $(AT_$(V))
 HDR      = xbra.h \
            gemdos.h gemdos_errno.h translated.h \
            bios.h main.h \
-           global.h screen.h ce_extension.h
+           global.h screen.h screencast.h ce_extension.h
 CSRC     = xbra.c \
            gemdos.c gemdos_rw.c \
            bios.c main.c \
-           screen.c ce_extension.c
+           screen.c screencast.c ce_extension.c
 SSRC     = gemdos_asm.s bios_asm.s screenirq.s
 
 ifeq ($(USE_LOWLEVEL_PEXEC),yes)
@@ -81,6 +81,11 @@ $(TARGET): $(STARTUP) $(OBJS) $(OBJS030)
 depend:	$(DEPS)
 
 %.o: %.c %.d
+
+# main.c shows the build date (__DATE__) on start, so build it every time to have the date current
+main.o: FORCE
+FORCE:
+.PHONY: FORCE
 
 %.d:	%.c
 	$(CC) $(CFLAGS) $(DEPFLAGS) -o $@ $<

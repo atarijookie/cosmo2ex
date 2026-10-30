@@ -32,9 +32,4 @@ __asm__ (".balign 4\n\t"
 
 #define _longframe      ((volatile uint16_t *) 0x59e)
 
-typedef struct {
-    uint8_t enabled;
-    uint8_t take;
-} ScreenShots;
-
 #endif

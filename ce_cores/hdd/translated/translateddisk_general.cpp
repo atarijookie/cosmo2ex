@@ -458,15 +458,15 @@ void TranslatedDisk::onGetConfig(uint8_t *cmd)
 
     dataTrans->addDataBfr(tmp, 10, false);                      // store it to buffer - bytes 14 to 23 (byte 14 is eth0_enabled, byte 19 is wlan0_enabled)
     //------------------
-    // send screencast skip frames
-    int frameSkip = s.getInt ("SCREENCAST_FRAMESKIP", 20);
-    dataTrans->addDataByte(frameSkip);                          // byte 24 - frame skip for screencast
+    // send screencast skip frames - the setting is in frames per second (set via web), the driver wants VBLs between frames (50 Hz VBL)
+    int frameSkip = ScreencastAcsiCommand::frameSkipForFps(s.getInt("SCREENCAST_FPS", SCREENCAST_FPS_DEFAULT));
+    dataTrans->addDataByte(frameSkip);                          // byte 24 - frame skip for screencast (older CE_CAST.PRG)
 
     dataTrans->addDataWord(TRANSLATEDDISK_VERSION);             // byte 25 & 26 - version of translated disk interface / protocol -- driver will check this, and will refuse to work in cases of mismatch
     //-----------------
     dataTrans->addDataByte(events.screenShotVblEnabled);        // byte 27: enable screenshot VBL?
-    dataTrans->addDataByte(events.doScreenShot);                // byte 28: take screenshot?
-    events.doScreenShot = false;                                // unset this flag so we will send only one screenshot
+    dataTrans->addDataByte(events.doScreenShot);                // byte 28: take screenshot? - only for older CE_DD, which read it on start;
+                                                                // not cleared here, getScreenShotConfig() hands it to CE_DD VBL
     //-----------------
     logHdd(LOG_DEBUG, "onGetConfig - frameSkip: %d, TRANSLATEDDISK_VERSION: 0x%04X, screenShotVblEnabled: %d, doScreenShot: %d",
         frameSkip, TRANSLATEDDISK_VERSION, (int) events.screenShotVblEnabled, (int) events.doScreenShot);
@@ -1103,12 +1103,22 @@ void TranslatedDisk::convertAtariASCIItoPc(char *path)
     }
 }
 
+// CE_DD.PRG VBL asks for this every 3 seconds
 void TranslatedDisk::getScreenShotConfig(uint8_t *cmd)
 {
-    dataTrans->addDataByte(events.screenShotVblEnabled);
+    Settings s(mac);
+    bool live       = ScreencastAcsiCommand::liveActive();
+    int  frameSkip  = ScreencastAcsiCommand::frameSkipForFps(s.getInt("SCREENCAST_FPS", SCREENCAST_FPS_DEFAULT));
 
-    dataTrans->addDataByte(events.doScreenShot);
+    dataTrans->addDataByte(events.screenShotVblEnabled);                // 0: screenshots VBL enabled - not used by newer CE_DD
+
+    dataTrans->addDataByte(events.doScreenShot);                        // 1: take one screenshot?
     events.doScreenShot = false;                                        // unset this flag so we will send only one screenshot
+
+    dataTrans->addDataByte(live);                                       // 2: send screencast frames?
+    dataTrans->addDataByte(frameSkip);                                  // 3: VBLs between screencast frames
+
+    logHdd(LOG_DEBUG, "getScreenShotConfig - live: %d, frameSkip: %d", (int) live, frameSkip);
 
     dataTrans->padDataToMul16();
     dataTrans->setStatus(E_OK);

@@ -292,13 +292,14 @@ void handleIkbdAction(std::string& action, json& data)
 // reply to 'get_frame' - the whole frame as chunk datagrams back to the sender (see SCREENCAST_CHUNK_* for format)
 static void sendScreencastFrame(int sock, const struct sockaddr_in& to)
 {
-    static uint8_t frm[SCREENCAST_FRAME_SIZE];                                  // only command socket thread uses these
+    static uint8_t frm[SCREENCAST_FRAME_SIZE_MAX];                              // only command socket thread uses these
     static uint8_t chunk[SCREENCAST_CHUNK_HEADER + SCREENCAST_CHUNK_PAYLOAD];
 
-    ScreencastAcsiCommand::frameGet(frm);                   // one consistent copy - all chunks come from the same frame
+    uint32_t seq;
+    size_t frmSize = ScreencastAcsiCommand::frameGet(frm, &seq);    // one consistent copy - all chunks come from the same frame
 
-    for(size_t offset = 0; offset < SCREENCAST_FRAME_SIZE; offset += SCREENCAST_CHUNK_PAYLOAD) {
-        size_t len = ScreencastAcsiCommand::frameChunk(frm, offset, chunk);
+    for(size_t offset = 0; offset < frmSize; offset += SCREENCAST_CHUNK_PAYLOAD) {
+        size_t len = ScreencastAcsiCommand::frameChunk(frm, frmSize, seq, offset, chunk);
 
         if(sendto(sock, chunk, len, 0, (const struct sockaddr *) &to, sizeof(to)) < 0) {
             logHdd(LOG_ERROR, "sendScreencastFrame: sendto failed: %s", strerror(errno));
@@ -310,7 +311,12 @@ static void sendScreencastFrame(int sock, const struct sockaddr_in& to)
 void handleSceencastAction(std::string& action, json& data, int sock, const struct sockaddr_in& from)
 {
     if(action == "get_frame") {                         // webserver wants the latest frame?
+        if(data.contains("live") && data["live"].get<int>()) {     // for running screencast? keep ST sending frames
+            ScreencastAcsiCommand::liveRequested();
+        }
         sendScreencastFrame(sock, from);
+    } else if(action == "screencast_stop") {            // web UI stopped screencast
+        ScreencastAcsiCommand::liveStop();
     } else if(action == "do_screenshot") {                     // take a screenshot?
         events.doScreenShot = true;
     } else if(action == "vbl") {

@@ -48,8 +48,6 @@ void getConfig(void);
 uint8_t setDateTime(void);
 void showDateTime(void);
 void showInt(int value, int length);
-void showNetworkIPs(void);
-void showIpAddress(uint8_t *bfr);
 void showAppVersion(void);
 int getIntFromStr(const char *str, int len);
 
@@ -88,7 +86,6 @@ uint16_t tosVersion;
 
 uint8_t setDate;
 int year, month, day, hours, minutes, seconds;
-uint8_t netConfig[10];
 
 extern uint32_t _driverInstalled;              // when the driver is installed, set this variable to non-zero, otherwise the driver RAM will be freed by Mfree()
 extern uint32_t _runFromBootsector;			// flag meaning if we are running from TOS or bootsector
@@ -97,7 +94,6 @@ uint16_t trap_extra_offset=0;                   // Offset for GEMDOS/BIOS handle
 uint16_t transDiskProtocolVersion;              // this will hold the protocol version from Main App
 #define REQUIRED_TRANSLATEDDISK_VERSION     0x0101
 
-volatile ScreenShots screenShots;           // screenshots config
 void init_screencapture(void);
 
 extern volatile mutex mtx;
@@ -113,7 +109,7 @@ int main( int argc, char* argv[] )
 
     // write some header out
     Clear_home();
-    (void) Cconws("\33p[ Cosmo2ex disk driver  ]\r\n[ by Jookie 2013 - 2024 ]\r\n[        ver ");
+    (void) Cconws("\33p[ Cosmo2ex disk driver  ]\r\n[ by Jookie 2013 - 2026 ]\r\n[        ver ");
     showAppVersion();
     (void) Cconws(" ]\33q\r\n\r\n");
 
@@ -190,8 +186,6 @@ int main( int argc, char* argv[] )
         showDateTime();
     }
 
-    showNetworkIPs();                                       // show IP addresses if possible
-
     Supexec(updateCeDrives);                                // update the ceDrives variable
 
     initFunctionTable();
@@ -236,11 +230,10 @@ int main( int argc, char* argv[] )
     }
 
     //-------------------------------------
-    // if screenshots functionality was enabled
-    if(screenShots.enabled) {
-        (void) Cconws(">>> ScreenShots VBL installed. <<<\r\n" );
-        Supexec(init_screencapture);
-    }
+    // Screencast / screenshots VBL - always installed, it asks the host every 3 seconds whether it should send screens.
+    // IF IT MAKES TROUBLE: comment out the next line - that's all that's needed to disable the VBL and the whole
+    // screencast / screenshot functionality (screen.c, screencast.c and screenirq.s then just stay unused in the driver).
+    Supexec(init_screencapture);
     Supexec(installCEPIcookie);         // install the CEPI cookie
 
 
@@ -301,12 +294,9 @@ void getConfig(void)
     minutes = pDmaBuffer[12];
     seconds = pDmaBuffer[13];
 
-    memcpy(netConfig, &pDmaBuffer[14], 10);
 
     transDiskProtocolVersion = GET_WORD(pDmaBuffer + 25);   // 25, 26: get the protocol version, so we can do a version matching / pairing
 
-    screenShots.enabled = pDmaBuffer[27];                   // 27: screenshots VBL enabled?
-    screenShots.take    = pDmaBuffer[28];                   // 28: take screenshot?
 }
 
 void setBootDriveAutomatic(void)
@@ -369,52 +359,19 @@ uint8_t setDateTime(void)
 
 void showDateTime(void)
 {
-    (void) Cconws("Date: ");
+    (void) Cconws("Date: ");                // e.g.: Date: 2026-10-30, 14:39:02
     showInt(year, 4);
     (void) Cconout('-');
     showInt(month, 2);
     (void) Cconout('-');
     showInt(day, 2);
-    (void) Cconws(" (YYYY-MM-DD)\n\r");
-
-    (void) Cconws("Time:   ");
+    (void) Cconws(", ");
     showInt(hours, 2);
     (void) Cconout(':');
     showInt(minutes, 2);
     (void) Cconout(':');
     showInt(seconds, 2);
-    (void) Cconws(" (HH:MM:SS)\n\r");
-}
-
-void showNetworkIPs(void)
-{
-    if(netConfig[0] == 0 && netConfig[5] == 0) {                // no interface up?
-        (void) Cconws("No working network interface.\n\r");
-        return;
-    }
-
-    if(netConfig[0] == 1) {                                     // eth0 is up
-        (void) Cconws("eth0 : ");
-        showIpAddress(netConfig + 1);
-        (void) Cconws("\n\r");
-    }
-
-    if(netConfig[5] == 1) {                                     // wlan0 is up
-        (void) Cconws("wlan0: ");
-        showIpAddress(netConfig + 6);
-        (void) Cconws("\n\r");
-    }
-}
-
-void showIpAddress(uint8_t *bfr)
-{
-    showInt((int) bfr[0], -1);
-    (void) Cconout('.');
-    showInt((int) bfr[1], -1);
-    (void) Cconout('.');
-    showInt((int) bfr[2], -1);
-    (void) Cconout('.');
-    showInt((int) bfr[3], -1);
+    (void) Cconws("\n\r");
 }
 
 void showAppVersion(void)
