@@ -59,6 +59,7 @@ void DMA_readBlock(const uint8_t* bfr, uint32_t cnt);   // send cnt bytes to ST 
 void DMA_read_waitForEnd(void);
 
 void neopixelOutput(uint32_t grb);  // send the color to the neopixel - call only while the bus is idle
+void busStartListening(void);       // start answering the host - SCSI ignores the bus until then, ACSI listens from the start
 
 //--------------------------------------------------------
 // ACSI only
@@ -101,5 +102,6 @@ void scsiDMA_read(uint8_t val);
 void scsiDMA_readBlock(const uint8_t* bfr, uint32_t cnt);
 void scsiDMA_read_waitForEnd(void);
 void scsiNeopixelOutput(uint32_t grb);
+void scsiStartListening(void);
 
 #endif

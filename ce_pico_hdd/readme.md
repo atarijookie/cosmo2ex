@@ -17,6 +17,9 @@
 
 The LED gets updated only between commands (on SCSI its pin is shared with RST / REQ / C/D). During init / error it's also refreshed
 once per second, once running the green is sent just once - so the bus is not disturbed by the LED while running.
+On SCSI the device doesn't listen on the bus until the init is done (got IP), so the LED is stable during init; after that
+the bus activity can corrupt the color on the first boards (their AND gate is open whenever OUT_OE is H). On the boards
+with IC207 the gate opens only while OUT_LE1 and OUT_LE2 are both H, which happens just for the neopixel update.
 
 ## Compiling under Linux
 

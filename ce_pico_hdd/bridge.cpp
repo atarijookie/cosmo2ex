@@ -84,3 +84,8 @@ void neopixelOutput(uint32_t grb)
     if(IS_ACSI) acsiNeopixelOutput(grb);
     else        scsiNeopixelOutput(grb);
 }
+
+void busStartListening(void)
+{
+    if(!IS_ACSI) scsiStartListening();
+}

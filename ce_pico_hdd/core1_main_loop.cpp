@@ -12,6 +12,7 @@
 extern uint8_t cmd[17];  // received command bytes
 
 volatile bool core1running = false;
+volatile bool core0setupDone = false;   // set by core 0 at the end of setup() - SCSI starts listening on the bus then
 extern volatile bool connected;
 
 volatile uint8_t core1state = STATE_GET_COMMAND;
@@ -80,8 +81,15 @@ void core1_main_loop(void)
     debug("CORE 1 main\n");
     core1running = true;
 
+    bool listening = false;
+
     while(1)
     {
+        if(!listening && core0setupDone) {      // init done - start answering the host (until then the SCSI neopixel is not disturbed by the bus)
+            listening = true;
+            busStartListening();
+        }
+
         if(IS_ACSI && BIT_IS_L(PIN_RESET)) {   // when ACSI RESET is L, enter reset mode - no PIO transfers
             core1state = STATE_GET_COMMAND;
             pioConfig(MODE_RESET);

@@ -402,8 +402,8 @@ void acsiResetBridge(void)
     brStat = E_OK; // set bridge status to OK
 }
 
-// On ACSI the neopixel pin has no other function and the gate (GP12 = INT) is open while INT is not asserted,
-// which is always the case between commands. The pin is an output idling L, so the gap before the frame is a reset already.
+// On ACSI the neopixel pin has no other function and the gate IC6 is always open (R109 pull-up; on the first boards GP12 = INT,
+// which is H between commands). The pin is an output idling L, so the gap before the frame is a reset already.
 void acsiNeopixelOutput(uint32_t grb)
 {
     neopixelSendFrame(grb);

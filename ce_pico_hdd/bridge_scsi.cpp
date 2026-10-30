@@ -53,6 +53,10 @@ bool isAtnAsserted(void)
     return res;
 }
 
+// False until the init is done (scsiStartListening()). Till then the input chip stays disabled and the neopixel pin is driven L,
+// so RST from the bus (H when idle, floating without a terminated cable) doesn't get through the AND gate to the neopixel.
+static bool scsiListening = false;
+
 // for reset / selection phases
 static void setScsiPhaseForSelection(void)
 {
@@ -67,8 +71,21 @@ static void setScsiPhaseForSelection(void)
     gpio_set_function(PIN_RST_CD_REQ_CP, GPIO_FUNC_SIO);
     gpio_set_function(PIN_ATN_MSG, GPIO_FUNC_SIO);
 
+    if(!scsiListening) {            // not listening yet - input chip disabled, neopixel pin L
+        gpio_put(PIN_IN_OE, 1);
+        gpio_put(PIN_RST_CD_REQ_CP, 0);
+        gpio_set_dir(PIN_RST_CD_REQ_CP, GPIO_OUT);
+        return;
+    }
+
     // now we can enable input chip
     gpio_put(PIN_IN_OE, 0);
+}
+
+void scsiStartListening(void)
+{
+    scsiListening = true;
+    setScsiPhaseForSelection();
 }
 
 // for most of the phases (except reset / selection)
@@ -264,6 +281,10 @@ int scsiPioConfig(int newMode, bool force)
 
 uint8_t isSelectionHappening(void)
 {
+    if(!scsiListening) {                    // input chip disabled - SEL and RST can't be read
+        return false;
+    }
+
     scsiPioConfig(MODE_SCSI_SELECTION, false);
 
     if(BIT_IS_L(PIN_RST_CD_REQ_CP)) {      // no new cmd bytes when RESET is L
@@ -499,9 +520,11 @@ void scsiResetBridge(void)
 
 
 // The neopixel pin is RST (input) in selection phase, and REQ / C/D (to the latches) otherwise. The AND gate passes it to the
-// neopixel only while OUT_OE is H, which is the case between commands (selection phase). So the frame is sent from there:
-// disable the input chip, drive the pin L long enough for a reset, send the frame, keep it L until the neopixel latches it,
-// and restore the selection phase. The bus isn't watched meanwhile (~0.7 ms), a SEL from the initiator just waits for us
+// neopixel only while OUT_OE is H (first boards), or while both OUT_LE1 and OUT_LE2 are H (boards with the 2nd gate - the rest
+// of the firmware never has both H). So the frame is sent from the selection phase: disable the input chip, open the gate,
+// drive the pin L long enough for a reset, send the frame, keep it L until the neopixel latches it, close the gate and restore
+// the selection phase. The latches catch garbage meanwhile, but their outputs are disabled and setScsiPhaseForTransfer()
+// latches everything again before enabling them. The bus isn't watched meanwhile (~0.7 ms), a SEL from the initiator just waits for us
 // (selection timeout is 250 ms). Doesn't use the PIO, so it works also when halted on failed PIO setup.
 void scsiNeopixelOutput(uint32_t grb)
 {
@@ -511,10 +534,12 @@ void scsiNeopixelOutput(uint32_t grb)
     gpio_put(PIN_RST_CD_REQ_CP, 0);
     gpio_set_function(PIN_RST_CD_REQ_CP, GPIO_FUNC_SIO);
     gpio_set_dir(PIN_RST_CD_REQ_CP, GPIO_OUT);
+    gpio_put_masked((1 << PIN_OUT_LE1) | (1 << PIN_OUT_LE2), (1 << PIN_OUT_LE1) | (1 << PIN_OUT_LE2));    // open the gate - pin is L already
     sleep_us(NEOPIXEL_RESET_US);                // reset before the frame
 
     neopixelSendFrame(grb);
 
     sleep_us(NEOPIXEL_RESET_US);                // keep L, so the neopixel latches the new color
-    setScsiPhaseForSelection();                 // pin back to input, input chip enabled
+    gpio_put_masked((1 << PIN_OUT_LE1) | (1 << PIN_OUT_LE2), 0);                                        // close the gate while the pin is still L
+    setScsiPhaseForSelection();                 // pin back to input, input chip enabled (or kept L when not listening yet)
 }
