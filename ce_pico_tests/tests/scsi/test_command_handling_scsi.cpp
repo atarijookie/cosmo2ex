@@ -1,8 +1,8 @@
-// ce_pico_hdd_scsi/command_handling.cpp - receiving SCSI commands (converted to ACSI / ICD form for the host),
+// ce_pico_hdd/command_handling.cpp, SCSI variant - receiving SCSI commands (converted to ACSI / ICD form for the host),
 // MESSAGE OUT on ATN, data transfers and status towards the Atari
 
 #include "test_helpers.h"
-#include <bridge_fake.h>         // tests/<project>/bridge_fake.h - also the merged ce_pico_hdd runs these tests
+#include <bridge_fake.h>         // tests/hdd/bridge_fake.h
 #include "bridge.h"
 
 namespace {
@@ -10,9 +10,7 @@ namespace {
 struct ScsiFixture : FirmwareFixture {
     ScsiFixture() {
         fakeBridge = FakeBridge();
-#ifdef TEST_PROJECT_HDD
         hwVariant = VARIANT_SCSI;     // merged firmware - run the SCSI code paths
-#endif
     }
 };
 

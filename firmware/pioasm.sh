@@ -3,7 +3,7 @@
 # image (firmware/Dockerfile) - run it after changing a .pio file. The headers are committed for the Arduino IDE, which
 # doesn't run pioasm; compile.sh regenerates them for its own build anyway, and warns when the committed ones are stale.
 #
-# usage: firmware/pioasm.sh [project ...]     project: ce_pico_hdd ce_pico_hdd_acsi ce_pico_hdd_scsi ce_pico_fdd (default: all of them)
+# usage: firmware/pioasm.sh [project ...]     project: ce_pico_hdd ce_pico_fdd (default: all of them)
 #
 # PICO_BUILDER_IMAGE env var - use this image instead of building ce-pico-builder locally, see build.sh
 
@@ -14,7 +14,7 @@ ROOT=$(cd "$FW_DIR/.." && pwd)
 
 PROJECTS="$*"
 if [ -z "$PROJECTS" ]; then
-    PROJECTS="ce_pico_hdd ce_pico_hdd_acsi ce_pico_hdd_scsi ce_pico_fdd"
+    PROJECTS="ce_pico_hdd ce_pico_fdd"
 fi
 
 IMAGE=${PICO_BUILDER_IMAGE:-}

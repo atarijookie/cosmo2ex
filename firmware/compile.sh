@@ -6,7 +6,7 @@
 # matches the .pio files. When the committed .pio.h differ, there's a warning: run firmware/pioasm.sh and commit them,
 # the Arduino IDE builds use those.
 #
-# usage: compile.sh <repo root> <output dir> <project ...>     project: ce_pico_hdd ce_pico_hdd_acsi ce_pico_hdd_scsi ce_pico_fdd ce_pico_display
+# usage: compile.sh <repo root> <output dir> <project ...>     project: ce_pico_hdd ce_pico_fdd ce_pico_display
 
 set -eu
 
@@ -14,7 +14,7 @@ SRC=$1
 OUT=$2
 shift 2
 
-# Raspberry Pi Pico, with the Arduino IDE settings from ce_pico_hdd_*/readme.md
+# Raspberry Pi Pico, with the Arduino IDE settings from ce_pico_hdd/readme.md
 FQBN_HDD="rp2040:rp2040:rpipico:flash=2097152_0,freq=133,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=nousb,ipbtstack=ipv4only,uploadmethod=picoprobe_cmsis_dap"
 
 # Raspberry Pi Pico 2 W, with the Arduino IDE settings from ce_pico_fdd/readme.md

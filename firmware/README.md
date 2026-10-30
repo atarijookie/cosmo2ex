@@ -1,4 +1,4 @@
-Pico firmwares - ce_pico_hdd, ce_pico_hdd_acsi, ce_pico_hdd_scsi (Pico), ce_pico_fdd (Pico 2 W) and ce_pico_display
+Pico firmwares - ce_pico_hdd (Pico), ce_pico_fdd (Pico 2 W) and ce_pico_display
 (RP2040-Zero, the FDD front panel) - Arduino sketches for the arduino-pico core, built on Linux with arduino-cli in a
 docker image.
 
@@ -9,16 +9,15 @@ firmware/build.sh                       # all of them
 firmware/build.sh ce_pico_hdd           # just one
 
 The results are in firmware/out/:
-ce_pico_hdd.uf2, ce_pico_hdd_acsi.uf2, ce_pico_hdd_scsi.uf2
+ce_pico_hdd.uf2
                                             - hold BOOTSEL while plugging in the Pico,
                                               then copy the .uf2 onto the RPI-RP2 drive
 ce_pico_fdd.uf2                             - the same on the Pico 2 W, its drive is RP2350
 ce_pico_display.uf2                         - the same on the RP2040-Zero (hold BOOT), its drive is RPI-RP2
-ce_pico_hdd*.elf, ce_pico_fdd.elf,
+ce_pico_hdd.elf,  ce_pico_fdd.elf,
 ce_pico_display.elf                         - for flashing / debugging with a debug probe
 
-ce_pico_hdd is for the merged v40_pico_hdd board (ACSI or SCSI variant, detected on boot), ce_pico_hdd_acsi and
-ce_pico_hdd_scsi are for the older v40_pico_acsi and v40_pico_scsi boards.
+ce_pico_hdd is for the v40_pico_hdd board (ACSI or SCSI variant, detected on boot).
 
 Files:
 Dockerfile  - the ce-pico-builder image: arduino-cli + arduino-pico core + U8g2 library (pinned versions)
