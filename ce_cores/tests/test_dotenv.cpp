@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <map>
 #include <string>
 
@@ -309,4 +310,40 @@ TEST_CASE("dotEnvAddDefaultDirs - fills only dirs missing in .env and env, befor
     if(oldDataDir) setenv("DATA_DIR", oldDataDirValue.c_str(), 1);
     if(oldPidDir) setenv("PID_DIR", oldPidDirValue.c_str(), 1); else unsetenv("PID_DIR");
     dotEnv.clear();
+}
+
+TEST_CASE(".env.local next to the real .env overrides its keys, also in values using them")
+{
+    std::map<std::string, std::string> savedDotEnv = dotEnv;
+    char cwd[4096];
+    REQUIRE(getcwd(cwd, sizeof(cwd)) != NULL);
+
+    char tmpl[] = "/tmp/ce_test_envlocal_XXXXXX";
+    REQUIRE(mkdtemp(tmpl) != NULL);
+    std::string root = tmpl;
+    REQUIRE(mkdir((root + "/ce_cores").c_str(), 0755) == 0);
+
+    FILE *f = fopen((root + "/.env").c_str(), "w");
+    REQUIRE(f != NULL);
+    fputs("BIN_DIR=/opt/ce/bin\nCONFIG_DRIVE_DIR=${BIN_DIR}/configdrive\nCE_DD_PRG_FILE=${CONFIG_DRIVE_DIR}/drivers/ce_dd.prg\nLOG_LEVEL=3\n", f);
+    fclose(f);
+
+    f = fopen((root + "/.env.local").c_str(), "w");
+    REQUIRE(f != NULL);
+    fputs("CONFIG_DRIVE_DIR=/src/ce_cores/configdrive\n", f);
+    fclose(f);
+
+    REQUIRE(symlink("../.env", (root + "/ce_cores/.env").c_str()) == 0);     // like ce_cores/.env in the source tree
+
+    REQUIRE(chdir((root + "/ce_cores").c_str()) == 0);
+    dotEnv.clear();
+    Utils::loadDotEnv();
+    REQUIRE(chdir(cwd) == 0);
+
+    CHECK(val("CONFIG_DRIVE_DIR") == "/src/ce_cores/configdrive");
+    CHECK(val("CE_DD_PRG_FILE") == "/src/ce_cores/configdrive/drivers/ce_dd.prg");
+    CHECK(val("LOG_LEVEL") == "3");
+
+    dotEnv = savedDotEnv;
+    system(("rm -rf '" + root + "'").c_str());
 }

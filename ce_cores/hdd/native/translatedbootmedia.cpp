@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "../../misc/debug.h"
 #include "../../misc/utils.h"
@@ -17,6 +18,9 @@ TranslatedBootMedia::TranslatedBootMedia()
     gotImage        = false;                                    // mark that we don't have the image yet
     lastUsedAcsiId  = 0xff;
     hwHddIfaceCurrent = HDD_IF_ACSI;                            // ACSI until told otherwise by setHddIface()
+
+    memset(loadedStamps, 0, sizeof(loadedStamps));
+    getFileStamps(loadedStamps);                                // stamps of the files before loading - a change during loading makes a reload next time
 
     bool res = loadDataIntoBuffer();                            // try to load the data from disk to buffer
 
@@ -41,6 +45,62 @@ void TranslatedBootMedia::setHddIface(int hddIface)
 
     if(lastUsedAcsiId < 8) {                // got valid ID already? store it again, now as ACSI or SCSI ID
         updateBootsectorConfigWithACSIid(lastUsedAcsiId);
+    }
+}
+
+bool TranslatedBootMedia::getFileStamps(FileStamp *stamps)
+{
+    const std::string* paths[3] = {&PATH_CE_DD_BS_L1, &PATH_CE_DD_BS_L2, &PATH_CE_DD_PRG_PATH_AND_FILENAME};
+    bool allGood = true;
+
+    for(int i=0; i<3; i++) {
+        struct stat st;
+
+        if(stat(paths[i]->c_str(), &st) == 0) {
+            stamps[i].mtime = st.st_mtime;
+            stamps[i].size  = st.st_size;
+        } else {
+            stamps[i].mtime = 0;
+            stamps[i].size  = -1;
+            allGood = false;
+        }
+    }
+
+    return allGood;
+}
+
+void TranslatedBootMedia::reloadIfChanged(void)
+{
+    FileStamp now[3];
+
+    if(!getFileStamps(now)) {                       // some file missing (e.g. being rebuilt right now)? keep what we have
+        return;
+    }
+
+    if(memcmp(now, loadedStamps, sizeof(now)) == 0) {   // nothing changed
+        return;
+    }
+
+    logHdd(LOG_INFO, "TranslatedBootMedia - driver files changed, reloading %s", PATH_CE_DD_PRG_PATH_AND_FILENAME.c_str());
+
+    // load into a new buffer, so if loading fails (e.g. half written file), the old image stays usable
+    uint8_t *oldBuffer  = imageBuffer;
+    int64_t oldSCap     = SCapacity;
+    int64_t oldBCap     = BCapacity;
+
+    imageBuffer = new uint8_t[TRANSLATEDBOOTMEDIA_SIZE];
+    memset(imageBuffer, 0, TRANSLATEDBOOTMEDIA_SIZE);
+
+    if(loadDataIntoBuffer()) {                      // loaded - also sets the ACSI / SCSI ID in boot sector (lastUsedAcsiId)
+        delete []oldBuffer;
+        gotImage = true;
+        memcpy(loadedStamps, now, sizeof(now));
+    } else {                                        // failed - back to old image, try again on next boot
+        logHdd(LOG_ERROR, "TranslatedBootMedia - reloading failed, keeping the previously loaded driver");
+        delete []imageBuffer;
+        imageBuffer = oldBuffer;
+        SCapacity   = oldSCap;
+        BCapacity   = oldBCap;
     }
 }
 
@@ -290,6 +350,10 @@ void TranslatedBootMedia::getCapacity(int64_t &bytes, int64_t &sectors)
 
 bool TranslatedBootMedia::readSectors(int64_t sectorNo, uint32_t count, uint8_t *bfr)
 {
+    if(sectorNo == 0) {                         // boot sector read = ST is booting - good time to pick up a newly built driver
+        reloadIfChanged();
+    }
+
     if(!isInit()) {                             // if not initialized, failed
         return false;
     }

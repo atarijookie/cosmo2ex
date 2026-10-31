@@ -181,17 +181,15 @@ func TestRunFailsWhenProgramIsMissing(t *testing.T) {
 func TestPrepareAndCleanup(t *testing.T) {
 	bin := t.TempDir()
 	ce := filepath.Join(t.TempDir(), "ce")
-	for _, key := range []string{"BIN_DIR", "CE_DIR", "DATA_DIR", "LOG_DIR", "PID_DIR", "SETTINGS_DIR", "CONFIG_DRIVE_PATH"} {
+	for _, key := range []string{"BIN_DIR", "CE_DIR", "DATA_DIR", "LOG_DIR", "PID_DIR", "SETTINGS_DIR"} {
 		t.Setenv(key, "")
 		os.Unsetenv(key)
 	}
 
 	env := "CE_DIR=" + ce + "\n" +
 		"DATA_DIR=${CE_DIR}/data\nLOG_DIR=${CE_DIR}/log\nPID_DIR=${CE_DIR}/run\nSETTINGS_DIR=${CE_DIR}/settings\n" +
-		"CONFIG_DRIVE_PATH=${DATA_DIR}/configdrive\n" +
 		"CE_LOGO_FILE=${BIN_DIR}/ce_logo.bin\n"
 	write(t, filepath.Join(bin, ".env"), env)
-	write(t, filepath.Join(bin, "configdrive", "drivers", "ce_dd.prg"), "driver")
 
 	d, err := prepare(bin)
 	if err != nil {
@@ -206,44 +204,17 @@ func TestPrepareAndCleanup(t *testing.T) {
 		}
 	}
 
-	write(t, filepath.Join(ce, "run", "ce_cores.pid"), "123")            // left by a crash
-	write(t, filepath.Join(ce, "data", "configdrive", "OLD.TXT"), "old") // previous copy
-	write(t, filepath.Join(ce, "data", "core_cmd.token"), "keep")        // not ours to remove
+	write(t, filepath.Join(ce, "run", "ce_cores.pid"), "123")     // left by a crash
+	write(t, filepath.Join(ce, "data", "core_cmd.token"), "keep") // not ours to remove
 
-	if err := cleanup(d, bin); err != nil {
+	if err := cleanup(d); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(ce, "run", "ce_cores.pid")); !os.IsNotExist(err) {
 		t.Error("stale PID file not removed")
 	}
-	if _, err := os.Stat(filepath.Join(ce, "data", "configdrive", "OLD.TXT")); !os.IsNotExist(err) {
-		t.Error("old config drive copy not replaced")
-	}
-	if b, err := os.ReadFile(filepath.Join(ce, "data", "configdrive", "drivers", "ce_dd.prg")); err != nil || string(b) != "driver" {
-		t.Errorf("config drive not copied: %q %v", b, err)
-	}
 	if _, err := os.Stat(filepath.Join(ce, "data", "core_cmd.token")); err != nil {
 		t.Error("other files in DATA_DIR must stay")
-	}
-}
-
-func TestCheckCopyTargetRefusesDangerousTargets(t *testing.T) {
-	bin := t.TempDir()
-	src := filepath.Join(bin, "configdrive")
-	root := string(filepath.Separator)
-	if runtime.GOOS == "windows" {
-		root = `C:\`
-	}
-
-	for _, target := range []string{root, src, bin, filepath.Dir(bin)} {
-		if err := checkCopyTarget(src, target); err == nil {
-			t.Errorf("target %q should be refused", target)
-		}
-	}
-	for _, target := range []string{filepath.Join(t.TempDir(), "configdrive"), filepath.Join(bin, "configdrive2"), filepath.Join(bin, "..configdrive")} {
-		if err := checkCopyTarget(src, target); err != nil {
-			t.Errorf("target %q should be fine: %v", target, err)
-		}
 	}
 }
 

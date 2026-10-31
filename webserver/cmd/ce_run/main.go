@@ -2,7 +2,6 @@
 // what ce_run.sh + the systemd service do on Linux:
 //   - loads .env from its own folder, which is also BIN_DIR (set as env var BIN_DIR, the Windows / macOS .env use ${BIN_DIR})
 //   - creates the dirs from .env and removes PID files left by a crash
-//   - makes the runtime copy of the config drive (CONFIG_DRIVE_PATH)
 //   - runs both programs in its folder, their output prefixed with [cores] / [web]
 //   - Ctrl+C or closing the console / Terminal window stops both; when one of them exits, the other one is stopped too
 //   - except when ce_cores fails (exits with error or crashes) - then it's restarted, unless it fails too often
@@ -80,7 +79,7 @@ func run() error {
 	}
 	defer lock.Close()
 
-	if err := cleanup(dirs, binDir); err != nil {
+	if err := cleanup(dirs); err != nil {
 		return err
 	}
 
@@ -119,7 +118,7 @@ func programNames(goos string) (cores, web string) {
 // preparing the dirs
 
 type runDirs struct {
-	data, pid, configDrive string
+	data, pid string
 }
 
 // prepare loads .env and creates the dirs from it - the programs check on start that they exist
@@ -130,9 +129,8 @@ func prepare(binDir string) (runDirs, error) {
 	dotenv.Load(filepath.Join(binDir, ".env"))
 
 	d := runDirs{
-		data:        dotenv.Dir("DATA_DIR"),
-		pid:         dotenv.Dir("PID_DIR"),
-		configDrive: os.Getenv("CONFIG_DRIVE_PATH"),
+		data: dotenv.Dir("DATA_DIR"),
+		pid:  dotenv.Dir("PID_DIR"),
 	}
 
 	for _, key := range []string{"CE_DIR", "DATA_DIR", "LOG_DIR", "PID_DIR", "SETTINGS_DIR"} {
@@ -149,88 +147,15 @@ func prepare(binDir string) (runDirs, error) {
 	return d, nil
 }
 
-// cleanup removes what a crashed run left behind and makes the runtime copy of the config drive. Called only with
-// the instance lock held - nothing else is running, so PID files are stale.
-func cleanup(d runDirs, binDir string) error {
+// cleanup removes what a crashed run left behind. Called only with the instance lock held - nothing else is
+// running, so PID files are stale. The config drive is used straight from BIN_DIR (ce_cores keeps it read only for
+// the ST), so there's no runtime copy of it to make anymore.
+func cleanup(d runDirs) error {
 	pidFiles, _ := filepath.Glob(filepath.Join(d.pid, "*.pid"))
 	for _, f := range pidFiles {
 		_ = os.Remove(f)
 	}
-
-	src := filepath.Join(binDir, "configdrive")
-	if _, err := os.Stat(src); err != nil || d.configDrive == "" {
-		return nil // nothing to copy, or no config drive in .env (ce_cores reports that)
-	}
-
-	if err := checkCopyTarget(src, d.configDrive); err != nil {
-		return err
-	}
-	if err := os.RemoveAll(d.configDrive); err != nil {
-		return err
-	}
-	return copyDir(src, d.configDrive)
-}
-
-// checkCopyTarget refuses CONFIG_DRIVE_PATH values which would make the RemoveAll before copying delete something
-// it shouldn't - a drive / filesystem root, the source itself, or a dir which contains the source
-func checkCopyTarget(src, target string) error {
-	absSrc, err := filepath.Abs(src)
-	if err != nil {
-		return err
-	}
-	absTarget, err := filepath.Abs(target)
-	if err != nil {
-		return err
-	}
-
-	if filepath.Dir(absTarget) == absTarget {
-		return fmt.Errorf("CONFIG_DRIVE_PATH %q is a root dir", target)
-	}
-	rel, err := filepath.Rel(absTarget, absSrc)
-	if err == nil && (rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))) {
-		return fmt.Errorf("CONFIG_DRIVE_PATH %q contains the config drive it should be copied from (%s)", target, src)
-	}
 	return nil
-}
-
-// copyDir copies dir src to dst (which must not exist), files keep their permission bits
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dst, rel)
-
-		if info.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		if !info.Mode().IsRegular() { // no symlinks etc. on the config drive
-			return nil
-		}
-		return copyFile(path, target, info.Mode().Perm())
-	})
-}
-
-func copyFile(src, dst string, perm os.FileMode) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		return err
-	}
-	return out.Close()
 }
 
 //-------------

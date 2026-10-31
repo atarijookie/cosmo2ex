@@ -149,6 +149,7 @@ extern std::string PATH_CE_DD_BS_L1;
 extern std::string PATH_CE_DD_BS_L2;
 extern std::string PATH_CE_DD_PRG_PATH_AND_FILENAME;
 extern std::string CONFIG_DRIVE_PATH;
+extern std::string CONFIG_DRIVE_INF_DIR;
 
 
 #endif // GLOBAL_H

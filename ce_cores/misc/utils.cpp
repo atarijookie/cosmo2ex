@@ -794,6 +794,25 @@ void Utils::loadDotEnv(void)
 {
     bool good = loadDotEnvFrom("./.env");
 
+    // optional local overrides (not shipped, gitignored) - e.g. a dev setup using the config drive from the source tree;
+    // next to the real .env, as ./.env might be a symlink to it
+    std::string localPath = "./.env.local";
+    char* realEnv = realpath("./.env", NULL);
+
+    if(realEnv) {
+        std::string dir = realEnv;
+        free(realEnv);
+        size_t slash = dir.rfind('/');
+
+        if(slash != std::string::npos) {
+            localPath = dir.substr(0, slash + 1) + ".env.local";
+        }
+    }
+
+    if(Utils::fileExists(localPath) && loadDotEnvFrom(localPath.c_str())) {   // keys from it replace the ones from .env
+        good = true;
+    }
+
     dotEnvAddDefaultDirs();     // before substitution, so e.g. ${DATA_DIR}/core_cmd.token works even without DATA_DIR in .env
 
     if(good) {      // if something was loaded, do the vars subtitution

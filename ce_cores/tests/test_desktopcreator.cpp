@@ -32,8 +32,8 @@ TEST_CASE("DesktopCreator::createToFile - the file has exactly the bytes of the 
 {
     char tmpl[] = "/tmp/ce_test_desktop_XXXXXX";
     REQUIRE(mkdtemp(tmpl) != NULL);
-    std::string oldConfigDrive = CONFIG_DRIVE_PATH;
-    CONFIG_DRIVE_PATH = tmpl;
+    std::string oldInfDir = CONFIG_DRIVE_INF_DIR;
+    CONFIG_DRIVE_INF_DIR = std::string(tmpl) + "/inf";      // not existing yet - createToFile() creates it
 
     DesktopConfig dc;
     dc.currentResolution = 1;
@@ -55,11 +55,11 @@ TEST_CASE("DesktopCreator::createToFile - the file has exactly the bytes of the 
 
         DesktopCreator::createToFile(&dc);
 
-        std::vector<char> onDisk = readWholeFile(std::string(tmpl) + "/" + c.file);
+        std::vector<char> onDisk = readWholeFile(CONFIG_DRIVE_INF_DIR + "/" + c.file);
         CHECK(onDisk == std::vector<char>(bfr, bfr + len));
         CHECK(std::string(onDisk.begin(), onDisk.end()).find("\r\r\n") == std::string::npos);
     }
 
-    CONFIG_DRIVE_PATH = oldConfigDrive;
+    CONFIG_DRIVE_INF_DIR = oldInfDir;
     system((std::string("rm -rf '") + tmpl + "'").c_str());
 }

@@ -3,6 +3,8 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <sys/types.h>
+#include <time.h>
 #include "imedia.h"
 
 #define TRANSLATEDBOOTMEDIA_SIZE    (128 * 1024)
@@ -38,6 +40,17 @@ private:
     uint8_t    *imageBuffer;
 
     uint8_t    lastUsedAcsiId;
+
+    // the driver files are checked on boot sector read (= ST boot) and reloaded when changed, so a newly built
+    // ce_dd.prg / boot sectors are used on next ST boot without restarting ce_cores
+    struct FileStamp {
+        time_t  mtime;
+        off_t   size;
+    };
+    FileStamp loadedStamps[3];
+
+    bool    getFileStamps(FileStamp *stamps);
+    void    reloadIfChanged(void);
 
     bool    loadDataIntoBuffer(void);
     void    updateBootsectorConfig(void);

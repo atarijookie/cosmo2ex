@@ -152,6 +152,15 @@ install_ce() {
 
     stop_ce
 
+    # older releases used a runtime copy of the config drive in DATA_DIR - now it's used straight from BIN_DIR
+    if [ -f "$BIN_DIR/.env" ]; then
+        old_data_dir=$(env_value "$BIN_DIR/.env" DATA_DIR)
+        if [ -n "$old_data_dir" ] && [ -d "$old_data_dir/configdrive" ]; then
+            echo "Removing old copy of config drive $old_data_dir/configdrive"
+            safe_rm "$old_data_dir/configdrive"
+        fi
+    fi
+
     #-------------
     # .env: keep it if the user changed it, otherwise take the new one.
     # .env.dist is the untouched .env of the installed release, used to detect the changes.

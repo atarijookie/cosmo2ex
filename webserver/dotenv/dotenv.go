@@ -20,6 +20,12 @@ func Load(path string) {
 		return
 	}
 
+	// optional local overrides (not shipped, gitignored) - e.g. a dev setup using the config drive from the source tree;
+	// next to the real .env, as path might be a symlink to it. Keys from it replace the ones from .env.
+	if local, err := os.ReadFile(LocalPath(path)); err == nil {
+		data = append(append(data, '\n'), local...)
+	}
+
 	// First pass: collect all variables into a map
 	envVars := make(map[string]string)
 	lines := strings.Split(string(data), "\n")
@@ -51,6 +57,14 @@ func Load(path string) {
 		resolved := resolveEnvVar(val, envVars, make(map[string]bool))
 		_ = os.Setenv(key, resolved)
 	}
+}
+
+// LocalPath returns path of the .env.local overrides file belonging to the .env at path - next to the real .env file
+func LocalPath(path string) string {
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		path = real
+	}
+	return filepath.Join(filepath.Dir(path), ".env.local")
 }
 
 // resolveEnvVar replaces ${VAR} references in a string with their values.

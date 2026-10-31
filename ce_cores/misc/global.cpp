@@ -14,7 +14,8 @@ std::string FDD_TEST_IMAGE_PATH_AND_FILENAME;
 std::string PATH_CE_DD_BS_L1;
 std::string PATH_CE_DD_BS_L2;
 std::string PATH_CE_DD_PRG_PATH_AND_FILENAME;
-std::string CONFIG_DRIVE_PATH;
+std::string CONFIG_DRIVE_PATH;      // the config drive - served read only, straight from where it's installed / built
+std::string CONFIG_DRIVE_INF_DIR;   // generated DESKTOP.INF / NEWDESK.INF, shown in root of the config drive
 
 typedef struct {
     int         action;     // FDD_ACTION_*
@@ -67,19 +68,27 @@ void preloadGlobalsFromDotEnv(void)
     CE_CONF_FDD_IMAGE_PATH_AND_FILENAME = Utils::mergeHostPaths3(corePath, CE_CONF_FDD_IMAGE_JUST_FILENAME);
     FDD_TEST_IMAGE_PATH_AND_FILENAME = Utils::mergeHostPaths3(corePath, FDD_TEST_IMAGE_JUST_FILENAME);
 
-    // path to where the drivers inside the core service are stored
-    std::string driversPath = Utils::mergeHostPaths3(corePath, "configdrive/drivers");
+    // The config drive is used directly from here (no runtime copy anymore) - the Atari can't write to it, see
+    // TranslatedDisk::isReadOnlyDrive(). The old key CONFIG_DRIVE_PATH pointed to a copy made on start and is ignored,
+    // so an old customized .env can't point to a stale copy.
+    CONFIG_DRIVE_PATH = Utils::dotEnvValue("CONFIG_DRIVE_DIR", Utils::mergeHostPaths3(corePath, "configdrive").c_str());
+
+    // generated .INF files can't go to the read only config drive
+    CONFIG_DRIVE_INF_DIR = Utils::mergeHostPaths3(Utils::dotEnvValue("DATA_DIR"), "configdrive_inf");
+
+    // path to where the drivers inside the config drive are stored
+    std::string driversPath = Utils::mergeHostPaths3(CONFIG_DRIVE_PATH, "drivers");
 
     // files loaded on start - take them from .env, fall back to drivers path if not specified there
     PATH_CE_DD_BS_L1 = Utils::dotEnvValue("CE_DD_BS_L1_FILE", Utils::mergeHostPaths3(driversPath, "ce_dd.bs").c_str());
     PATH_CE_DD_BS_L2 = Utils::dotEnvValue("CE_DD_BS_L2_FILE", Utils::mergeHostPaths3(driversPath, "ce_dd_l2.bs").c_str());
     PATH_CE_DD_PRG_PATH_AND_FILENAME = Utils::dotEnvValue("CE_DD_PRG_FILE", Utils::mergeHostPaths3(driversPath, "ce_dd.prg").c_str());
 
-    CONFIG_DRIVE_PATH = Utils::dotEnvValue("CONFIG_DRIVE_PATH");     // where the copy of configdrive is
 
     logHdd(LOG_DEBUG, "CORE_PATH        : %s", corePath.c_str());
     logHdd(LOG_DEBUG, "driversPath      : %s", driversPath.c_str());
-    logHdd(LOG_DEBUG, "CONFIG_DRIVE_PATH: %s", CONFIG_DRIVE_PATH.c_str());
+    logHdd(LOG_DEBUG, "CONFIG_DRIVE_DIR : %s", CONFIG_DRIVE_PATH.c_str());
+    logHdd(LOG_DEBUG, "config drive INF : %s", CONFIG_DRIVE_INF_DIR.c_str());
     logHdd(LOG_DEBUG, "CE_DD_BS_L1_FILE : %s", PATH_CE_DD_BS_L1.c_str());
     logHdd(LOG_DEBUG, "CE_DD_BS_L2_FILE : %s", PATH_CE_DD_BS_L2.c_str());
     logHdd(LOG_DEBUG, "CE_DD_PRG_FILE   : %s", PATH_CE_DD_PRG_PATH_AND_FILENAME.c_str());
@@ -113,7 +122,7 @@ bool checkStartupFilesAndDirs(void)
     }
 
     // dirs specified in .env
-    const char* dirKeys[] = {"CE_DIR", "BIN_DIR", "DATA_DIR", "LOG_DIR", "PID_DIR", "SETTINGS_DIR", "CONFIG_DRIVE_PATH"};
+    const char* dirKeys[] = {"CE_DIR", "BIN_DIR", "DATA_DIR", "LOG_DIR", "PID_DIR", "SETTINGS_DIR"};
 
     for(size_t i=0; i<sizeof(dirKeys)/sizeof(dirKeys[0]); i++) {
         std::string dir = Utils::dotEnvValue(dirKeys[i]);
@@ -123,6 +132,12 @@ bool checkStartupFilesAndDirs(void)
             printf("Startup check - %s - directory '%s' does not exist\n", dirKeys[i], dir.c_str());
             allGood = false;
         }
+    }
+
+    if(CONFIG_DRIVE_PATH.empty() || !Utils::dirExists(CONFIG_DRIVE_PATH)) {     // not a .env key on its own - has a default
+        logHdd(LOG_ERROR, "Startup check - CONFIG_DRIVE_DIR - directory '%s' does not exist", CONFIG_DRIVE_PATH.c_str());
+        printf("Startup check - CONFIG_DRIVE_DIR - directory '%s' does not exist\n", CONFIG_DRIVE_PATH.c_str());
+        allGood = false;
     }
 
     return allGood;

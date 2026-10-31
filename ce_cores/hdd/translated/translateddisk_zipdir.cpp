@@ -31,6 +31,14 @@ void TranslatedDisk::createFullHostPath(const std::string &inFullAtariPath, int 
     libDOSpath to convert that short path to long path. If mounting of archives (e.g. ZIP files) is not enabled, the code ends at that point.
     */
 
+    if(inAtariDriveIndex == configDriveIndex && isConfigDriveInf(inFullAtariPath)) {   // generated .INF in root of config drive?
+        std::string infName = inFullAtariPath.substr(1);       // without the leading '/'
+        Utils::toUpperCaseString(infName);                      // created upper case by DesktopCreator
+        outFullHostPath = Utils::mergeHostPaths3(CONFIG_DRIVE_INF_DIR, infName.c_str());
+        logHdd(LOG_DEBUG, "TranslatedDisk::createFullHostPath - %s on config drive -> %s", inFullAtariPath.c_str(), outFullHostPath.c_str());
+        return;
+    }
+
     std::string root = conf[inAtariDriveIndex].hostRootPath;    // get root path
 
     std::vector<std::string> symlinksApplied;       // this will be non-empty if ldp_shortToLongPath() will apply symlink to path

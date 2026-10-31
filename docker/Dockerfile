@@ -247,7 +247,6 @@ ENV CE_DIR=/opt/ce \
     DATA_DIR=/var/lib/ce \
     LOG_DIR=/var/log/ce \
     PID_DIR=/run/ce \
-    CONFIG_DRIVE_PATH=/var/lib/ce/configdrive \
     HOSTDRIVE=/mnt/hostdrive
 
 COPY --from=packages /overlay/ /

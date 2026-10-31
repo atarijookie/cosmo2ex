@@ -13,8 +13,11 @@ void DesktopCreator::createToFile(DesktopConfig *dc)
     char tmp[10240];
     int len = createToBuffer(tmp, 10240, dc);
 
-    std::string desktopInf = Utils::mergeHostPaths3(CONFIG_DRIVE_PATH, "DESKTOP.INF");
-    std::string newdeskInf = Utils::mergeHostPaths3(CONFIG_DRIVE_PATH, "NEWDESK.INF");
+    // not into the config drive itself - it's read only; TranslatedDisk shows these in its root
+    Utils::mkpath(CONFIG_DRIVE_INF_DIR.c_str(), 0755);
+
+    std::string desktopInf = Utils::mergeHostPaths3(CONFIG_DRIVE_INF_DIR, "DESKTOP.INF");
+    std::string newdeskInf = Utils::mergeHostPaths3(CONFIG_DRIVE_INF_DIR, "NEWDESK.INF");
 
     unlink(desktopInf.c_str());                 // delete old files
     unlink(newdeskInf.c_str());

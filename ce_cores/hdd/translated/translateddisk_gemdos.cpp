@@ -517,6 +517,12 @@ void TranslatedDisk::onDcreate(uint8_t *cmd)
         return;
     }
 
+    if(isReadOnlyDrive(atariDriveIndex)) {                // config drive - the ST must not change it
+        logHdd(LOG_DEBUG, "TranslatedDisk::onDcreate - drive %c: is read only", 'A' + atariDriveIndex);
+        dataTrans->setStatus(EACCDN);
+        return;
+    }
+
     //---------------
     // if the new dir already exists, return ACCESS DENIED
     bool newPathAlreadyExists = hostPathExists(hostPath, true);
@@ -594,6 +600,12 @@ void TranslatedDisk::onDdelete(uint8_t *cmd)
         return;
     }
 
+    if(isReadOnlyDrive(atariDriveIndex)) {                // config drive - the ST must not change it
+        logHdd(LOG_DEBUG, "TranslatedDisk::onDdelete - drive %c: is read only", 'A' + atariDriveIndex);
+        dataTrans->setStatus(EACCDN);
+        return;
+    }
+
     int ires = deleteDirectoryPlain(hostPath.c_str());
 
     logHdd(LOG_DEBUG, "TranslatedDisk::onDdelete - deleting directory hostPath: %s, result is %d", hostPath.c_str(), ires);
@@ -638,6 +650,12 @@ void TranslatedDisk::onFrename(uint8_t *cmd)
         logHdd(LOG_ERROR, "TranslatedDisk::onFrename - failed to createFullAtariPath for %s or %s", oldAtariName.c_str(), newAtariName.c_str());
 
         dataTrans->setStatus(E_NOTHANDLED);                         // if we don't have this, not handled
+        return;
+    }
+
+    if(isReadOnlyDrive(atariDriveIndexOld) || isReadOnlyDrive(atariDriveIndexNew)) {   // from / to config drive? it must not change
+        logHdd(LOG_DEBUG, "TranslatedDisk::onFrename - %s or %s is on read only drive", oldAtariName.c_str(), newAtariName.c_str());
+        dataTrans->setStatus(EACCDN);
         return;
     }
 
@@ -703,6 +721,12 @@ void TranslatedDisk::onFdelete(uint8_t *cmd)
         logHdd(LOG_DEBUG, "TranslatedDisk::onFdelete  -- waiting for mount, call this function again to succeed later.");
 
         dataTrans->setStatus(E_WAITING_FOR_MOUNT);
+        return;
+    }
+
+    if(isReadOnlyDrive(atariDriveIndex)) {                // config drive - the ST must not change it
+        logHdd(LOG_DEBUG, "TranslatedDisk::onFdelete - drive %c: is read only", 'A' + atariDriveIndex);
+        dataTrans->setStatus(EACCDN);
         return;
     }
 
@@ -810,6 +834,12 @@ void TranslatedDisk::onFattrib(uint8_t *cmd)
         return;
     }
 
+    if(setNotInquire && isReadOnlyDrive(atariDriveIndex)) {   // SET on config drive? it must not change
+        logHdd(LOG_DEBUG, "TranslatedDisk::onFattrib - %s is on read only drive", hostName.c_str());
+        dataTrans->setStatus(EACCDN);
+        return;
+    }
+
     if(setNotInquire) {     // SET attribs?
         // what the host can't store (e.g. hidden on ext4) is ignored, and like before, the ST doesn't get an error even
         // when setting failed - some programs might not expect that
@@ -869,6 +899,12 @@ void TranslatedDisk::onFcreate(uint8_t *cmd)
         logHdd(LOG_DEBUG, "TranslatedDisk::onFcreate -- waiting for mount, call this function again to succeed later.");
 
         dataTrans->setStatus(E_WAITING_FOR_MOUNT);
+        return;
+    }
+
+    if(isReadOnlyDrive(atariDriveIndex)) {                // config drive - the ST must not change it
+        logHdd(LOG_DEBUG, "TranslatedDisk::onFcreate - drive %c: is read only", 'A' + atariDriveIndex);
+        dataTrans->setStatus(EACCDN);
         return;
     }
 
@@ -1010,7 +1046,7 @@ void TranslatedDisk::onFopen(uint8_t *cmd)
         return;
     }
 
-    if(!justRead && hostFileIsReadOnly(hostName)) {         // if it's WRITE mode and the file is read only, quit
+    if(!justRead && (isReadOnlyDrive(atariDriveIndex) || hostFileIsReadOnly(hostName))) {  // WRITE mode and file / drive is read only? quit
         logHdd(LOG_ERROR, "TranslatedDisk::onFopen - %s - fopen mode is write, but file is read only, fail!", hostName.c_str());
 
         dataTrans->setStatus(EACCDN);
@@ -1084,6 +1120,12 @@ void TranslatedDisk::onFdatime(uint8_t *cmd)
 
     if(index == -1) {                                               // handle not found? not handled, try somewhere else
         dataTrans->setStatus(E_NOTHANDLED);
+        return;
+    }
+
+    if(setNotGet && isOnReadOnlyDrive(files[index].hostPath)) {    // SET on a file from config drive? it must not change
+        logHdd(LOG_DEBUG, "TranslatedDisk::onFdatime - %s is on read only drive", files[index].hostPath.c_str());
+        dataTrans->setStatus(EACCDN);
         return;
     }
 

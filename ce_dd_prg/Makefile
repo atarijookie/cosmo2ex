@@ -70,6 +70,19 @@ DEPS    = $(CSRC:.c=.d)
 OBJS    = $(CSRC:.c=.o) $(SSRC:.s=.o)
 OBJS030 = ../libacsiscsi/cache030.o
 
+# the config drive in the source tree - ce_cores serves it directly when CONFIG_DRIVE_DIR points here (.env.local), and
+# reloads the driver for booting when it changes, so build + reset the ST is all that's needed to test a new driver
+CONFIGDRIVE_PRG = ../ce_cores/configdrive/drivers/$(TARGET)
+
+all: $(TARGET) $(CONFIGDRIVE_PRG)
+
+$(CONFIGDRIVE_PRG): $(TARGET)
+	$(AT)mkdir -p $(dir $@)
+	$(AT)cp $< $@.tmp && mv -f $@.tmp $@
+	@echo "[Copied to config drive] $@"
+
+.PHONY: all
+
 $(TARGET): $(STARTUP) $(OBJS) $(OBJS030)
 	$(CC_LINK) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 	$(AT)$(STRIP) -s $@

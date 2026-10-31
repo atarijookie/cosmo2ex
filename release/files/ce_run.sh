@@ -18,12 +18,6 @@ chmod 0700 "$DATA_DIR"    # owner only - command token
 # instance is running.
 rm -f "$PID_DIR"/*.pid "$DATA_DIR"/*sock*
 
-# runtime copy of the config drive
-if [ -d ./configdrive ] && [ -n "$CONFIG_DRIVE_PATH" ] && [ "$CONFIG_DRIVE_PATH" != "/" ]; then
-    rm -rf "$CONFIG_DRIVE_PATH"
-    cp -a ./configdrive "$CONFIG_DRIVE_PATH"
-fi
-
 CORE_PID=""
 WEB_PID=""
 FIFO_DIR=""

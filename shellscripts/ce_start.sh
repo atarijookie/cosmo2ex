@@ -19,9 +19,6 @@ mkdir -p "$LOG_DIR"
 mkdir -p "$SETTINGS_DIR"
 mkdir -p "$PID_DIR"
 
-# make a copy of config drive into the expected destination
-cp -rf "${BIN_DIR}/configdrive" "$CONFIG_DRIVE_PATH"
-
 # run ce cores
 echo "Starting cores"
 ./ce_cores.elf > /dev/null 2>&1 &

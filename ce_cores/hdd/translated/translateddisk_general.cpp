@@ -579,6 +579,48 @@ bool TranslatedDisk::createFullAtariPathAndFullHostPath(const std::string &inPar
     return true;
 }
 
+bool TranslatedDisk::isReadOnlyDrive(int driveIndex) const
+{
+    return driveIndex >= 0 && driveIndex == configDriveIndex;
+}
+
+bool TranslatedDisk::isOnReadOnlyDrive(const std::string &hostPath) const
+{
+    if(configDriveIndex >= MAX_DRIVES) {
+        return false;
+    }
+
+    // in the config drive dir, or one of the generated .INF files shown in its root
+    const std::string* roots[] = {&conf[configDriveIndex].hostRootPath, &CONFIG_DRIVE_INF_DIR};
+
+    for(size_t i=0; i<sizeof(roots)/sizeof(roots[0]); i++) {
+        std::string root = *roots[i];
+
+        while(root.length() > 1 && root[root.length() - 1] == '/') {   // without trailing separator
+            root.resize(root.length() - 1);
+        }
+
+        if(root.empty()) {
+            continue;
+        }
+
+        // same dir, or something inside it - not just the same prefix ('/configdrive2' isn't in '/configdrive')
+        if(hostPath.compare(0, root.length(), root) == 0 && (hostPath.length() == root.length() || hostPath[root.length()] == '/')) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool TranslatedDisk::isConfigDriveInf(const std::string &fullAtariPath)
+{
+    std::string upper = fullAtariPath;
+    Utils::toUpperCaseString(upper);
+
+    return upper == "/DESKTOP.INF" || upper == "/NEWDESK.INF";     // full Atari path has '/' separators already
+}
+
 bool TranslatedDisk::createFullAtariPath(std::string inPartialAtariPath, std::string &outFullAtariPath, int &outAtariDriveIndex)
 {
     outAtariDriveIndex = -1;
@@ -665,7 +707,7 @@ void TranslatedDisk::removeDoubleDots(std::string &path)
 
     // first split the string by separator
     while(1) {
-        pos = path.find(HOSTPATH_SEPAR_CHAR, start);
+        pos = path.find('/', start);
 
         if(pos == -1) {                             // not found?
             strings[found] = path.substr(start);    // copy in the rest
@@ -745,7 +787,7 @@ void TranslatedDisk::pathSeparatorAtariToHost(std::string &path)
 
     for(i = 0; i<len; i++) {
         if(path[i] == ATARIPATH_SEPAR_CHAR) {   // if atari separator
-            path[i] = HOSTPATH_SEPAR_CHAR;      // change to host separator
+            path[i] = '/';      // change to host separator
         }
     }
 }
@@ -756,7 +798,7 @@ void TranslatedDisk::pathSeparatorHostToAtari(std::string &path)
     len = path.length();
 
     for(i = 0; i<len; i++) {
-        if(path[i] == HOSTPATH_SEPAR_CHAR) {    // if host separator
+        if(path[i] == '/') {    // if host separator
             path[i] = ATARIPATH_SEPAR_CHAR;      // change to atari separator
         }
     }
@@ -777,7 +819,7 @@ int TranslatedDisk::deleteDirectoryPlain(const char *path)
 bool TranslatedDisk::isRootDir(std::string hostPath)
 {
     // remove trailing '/' if needed
-    if(hostPath.size() > 0 && hostPath[hostPath.size() - 1] == HOSTPATH_SEPAR_CHAR) {
+    if(hostPath.size() > 0 && hostPath[hostPath.size() - 1] == '/') {
         hostPath.erase(hostPath.size() - 1, 1);
     }
 

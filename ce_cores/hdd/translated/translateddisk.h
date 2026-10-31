@@ -86,6 +86,11 @@ public:
     bool createFullAtariPathAndFullHostPath(const std::string &inPartialAtariPath, std::string &outFullAtariPath, int &outAtariDriveIndex, std::string &outFullHostPath, bool &waitingForMount, bool* isInArchive=NULL);
     void createFullHostPath(const std::string &inFullAtariPath, int inAtariDriveIndex, std::string &outFullHostPath);
 
+    // config drive is served straight from where it's installed / built - the ST can read it, but not change it
+    bool isReadOnlyDrive(int driveIndex) const;
+    bool isOnReadOnlyDrive(const std::string &hostPath) const;
+    static bool isConfigDriveInf(const std::string &fullAtariPath);   // \DESKTOP.INF or \NEWDESK.INF - generated, served from CONFIG_DRIVE_INF_DIR
+
     // for status report
     bool driveIsEnabled(int driveIndex);
     void driveGetReport(int driveIndex, std::string &reportString);

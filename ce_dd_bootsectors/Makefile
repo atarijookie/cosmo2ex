@@ -12,7 +12,16 @@ $(TARGET): $(STARTUP) $(SSRC)
 	$(CC) $(CFLAGS) -o $@ $(STARTUP) $(CSRC) $(SSRC) $(LDFLAGS)
 	$(STRIP) -s $@
 
-all:	ce_dd.bs ce_dd_l2.bs
+# copied to the config drive in the source tree too, see CONFIGDRIVE_PRG in ../ce_dd_prg/Makefile
+CONFIGDRIVE = ../ce_cores/configdrive/drivers
+
+all:	ce_dd.bs ce_dd_l2.bs $(CONFIGDRIVE)/ce_dd.bs $(CONFIGDRIVE)/ce_dd_l2.bs
+
+ce_dd_l2.bs:	ce_dd.bs		# both made by convertor
+
+$(CONFIGDRIVE)/%.bs:	%.bs
+	mkdir -p $(CONFIGDRIVE)
+	cp $< $@.tmp && mv -f $@.tmp $@
 
 convertor:	convertor.cpp
 	$(HOSTCXX) $(CXXFLAGS) -o $@ $<

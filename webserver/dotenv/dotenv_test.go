@@ -59,3 +59,43 @@ func TestLoadEnvFromDotFileUsesDefaultDirs(t *testing.T) {
 	check("PID_DIR", "/from/real/env")                                // real env var - kept
 	check("CMD_TOKEN_FILE", DefaultDir("DATA_DIR")+"/core_cmd.token") // ${DATA_DIR} uses the default
 }
+
+// .env.local next to the real .env (path may be a symlink to it) overrides keys, and the override is used in other values
+func TestLoadEnvLocalOverridesThroughSymlink(t *testing.T) {
+	for _, key := range []string{"BIN_DIR", "CONFIG_DRIVE_DIR", "CE_DD_PRG_FILE", "LOG_LEVEL"} {
+		t.Setenv(key, "")
+		os.Unsetenv(key)
+	}
+
+	root := t.TempDir()
+	env := "BIN_DIR=/opt/ce/bin\n" +
+		"CONFIG_DRIVE_DIR=${BIN_DIR}/configdrive\n" +
+		"CE_DD_PRG_FILE=${CONFIG_DRIVE_DIR}/drivers/ce_dd.prg\n" +
+		"LOG_LEVEL=3\n"
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte(env), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".env.local"), []byte("CONFIG_DRIVE_DIR=/src/ce_cores/configdrive\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sub := filepath.Join(root, "webserver")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../.env", filepath.Join(sub, ".env")); err != nil {
+		t.Fatal(err)
+	}
+
+	Load(filepath.Join(sub, ".env"))
+
+	if got := os.Getenv("CONFIG_DRIVE_DIR"); got != "/src/ce_cores/configdrive" {
+		t.Errorf("CONFIG_DRIVE_DIR = %q", got)
+	}
+	if got := os.Getenv("CE_DD_PRG_FILE"); got != "/src/ce_cores/configdrive/drivers/ce_dd.prg" {
+		t.Errorf("CE_DD_PRG_FILE = %q", got)
+	}
+	if got := os.Getenv("LOG_LEVEL"); got != "3" {
+		t.Errorf("LOG_LEVEL = %q, not overridden so it should stay", got)
+	}
+}

@@ -278,3 +278,140 @@ TEST_CASE("translated disk: Frename to the same name in other case - renamed, al
     CHECK(frename(h, "D:\\LONGER~1.TXT", "D:\\LONGERNAME.TXT") == E_OK);
     CHECK(hostNames(h.drive) == std::vector<std::string>({"LONGERNAME.TXT"}));
 }
+
+// config drive C: served from a temp dir (in real life BIN_DIR/configdrive or the source tree), generated .INF files
+// in another temp dir - like CONFIG_DRIVE_DIR and DATA_DIR/configdrive_inf
+struct ConfigDriveHarness {
+    std::string oldConfigDrive, oldInfDir;
+    std::string configDrive, infDir;
+    TranslatedDiskHarness *h;
+
+    ConfigDriveHarness() {
+        char tmplC[] = "/tmp/ce_test_cfg_XXXXXX";
+        char tmplI[] = "/tmp/ce_test_inf_XXXXXX";
+        REQUIRE(mkdtemp(tmplC) != NULL);
+        REQUIRE(mkdtemp(tmplI) != NULL);
+        configDrive = tmplC;
+        infDir      = tmplI;
+
+        oldConfigDrive          = CONFIG_DRIVE_PATH;
+        oldInfDir               = CONFIG_DRIVE_INF_DIR;
+        CONFIG_DRIVE_PATH       = configDrive;
+        CONFIG_DRIVE_INF_DIR    = infDir;
+
+        REQUIRE(mkdir((configDrive + "/drivers").c_str(), 0755) == 0);
+        writeFile(configDrive + "/drivers/ce_dd.prg", "driver");
+        writeFile(configDrive + "/readme.txt", "readme");
+
+        h = new TranslatedDiskHarness();        // D: is the writable drive
+
+        uint8_t mac[6] = {0};                   // config drive on C: (default is O:)
+        Settings s(mac);
+        s.setChar("DRIVELETTER_CONFDRIVE", 'C');
+        h->td->loadSettings();
+        h->td->findAttachedDisks();
+        REQUIRE(std::string(h->td->driveGetHostPath(2)) == configDrive);
+    }
+
+    ~ConfigDriveHarness() {
+        delete h;
+        CONFIG_DRIVE_PATH    = oldConfigDrive;
+        CONFIG_DRIVE_INF_DIR = oldInfDir;
+        std::string cmd = "rm -rf '" + configDrive + "' '" + infDir + "'";
+        system(cmd.c_str());
+    }
+
+    static void writeFile(const std::string& path, const char* content) {
+        FILE *f = fopen(path.c_str(), "w");
+        REQUIRE(f != NULL);
+        fputs(content, f);
+        fclose(f);
+    }
+
+    static std::string readFile(const std::string& path) {
+        FILE *f = fopen(path.c_str(), "r");
+        if(!f) {
+            return "<missing>";
+        }
+        char bfr[256] = {0};
+        size_t n = fread(bfr, 1, sizeof(bfr) - 1, f);
+        fclose(f);
+        return std::string(bfr, n);
+    }
+
+    bool exists(const std::string& rel) { return access((configDrive + "/" + rel).c_str(), F_OK) == 0; }
+};
+
+TEST_CASE("translated disk: config drive can be read, but the ST can't change anything on it")
+{
+    ConfigDriveHarness c;
+    TranslatedDiskHarness& h = *c.h;
+    const uint8_t denied = (uint8_t) EACCDN;
+
+    // reading works
+    uint8_t handle = h.call(GEMDOS_Fopen, {0}, "C:\\DRIVERS\\CE_DD.PRG");
+    REQUIRE(handle < 0x80);
+    CHECK(h.fattribGet("C:\\README.TXT") == 0);
+
+    // date / time of a file from config drive: get works, set doesn't
+    CHECK(h.call(GEMDOS_Fdatime, {}, "", handle) == E_OK);
+    CHECK(h.call(GEMDOS_Fdatime, {}, "", handle | 0x80) == denied);
+    h.call(GEMDOS_Fclose, {}, "", handle);
+
+    // writing doesn't
+    CHECK(h.call(GEMDOS_Fopen,   {1}, "C:\\README.TXT") == denied);           // write
+    CHECK(h.call(GEMDOS_Fopen,   {2}, "C:\\README.TXT") == denied);           // read / write
+    CHECK(h.call(GEMDOS_Fcreate, {0}, "C:\\README.TXT") == denied);           // overwrite
+    CHECK(h.call(GEMDOS_Fcreate, {0}, "C:\\NEW.TXT")    == denied);           // new file
+    CHECK(h.call(GEMDOS_Fdelete, {},  "C:\\DRIVERS\\CE_DD.PRG") == denied);
+    CHECK(h.call(GEMDOS_Dcreate, {},  "C:\\NEWDIR")     == denied);
+    CHECK(h.call(GEMDOS_Ddelete, {},  "C:\\DRIVERS")    == denied);
+    CHECK(h.fattribSet("C:\\README.TXT", FA_READONLY)   == denied);
+
+    std::string old = "C:\\README.TXT";
+    std::vector<uint8_t> oldName(old.begin(), old.end());
+    oldName.push_back(0);
+    CHECK(h.call(GEMDOS_Frename, oldName, "C:\\RENAMED.TXT") == denied);     // within config drive
+    CHECK(h.call(GEMDOS_Frename, oldName, "D:\\MOVED.TXT")   == denied);     // out of it
+
+    h.touch("FROMD.TXT");
+    std::string fromD = "D:\\FROMD.TXT";
+    std::vector<uint8_t> fromDName(fromD.begin(), fromD.end());
+    fromDName.push_back(0);
+    CHECK(h.call(GEMDOS_Frename, fromDName, "C:\\FROMD.TXT") == denied);     // into it
+
+    // nothing changed
+    CHECK(c.readFile(c.configDrive + "/readme.txt") == "readme");
+    CHECK(c.readFile(c.configDrive + "/drivers/ce_dd.prg") == "driver");
+    CHECK(!c.exists("NEW.TXT"));
+    CHECK(!c.exists("NEWDIR"));
+    CHECK(!c.exists("RENAMED.TXT"));
+    CHECK(!c.exists("FROMD.TXT"));
+    CHECK(access(h.host("FROMD.TXT").c_str(), F_OK) == 0);
+    CHECK(c.h->modeOf("FROMD.TXT") == 0644);                                  // (D: is still a normal, writable drive)
+    CHECK(h.call(GEMDOS_Fdelete, {}, "D:\\FROMD.TXT") == E_OK);
+}
+
+TEST_CASE("translated disk: generated DESKTOP.INF / NEWDESK.INF are in root of config drive, read only too")
+{
+    ConfigDriveHarness c;
+    TranslatedDiskHarness& h = *c.h;
+
+    c.writeFile(c.infDir + "/NEWDESK.INF", "#a000000\r\n");
+
+    uint8_t handle = h.call(GEMDOS_Fopen, {0}, "C:\\NEWDESK.INF");
+    CHECK(handle < 0x80);
+    h.call(GEMDOS_Fclose, {}, "", handle);
+
+    handle = h.call(GEMDOS_Fopen, {0}, "C:\\newdesk.inf");                    // any case, like TOS
+    CHECK(handle < 0x80);
+    h.call(GEMDOS_Fclose, {}, "", handle);
+
+    CHECK(h.call(GEMDOS_Fopen, {0}, "C:\\DESKTOP.INF") == (uint8_t) EFILNF);   // not generated (TOS 2+) - not there
+    CHECK(h.call(GEMDOS_Fopen, {1}, "C:\\NEWDESK.INF") == (uint8_t) EACCDN);
+    CHECK(h.call(GEMDOS_Fdelete, {}, "C:\\NEWDESK.INF") == (uint8_t) EACCDN);
+    CHECK(c.readFile(c.infDir + "/NEWDESK.INF") == "#a000000\r\n");
+
+    // only in the root - elsewhere it's a normal (read only) file of the config drive
+    CHECK(h.call(GEMDOS_Fopen, {0}, "C:\\DRIVERS\\NEWDESK.INF") == (uint8_t) EFILNF);
+}
