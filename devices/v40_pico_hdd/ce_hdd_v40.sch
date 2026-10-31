@@ -14438,7 +14438,9 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <variant name="ACSI" populate="no"/>
 </part>
 <part name="GND11" library="supply1" deviceset="GND" device=""/>
-<part name="R10" library="rcl" deviceset="R-EU_" device="R0603" value="220R"/>
+<part name="R150" library="rcl" deviceset="R-EU_" device="R0603" value="220R">
+<variant name="SCSI" populate="no"/>
+</part>
 <part name="SW1" library="ce_fdd_v40" deviceset="SMSR-1" device=""/>
 <part name="LED3" library="WS2812C-2020" deviceset="WS2812C-2020" device="">
 <attribute name="DESCRIPTION" value="Intelligent control LED integrated light source"/>
@@ -14464,21 +14466,15 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <attribute name="TME_ELECTRONIC_COMPONENTS_PRICE-STOCK" value=""/>
 <variant name="SCSI" populate="no"/>
 </part>
-<part name="IC207" library="74AHCT1G08GW_125" deviceset="74AHCT1G08GW,125" device="">
-<attribute name="DESCRIPTION" value="74AHC(T)1G08 - 2-input AND gate@en-us"/>
-<attribute name="HEIGHT" value="1.1mm"/>
-<attribute name="MANUFACTURER_NAME" value="Nexperia"/>
-<attribute name="MANUFACTURER_PART_NUMBER" value="74AHCT1G08GW,125"/>
-<attribute name="TME_ELECTRONIC_COMPONENTS_PART_NUMBER" value=""/>
-<attribute name="TME_ELECTRONIC_COMPONENTS_PRICE-STOCK" value=""/>
+<part name="R151" library="rcl" deviceset="R-EU_" device="R0603" value="10k">
+<variant name="SCSI" populate="no"/>
+</part>
+<part name="R250" library="rcl" deviceset="R-EU_" device="R0603" value="220R">
 <variant name="ACSI" populate="no"/>
 </part>
-<part name="GND22" library="supply1" deviceset="GND" device=""/>
-<part name="R109" library="rcl" deviceset="R-EU_" device="R0603" value="10k">
-<variant name="SCSI" populate="no" value="220R"/>
+<part name="R251" library="rcl" deviceset="R-EU_" device="R0603" value="220R">
+<variant name="ACSI" populate="no"/>
 </part>
-<part name="C11" library="rcl" deviceset="C-EU" device="C0603" value="100 nF"/>
-<part name="GND23" library="supply1" deviceset="GND" device=""/>
 </parts>
 <sheets>
 <sheet>
@@ -15572,7 +15568,7 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <pinref part="IC203" gate="G$1" pin="Q1"/>
 </segment>
 </net>
-<net name="RST_C/D_REQ_NEOPIXEL" class="0">
+<net name="RST_C/D_REQ" class="0">
 <segment>
 <wire x1="43.18" y1="119.38" x2="50.8" y2="119.38" width="0.1524" layer="91"/>
 <label x="46.99" y="120.015" size="0.8128" layer="95" font="vector"/>
@@ -17036,10 +17032,10 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <wire x1="304.8" y1="88.9" x2="109.22" y2="88.9" width="0.1524" layer="94" style="shortdash"/>
 <wire x1="109.22" y1="88.9" x2="109.22" y2="231.14" width="0.1524" layer="94" style="shortdash"/>
 <text x="116.84" y="223.52" size="2.54" layer="94" font="vector">power supply</text>
-<wire x1="81.28" y1="83.82" x2="241.3" y2="83.82" width="0.1524" layer="94" style="shortdash"/>
-<wire x1="81.28" y1="83.82" x2="81.28" y2="-7.62" width="0.1524" layer="94" style="shortdash"/>
-<wire x1="241.3" y1="83.82" x2="241.3" y2="-7.62" width="0.1524" layer="94" style="shortdash"/>
-<wire x1="81.28" y1="-7.62" x2="241.3" y2="-7.62" width="0.1524" layer="94" style="shortdash"/>
+<wire x1="109.22" y1="83.82" x2="248.92" y2="83.82" width="0.1524" layer="94" style="shortdash"/>
+<wire x1="109.22" y1="83.82" x2="109.22" y2="-7.62" width="0.1524" layer="94" style="shortdash"/>
+<wire x1="248.92" y1="83.82" x2="248.92" y2="-7.62" width="0.1524" layer="94" style="shortdash"/>
+<wire x1="109.22" y1="-7.62" x2="248.92" y2="-7.62" width="0.1524" layer="94" style="shortdash"/>
 <text x="-63.5" y="116.078" size="0.8128" layer="91" font="vector" ratio="10">If using W6100, GP15 and GP22 can be used for IKBD</text>
 <text x="-63.5" y="114.3" size="0.8128" layer="94" font="vector" ratio="10">If using W6300, GP15 and GP22 are used by W6300 and IKBD cannot use them.</text>
 <wire x1="44.196" y1="152.908" x2="41.148" y2="152.908" width="0.1524" layer="94"/>
@@ -17056,8 +17052,9 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <wire x1="43.18" y1="145.034" x2="44.45" y2="145.542" width="0.1524" layer="94"/>
 <text x="79.502" y="154.178" size="0.8128" layer="91" font="vector" rot="R90">fit for ACSI</text>
 <text x="79.502" y="138.43" size="0.8128" layer="91" font="vector" rot="R90">fit for SCSI</text>
-<text x="83.82" y="78.74" size="1.778" layer="94">LEDs</text>
-<text x="116.078" y="77.978" size="0.8128" layer="94" font="vector">fit R109 for ACSI, or IC207 for SCSI</text>
+<text x="119.38" y="73.66" size="1.778" layer="94">LEDs</text>
+<text x="124.46" y="66.04" size="0.8128" layer="94" font="vector">ACSI - pull up + GP9</text>
+<text x="124.46" y="64.516" size="0.8128" layer="94" font="vector">SCSI - LE1 + LE2</text>
 </plain>
 <instances>
 <instance part="GND27" gate="1" x="142.24" y="109.22"/>
@@ -17082,10 +17079,10 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <instance part="D1" gate="G$1" x="43.18" y="180.34" smashed="yes" rot="R180">
 <attribute name="NAME" x="40.64" y="179.8574" size="1.778" layer="95" rot="R180"/>
 </instance>
-<instance part="C10" gate="G$1" x="180.34" y="35.56" smashed="yes">
-<attribute name="NAME" x="182.499" y="36.068" size="1.778" layer="95" rot="R90"/>
+<instance part="C10" gate="G$1" x="187.96" y="35.56" smashed="yes">
+<attribute name="NAME" x="190.119" y="36.068" size="1.778" layer="95" rot="R90"/>
 </instance>
-<instance part="GND9" gate="1" x="180.34" y="7.62"/>
+<instance part="GND9" gate="1" x="187.96" y="7.62"/>
 <instance part="C4" gate="G$1" x="266.7" y="193.04" rot="R270"/>
 <instance part="C5" gate="G$1" x="279.4" y="187.96"/>
 <instance part="C6" gate="G$1" x="289.56" y="187.96"/>
@@ -17096,10 +17093,10 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <instance part="GND21" gate="1" x="228.6" y="152.4"/>
 <instance part="C8" gate="G$1" x="220.98" y="127"/>
 <instance part="GND10" gate="1" x="220.98" y="104.14"/>
-<instance part="LED2" gate="G$1" x="203.2" y="48.26" rot="R270"/>
-<instance part="GND6" gate="1" x="139.7" y="35.56"/>
-<instance part="C9" gate="G$1" x="172.72" y="35.56" smashed="yes">
-<attribute name="NAME" x="174.879" y="36.068" size="1.778" layer="95" rot="R90"/>
+<instance part="LED2" gate="G$1" x="210.82" y="48.26" rot="R270"/>
+<instance part="GND6" gate="1" x="147.32" y="35.56"/>
+<instance part="C9" gate="G$1" x="180.34" y="35.56" smashed="yes">
+<attribute name="NAME" x="182.499" y="36.068" size="1.778" layer="95" rot="R90"/>
 </instance>
 <instance part="R125" gate="G$1" x="76.2" y="157.48" smashed="yes" rot="R270">
 <attribute name="VALUE" x="73.152" y="160.02" size="1.778" layer="96" rot="R270"/>
@@ -17108,9 +17105,9 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <attribute name="VALUE" x="73.152" y="144.78" size="1.778" layer="96" rot="R270"/>
 </instance>
 <instance part="GND11" gate="1" x="76.2" y="132.08"/>
-<instance part="R10" gate="G$1" x="124.46" y="40.64" rot="MR0"/>
+<instance part="R150" gate="G$1" x="132.08" y="43.18" rot="MR0"/>
 <instance part="SW1" gate="G$1" x="198.12" y="137.16"/>
-<instance part="LED3" gate="G$1" x="223.52" y="48.26" rot="R270"/>
+<instance part="LED3" gate="G$1" x="231.14" y="48.26" rot="R270"/>
 <instance part="R6" gate="G$1" x="-30.48" y="137.16" smashed="yes">
 <attribute name="VALUE" x="-37.592" y="137.668" size="1.778" layer="96"/>
 </instance>
@@ -17120,14 +17117,10 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <instance part="R8" gate="G$1" x="-30.48" y="132.08" smashed="yes">
 <attribute name="VALUE" x="-37.592" y="130.048" size="1.778" layer="96"/>
 </instance>
-<instance part="IC6" gate="G$1" x="142.24" y="45.72"/>
-<instance part="IC207" gate="G$1" x="93.98" y="66.04"/>
-<instance part="GND22" gate="1" x="91.44" y="55.88"/>
-<instance part="R109" gate="G$1" x="132.08" y="55.88" rot="MR270"/>
-<instance part="C11" gate="G$1" x="144.78" y="68.58" smashed="yes">
-<attribute name="NAME" x="146.939" y="69.088" size="1.778" layer="95" rot="R90"/>
-</instance>
-<instance part="GND23" gate="1" x="144.78" y="58.42"/>
+<instance part="IC6" gate="G$1" x="149.86" y="45.72"/>
+<instance part="R151" gate="G$1" x="132.08" y="58.42" rot="MR0"/>
+<instance part="R250" gate="G$1" x="132.08" y="35.56" rot="MR0"/>
+<instance part="R251" gate="G$1" x="132.08" y="50.8" rot="MR0"/>
 </instances>
 <busses>
 </busses>
@@ -17235,19 +17228,19 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <segment>
 <pinref part="GND9" gate="1" pin="GND"/>
 <pinref part="C10" gate="G$1" pin="2"/>
-<wire x1="180.34" y1="10.16" x2="180.34" y2="15.24" width="0.1524" layer="91"/>
+<wire x1="187.96" y1="10.16" x2="187.96" y2="15.24" width="0.1524" layer="91"/>
 <pinref part="LED2" gate="G$1" pin="GND"/>
-<wire x1="180.34" y1="15.24" x2="180.34" y2="30.48" width="0.1524" layer="91"/>
-<wire x1="203.2" y1="22.86" x2="203.2" y2="15.24" width="0.1524" layer="91"/>
-<wire x1="203.2" y1="15.24" x2="180.34" y2="15.24" width="0.1524" layer="91"/>
-<junction x="180.34" y="15.24"/>
+<wire x1="187.96" y1="15.24" x2="187.96" y2="30.48" width="0.1524" layer="91"/>
+<wire x1="210.82" y1="22.86" x2="210.82" y2="15.24" width="0.1524" layer="91"/>
+<wire x1="210.82" y1="15.24" x2="187.96" y2="15.24" width="0.1524" layer="91"/>
+<junction x="187.96" y="15.24"/>
 <pinref part="C9" gate="G$1" pin="2"/>
-<wire x1="172.72" y1="30.48" x2="172.72" y2="15.24" width="0.1524" layer="91"/>
-<wire x1="172.72" y1="15.24" x2="180.34" y2="15.24" width="0.1524" layer="91"/>
+<wire x1="180.34" y1="30.48" x2="180.34" y2="15.24" width="0.1524" layer="91"/>
+<wire x1="180.34" y1="15.24" x2="187.96" y2="15.24" width="0.1524" layer="91"/>
 <pinref part="LED3" gate="G$1" pin="GND"/>
-<wire x1="203.2" y1="15.24" x2="223.52" y2="15.24" width="0.1524" layer="91"/>
-<wire x1="223.52" y1="15.24" x2="223.52" y2="22.86" width="0.1524" layer="91"/>
-<junction x="203.2" y="15.24"/>
+<wire x1="210.82" y1="15.24" x2="231.14" y2="15.24" width="0.1524" layer="91"/>
+<wire x1="231.14" y1="15.24" x2="231.14" y2="22.86" width="0.1524" layer="91"/>
+<junction x="210.82" y="15.24"/>
 </segment>
 <segment>
 <pinref part="GND16" gate="1" pin="GND"/>
@@ -17275,8 +17268,8 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <wire x1="220.98" y1="121.92" x2="220.98" y2="106.68" width="0.1524" layer="91"/>
 </segment>
 <segment>
-<wire x1="139.7" y1="40.64" x2="139.7" y2="38.1" width="0.1524" layer="91"/>
-<wire x1="142.24" y1="40.64" x2="139.7" y2="40.64" width="0.1524" layer="91"/>
+<wire x1="147.32" y1="40.64" x2="147.32" y2="38.1" width="0.1524" layer="91"/>
+<wire x1="149.86" y1="40.64" x2="147.32" y2="40.64" width="0.1524" layer="91"/>
 <pinref part="GND6" gate="1" pin="GND"/>
 <pinref part="IC6" gate="G$1" pin="GND"/>
 </segment>
@@ -17284,17 +17277,6 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <pinref part="R225" gate="G$1" pin="2"/>
 <pinref part="GND11" gate="1" pin="GND"/>
 <wire x1="76.2" y1="137.16" x2="76.2" y2="134.62" width="0.1524" layer="91"/>
-</segment>
-<segment>
-<pinref part="IC207" gate="G$1" pin="GND"/>
-<pinref part="GND22" gate="1" pin="GND"/>
-<wire x1="93.98" y1="60.96" x2="91.44" y2="60.96" width="0.1524" layer="91"/>
-<wire x1="91.44" y1="60.96" x2="91.44" y2="58.42" width="0.1524" layer="91"/>
-</segment>
-<segment>
-<pinref part="C11" gate="G$1" pin="2"/>
-<pinref part="GND23" gate="1" pin="GND"/>
-<wire x1="144.78" y1="63.5" x2="144.78" y2="60.96" width="0.1524" layer="91"/>
 </segment>
 </net>
 <net name="5V" class="0">
@@ -17328,39 +17310,30 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 </segment>
 <segment>
 <pinref part="C10" gate="G$1" pin="1"/>
-<wire x1="180.34" y1="38.1" x2="180.34" y2="43.18" width="0.1524" layer="91"/>
-<label x="178.308" y="61.976" size="1.778" layer="95"/>
+<wire x1="187.96" y1="38.1" x2="187.96" y2="43.18" width="0.1524" layer="91"/>
+<label x="185.928" y="61.976" size="1.778" layer="95"/>
 <pinref part="LED2" gate="G$1" pin="VDD"/>
-<wire x1="180.34" y1="43.18" x2="180.34" y2="58.42" width="0.1524" layer="91"/>
-<wire x1="180.34" y1="58.42" x2="180.34" y2="60.96" width="0.1524" layer="91"/>
-<wire x1="200.66" y1="48.26" x2="200.66" y2="58.42" width="0.1524" layer="91"/>
-<wire x1="200.66" y1="58.42" x2="180.34" y2="58.42" width="0.1524" layer="91"/>
-<junction x="180.34" y="58.42"/>
-<wire x1="167.64" y1="43.18" x2="172.72" y2="43.18" width="0.1524" layer="91"/>
-<junction x="180.34" y="43.18"/>
+<wire x1="187.96" y1="43.18" x2="187.96" y2="58.42" width="0.1524" layer="91"/>
+<wire x1="187.96" y1="58.42" x2="187.96" y2="60.96" width="0.1524" layer="91"/>
+<wire x1="208.28" y1="48.26" x2="208.28" y2="58.42" width="0.1524" layer="91"/>
+<wire x1="208.28" y1="58.42" x2="187.96" y2="58.42" width="0.1524" layer="91"/>
+<junction x="187.96" y="58.42"/>
+<wire x1="175.26" y1="43.18" x2="180.34" y2="43.18" width="0.1524" layer="91"/>
+<junction x="187.96" y="43.18"/>
 <pinref part="C9" gate="G$1" pin="1"/>
-<wire x1="172.72" y1="43.18" x2="180.34" y2="43.18" width="0.1524" layer="91"/>
-<wire x1="172.72" y1="38.1" x2="172.72" y2="43.18" width="0.1524" layer="91"/>
-<junction x="172.72" y="43.18"/>
+<wire x1="180.34" y1="43.18" x2="187.96" y2="43.18" width="0.1524" layer="91"/>
+<wire x1="180.34" y1="38.1" x2="180.34" y2="43.18" width="0.1524" layer="91"/>
+<junction x="180.34" y="43.18"/>
 <pinref part="LED3" gate="G$1" pin="VDD"/>
-<wire x1="200.66" y1="58.42" x2="220.98" y2="58.42" width="0.1524" layer="91"/>
-<wire x1="220.98" y1="58.42" x2="220.98" y2="48.26" width="0.1524" layer="91"/>
-<junction x="200.66" y="58.42"/>
+<wire x1="208.28" y1="58.42" x2="228.6" y2="58.42" width="0.1524" layer="91"/>
+<wire x1="228.6" y1="58.42" x2="228.6" y2="48.26" width="0.1524" layer="91"/>
+<junction x="208.28" y="58.42"/>
 <pinref part="IC6" gate="G$1" pin="VCC"/>
 </segment>
 <segment>
-<pinref part="IC207" gate="G$1" pin="VCC"/>
-<wire x1="119.38" y1="63.5" x2="132.08" y2="63.5" width="0.1524" layer="91"/>
-<wire x1="132.08" y1="63.5" x2="132.08" y2="73.66" width="0.1524" layer="91"/>
-<label x="131.064" y="74.168" size="0.8128" layer="95" font="vector"/>
-<pinref part="R109" gate="G$1" pin="1"/>
-<wire x1="132.08" y1="60.96" x2="132.08" y2="63.5" width="0.1524" layer="91"/>
-<junction x="132.08" y="63.5"/>
-</segment>
-<segment>
-<pinref part="C11" gate="G$1" pin="1"/>
-<wire x1="144.78" y1="71.12" x2="144.78" y2="73.66" width="0.1524" layer="91"/>
-<label x="144.018" y="74.168" size="0.8128" layer="95" font="vector"/>
+<pinref part="R151" gate="G$1" pin="2"/>
+<wire x1="127" y1="58.42" x2="116.84" y2="58.42" width="0.1524" layer="91"/>
+<label x="117.094" y="58.928" size="0.8128" layer="95" font="vector"/>
 </segment>
 </net>
 <net name="N$1" class="0">
@@ -17454,16 +17427,16 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <wire x1="40.64" y1="180.34" x2="27.94" y2="180.34" width="0.1524" layer="91"/>
 </segment>
 </net>
-<net name="RST_C/D_REQ_NEOPIXEL" class="0">
+<net name="RST_C/D_REQ" class="0">
 <segment>
 <pinref part="IC1" gate="U$1" pin="GP9"/>
 <wire x1="-7.62" y1="144.78" x2="-17.78" y2="144.78" width="0.1524" layer="91"/>
 <label x="-25.4" y="145.034" size="0.8128" layer="95" font="vector"/>
 </segment>
 <segment>
-<pinref part="R10" gate="G$1" pin="2"/>
-<wire x1="119.38" y1="40.64" x2="106.68" y2="40.64" width="0.1524" layer="91"/>
-<label x="106.68" y="40.894" size="0.8128" layer="95" font="vector"/>
+<pinref part="R150" gate="G$1" pin="2"/>
+<wire x1="127" y1="43.18" x2="116.84" y2="43.18" width="0.1524" layer="91"/>
+<label x="117.094" y="43.688" size="0.8128" layer="95" font="vector"/>
 </segment>
 </net>
 <net name="CACK" class="0">
@@ -17519,9 +17492,9 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <pinref part="R8" gate="G$1" pin="2"/>
 </segment>
 <segment>
-<pinref part="IC207" gate="G$1" pin="A"/>
-<wire x1="93.98" y1="63.5" x2="83.82" y2="63.5" width="0.1524" layer="91"/>
-<label x="83.82" y="63.754" size="0.8128" layer="95" font="vector"/>
+<pinref part="R250" gate="G$1" pin="2"/>
+<wire x1="127" y1="35.56" x2="116.84" y2="35.56" width="0.1524" layer="91"/>
+<label x="117.094" y="36.068" size="0.8128" layer="95" font="vector"/>
 </segment>
 </net>
 <net name="SEL_I/O_DP_A1" class="0">
@@ -17553,9 +17526,9 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <label x="-18.796" y="127.254" size="0.8128" layer="95" font="vector"/>
 </segment>
 <segment>
-<pinref part="IC207" gate="G$1" pin="B"/>
-<wire x1="93.98" y1="66.04" x2="83.82" y2="66.04" width="0.1524" layer="91"/>
-<label x="83.82" y="66.294" size="0.8128" layer="95" font="vector"/>
+<pinref part="R251" gate="G$1" pin="2"/>
+<wire x1="127" y1="50.8" x2="116.84" y2="50.8" width="0.1524" layer="91"/>
+<label x="117.094" y="51.308" size="0.8128" layer="95" font="vector"/>
 </segment>
 </net>
 <net name="KEYB_RX" class="0">
@@ -17575,38 +17548,40 @@ Source: &lt;a href="http://www.smc-diodes.com/propdf/BAT54WS N0714 REV.D.pdf"&gt
 <net name="N$7" class="0">
 <segment>
 <pinref part="LED2" gate="G$1" pin="DI"/>
-<wire x1="167.64" y1="45.72" x2="193.04" y2="45.72" width="0.1524" layer="91"/>
-<wire x1="193.04" y1="45.72" x2="193.04" y2="50.8" width="0.1524" layer="91"/>
-<wire x1="193.04" y1="50.8" x2="203.2" y2="50.8" width="0.1524" layer="91"/>
-<wire x1="203.2" y1="50.8" x2="203.2" y2="48.26" width="0.1524" layer="91"/>
+<wire x1="175.26" y1="45.72" x2="200.66" y2="45.72" width="0.1524" layer="91"/>
+<wire x1="200.66" y1="45.72" x2="200.66" y2="50.8" width="0.1524" layer="91"/>
+<wire x1="200.66" y1="50.8" x2="210.82" y2="50.8" width="0.1524" layer="91"/>
+<wire x1="210.82" y1="50.8" x2="210.82" y2="48.26" width="0.1524" layer="91"/>
 <pinref part="LED3" gate="G$1" pin="DI"/>
-<wire x1="203.2" y1="50.8" x2="223.52" y2="50.8" width="0.1524" layer="91"/>
-<wire x1="223.52" y1="50.8" x2="223.52" y2="48.26" width="0.1524" layer="91"/>
-<junction x="203.2" y="50.8"/>
+<wire x1="210.82" y1="50.8" x2="231.14" y2="50.8" width="0.1524" layer="91"/>
+<wire x1="231.14" y1="50.8" x2="231.14" y2="48.26" width="0.1524" layer="91"/>
+<junction x="210.82" y="50.8"/>
 <pinref part="IC6" gate="G$1" pin="Y"/>
 </segment>
 </net>
 <net name="N$3" class="0">
 <segment>
-<pinref part="R10" gate="G$1" pin="1"/>
-<wire x1="129.54" y1="40.64" x2="132.08" y2="40.64" width="0.1524" layer="91"/>
-<wire x1="132.08" y1="40.64" x2="132.08" y2="43.18" width="0.1524" layer="91"/>
-<wire x1="132.08" y1="43.18" x2="134.62" y2="43.18" width="0.1524" layer="91"/>
-<wire x1="134.62" y1="43.18" x2="142.24" y2="43.18" width="0.1524" layer="91"/>
+<pinref part="R150" gate="G$1" pin="1"/>
+<wire x1="137.16" y1="43.18" x2="139.7" y2="43.18" width="0.1524" layer="91"/>
 <pinref part="IC6" gate="G$1" pin="A"/>
+<pinref part="R250" gate="G$1" pin="1"/>
+<wire x1="139.7" y1="43.18" x2="149.86" y2="43.18" width="0.1524" layer="91"/>
+<wire x1="137.16" y1="35.56" x2="139.7" y2="35.56" width="0.1524" layer="91"/>
+<wire x1="139.7" y1="35.56" x2="139.7" y2="43.18" width="0.1524" layer="91"/>
+<junction x="139.7" y="43.18"/>
 </segment>
 </net>
 <net name="N$4" class="0">
 <segment>
 <pinref part="IC6" gate="G$1" pin="B"/>
-<pinref part="IC207" gate="G$1" pin="Y"/>
-<wire x1="119.38" y1="66.04" x2="127" y2="66.04" width="0.1524" layer="91"/>
-<wire x1="127" y1="66.04" x2="127" y2="45.72" width="0.1524" layer="91"/>
-<wire x1="127" y1="45.72" x2="132.08" y2="45.72" width="0.1524" layer="91"/>
-<pinref part="R109" gate="G$1" pin="2"/>
-<wire x1="132.08" y1="45.72" x2="142.24" y2="45.72" width="0.1524" layer="91"/>
-<wire x1="132.08" y1="50.8" x2="132.08" y2="45.72" width="0.1524" layer="91"/>
-<junction x="132.08" y="45.72"/>
+<wire x1="139.7" y1="45.72" x2="149.86" y2="45.72" width="0.1524" layer="91"/>
+<pinref part="R251" gate="G$1" pin="1"/>
+<wire x1="139.7" y1="50.8" x2="139.7" y2="45.72" width="0.1524" layer="91"/>
+<wire x1="137.16" y1="50.8" x2="139.7" y2="50.8" width="0.1524" layer="91"/>
+<wire x1="139.7" y1="50.8" x2="139.7" y2="58.42" width="0.1524" layer="91"/>
+<junction x="139.7" y="50.8"/>
+<pinref part="R151" gate="G$1" pin="1"/>
+<wire x1="139.7" y1="58.42" x2="137.16" y2="58.42" width="0.1524" layer="91"/>
 </segment>
 </net>
 </nets>

@@ -80,7 +80,7 @@
 #define PIN_ACK             10      // in  - SCSI: CACK (through latch IC203), ACSI: ACK (through IC101)
 #define PIN_DATA_DIR        28      // out
 
-#define PIN_NEOPIXEL        9       // out - ACSI only: to the WS2812 through the AND gate IC6 (5V level shifter), its other input is H (R109).
+#define PIN_NEOPIXEL        9       // out - ACSI only: to the WS2812 through the AND gate IC6 (5V level shifter), its other input is H (R151).
                                     //       SCSI: the neopixel data is OUT_LE1 on IC6.A, gated by OUT_LE2 on IC6.B
 #define PIN_VARIANT_STRAP   26      // in on boot - H: ACSI (R125 pull-up), L: SCSI (R225 pull-down)
 

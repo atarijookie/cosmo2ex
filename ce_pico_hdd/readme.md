@@ -16,7 +16,7 @@
   - 4 - PIO setup failed (halted)
 
 The LED gets updated only between commands, when its color changes. ACSI sends the data on GP9
-(IC6 gate held open by R109). SCSI sends it on OUT_LE1 (IC6.A) with OUT_LE2 (IC6.B) as the gate - the firmware never has both
+(IC6 gate held open by R151). SCSI sends it on OUT_LE1 (IC6.A) with OUT_LE2 (IC6.B) as the gate - the firmware never has both
 H except for the LED update, so the bus activity doesn't get to the LED. On SCSI the device ignores the bus until it's
 connected to the host (the Atari doesn't see the drive till then).
 
