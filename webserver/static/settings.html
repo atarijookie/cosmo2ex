@@ -114,6 +114,13 @@
             .setting-status.error {
                 color: #c0392b;
             }
+            button.danger-button {
+                background-color: #c0392b;
+                color: white;
+            }
+            button.danger-button:hover {
+                background-color: #a93226;
+            }
             #devices-table {
                 width: 100%;
                 border-collapse: collapse;
@@ -262,6 +269,54 @@
                 });
             }
 
+            function showLogFilesStatus(text, isError) {
+                var el = document.getElementById('logfiles-status');
+                el.textContent = text;
+                el.className = 'setting-status ' + (isError ? 'error' : 'ok');
+            }
+
+            // backend zips all logs, Content-Disposition gives the file name - a plain link download keeps the auth cookie
+            function downloadLogs() {
+                showLogFilesStatus('', false);
+                window.location.href = '/settings/logs';
+            }
+
+            function wipeLogs() {
+                if (!confirm('Wipe all log files?\n\n' +
+                             'Current logs will be emptied and rotated (.1) logs deleted. This cannot be undone.\n\n' +
+                             'Download the logs first if you might need them.')) {
+                    return;
+                }
+
+                var button = document.getElementById('wipe-logs-button');
+                button.disabled = true;
+
+                fetch('/settings/logs', {
+                    method: 'DELETE',
+                    credentials: 'include'
+                })
+                .then(function(response) {
+                    return response.json().catch(function() { return {}; }).then(function(result) {
+                        if (!response.ok) {
+                            var why = (result.failed && result.failed.length) ? result.failed.join(', ') : ('HTTP ' + response.status);
+                            throw new Error(why);
+                        }
+                        return result;
+                    });
+                })
+                .then(function(result) {
+                    var count = (result.wiped || []).length;
+                    showLogFilesStatus('Wiped ' + count + ' log file' + (count === 1 ? '' : 's') + '.', false);
+                })
+                .catch(function(error) {
+                    console.error('Wipe logs error:', error);
+                    showLogFilesStatus('Failed to wipe logs: ' + error.message, true);
+                })
+                .then(function() {
+                    button.disabled = false;
+                });
+            }
+
             function showDevicesStatus(text, isError) {
                 var el = document.getElementById('devices-status');
                 el.textContent = text;
@@ -384,6 +439,15 @@
                 Applies to ce_cores and webserver immediately. It's not stored - after restart LOG_LEVEL from .env is used again.
             </div>
             <div id="loglevel-status" class="setting-status"></div>
+            <div class="setting-row">
+                <label>Log files</label>
+                <button class="btn" onclick="downloadLogs()">Download logs (zip)</button>
+                <button id="wipe-logs-button" class="btn danger-button" onclick="wipeLogs()">Wipe logs</button>
+            </div>
+            <div class="setting-hint">
+                Wipe empties all current logs and deletes the rotated (.1) ones - e.g. before reproducing a problem.
+            </div>
+            <div id="logfiles-status" class="setting-status"></div>
         </div>
 
         <div class="settings-section">

@@ -104,6 +104,7 @@ func main() {
 			logErrorf("failed to initialize log file writer: %v", err)
 		} else {
 			log.SetOutput(w)
+			webLogWriter = w
 		}
 	}
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
@@ -235,6 +236,8 @@ func newServer() *Server {
 		protected.Get("/host/dir", s.handleHostDir)
 		protected.Get("/settings/loglevel", s.handleGetLogLevel)
 		protected.Put("/settings/loglevel", s.handlePutLogLevel)
+		protected.Get("/settings/logs", s.handleGetLogs)
+		protected.Delete("/settings/logs", s.handleDeleteLogs)
 
 		// Serve static files (HTML, JS, images, etc.) from the local "static" directory.
 		// This directory lives next to the Go sources / binary working directory.

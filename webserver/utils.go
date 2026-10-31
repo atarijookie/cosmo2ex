@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -116,6 +117,29 @@ func (w *rotatingFileWriter) rotate() error {
 		return err
 	}
 	w.file = f
+	w.size = 0
+	return nil
+}
+
+// path returns the path of the current log file
+func (w *rotatingFileWriter) path() string {
+	return filepath.Join(w.dir, w.baseName)
+}
+
+// truncate empties the current log file and resets the size counter (used when wiping logs from web UI)
+func (w *rotatingFileWriter) truncate() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.file == nil {
+		return os.Truncate(w.path(), 0)
+	}
+	if err := w.file.Truncate(0); err != nil {
+		return err
+	}
+	if _, err := w.file.Seek(0, io.SeekStart); err != nil { // file opened after rotation isn't O_APPEND - would continue at old offset
+		return err
+	}
 	w.size = 0
 	return nil
 }
