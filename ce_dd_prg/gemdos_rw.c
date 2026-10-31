@@ -184,7 +184,8 @@ uint32_t fread_big(uint16_t ceHandle, uint32_t countNeeded, uint8_t *buffer)
     }
 
     // Second phase of BIG fread: transfer data by blocks of size 512 bytes, buffer must be EVEN
-    uint8_t  toFastRam = (((uint32_t)buffer) >= 0x1000000) ? TRUE : FALSE;          // flag: are we reading to FAST RAM?
+    // through FastRAMBuffer when reading to FAST RAM, or to an address the DMA can't use (TT SCSI needs longword aligned)
+    uint8_t  toFastRam = ((((uint32_t)buffer) >= 0x1000000) || (((uint32_t)buffer) & hdIf.dmaAlignMask)) ? TRUE : FALSE;
     uint32_t blockSize = toFastRam ? FASTRAM_BUFFER_SIZE : (MAXSECTORS * 512); // size of block, which we will read
 
     uint32_t res;
@@ -336,7 +337,8 @@ int32_t custom_fwrite( void *sp )
 			return count;
 		} else {														// if the remaining data count is more that we can buffer
 			// transfer the remaining data in a loop
-            uint8_t  toFastRam = (((int)buffer) >= 0x1000000) ? TRUE : FALSE;          // flag: are we reading to FAST RAM?
+            // through FastRAMBuffer when writing from FAST RAM, or from an address the DMA can't use (TT SCSI needs longword aligned)
+            uint8_t  toFastRam = ((((uint32_t)buffer) >= 0x1000000) || (((uint32_t)buffer) & hdIf.dmaAlignMask)) ? TRUE : FALSE;
             uint32_t blockSize = toFastRam ? FASTRAM_BUFFER_SIZE : (MAXSECTORS * 512); // size of block, which we will read
 
 			while(remCount > 0) {										// while there's something to send

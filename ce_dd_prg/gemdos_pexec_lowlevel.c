@@ -168,7 +168,7 @@ uint32_t myCRwabs(uint8_t *sp)
     }
 
     uint8_t  toFastRam     =  (((uint32_t) pBuffer) >= 0x1000000) ? TRUE  : FALSE;        // flag: are we reading to FAST RAM?
-    uint8_t  bufAddrIsOdd  = ((((uint32_t) pBuffer) & 1) == 0)    ? FALSE : TRUE;         // flag: buffer pointer is on ODD address?
+    uint8_t  bufAddrIsOdd  = ((((uint32_t) pBuffer) & hdIf.dmaAlignMask) == 0) ? FALSE : TRUE;  // flag: buffer not aligned for DMA (ODD, or on TT SCSI not longword)?
     uint8_t  useMidBuffer  = (toFastRam || bufAddrIsOdd);                              // flag: is load to fast ram or on odd address, use middle buffer
 
     uint32_t maxSectorCount = useMidBuffer ? (FASTRAM_BUFFER_SIZE / 512) : MAXSECTORS; // how many sectors we can read at once - if going through middle buffer then middle buffer size, otherwise max sector coun

@@ -57,6 +57,11 @@ uint8_t dmaDataTx_do_TT      (uint8_t readNotWrite, uint8_t *buffer, uint32_t da
 void clearCache030(void);
 
 uint32_t _cmdTimeOut;                      // timeout time for scsi_cmd() from start to end
+// Bounce buffer for DMA buffers which are not aligned as the DMA needs (hdIf.dmaAlignMask). It's aligned at runtime -
+// a.out objects don't allow alignment above 2, and the absolute alignment depends on where the program was loaded.
+#define BOUNCE_BUFFER_SIZE  4096                // the biggest transfer through it - FASTRAM_BUFFER_SIZE of CE_DD fits
+static uint8_t bounceBufferRaw[BOUNCE_BUFFER_SIZE + 4];
+
 void scsiCmdTT(uint8_t readNotWrite, uint8_t *cmd, uint8_t cmdLength, uint8_t *buffer, uint16_t sectorCount)
 {
     //--------
@@ -87,6 +92,27 @@ void scsiCmdTT(uint8_t readNotWrite, uint8_t *cmd, uint8_t cmdLength, uint8_t *b
     if(scsiId == hdIf.scsiHostId) {     // Trying to access reserved SCSI ID? Fail... (skip)
         hdIf.success = FALSE;
         return;
+    }
+
+    //------------
+    // unaligned buffer? use the bounce buffer, or the DMA would write the data to (or read it from) a lower address
+    uint8_t *userBuffer = buffer;
+    uint8_t  bounced    = FALSE;
+    uint32_t dataBytes  = ((uint32_t) sectorCount) << 9;
+
+    if(sectorCount != 0 && (((uint32_t) buffer) & hdIf.dmaAlignMask) != 0) {
+        if(dataBytes > BOUNCE_BUFFER_SIZE) {    // too big to bounce - fail rather than corrupting memory
+            logMsg("scsiCmdTT - unaligned buffer too big for bounce buffer\r\n");
+            hdIf.success = FALSE;
+            return;
+        }
+
+        buffer  = (uint8_t *) ((((uint32_t) bounceBufferRaw) + 3) & 0xfffffffc);
+        bounced = TRUE;
+
+        if(!readNotWrite) {                     // write - data goes from the bounce buffer
+            memcpy(buffer, userBuffer, dataBytes);
+        }
     }
 
     //------------
@@ -122,6 +148,10 @@ void scsiCmdTT(uint8_t readNotWrite, uint8_t *cmd, uint8_t cmdLength, uint8_t *b
 
     if(!hdIf.success) {
         logMsg("scsiCmdTT failed on scsiGetStatusAndMsgIn \r\n");
+    }
+
+    if(bounced && readNotWrite) {                      // read through bounce buffer? copy the data where they belong
+        memcpy(userBuffer, buffer, dataBytes);
     }
 
     *FLOCK = 0;                         // clear FLOCK to enable FDC operations

@@ -52,6 +52,12 @@ typedef struct {
     uint8_t     showLogs;
 
     uint32_t    longTimeoutTicks;       // how long the timeout will be when timeout is set using scsiSetLongTimeout(). Default value SCSI_TIMEOUT_LONG.
+
+    // Which low address bits must be 0 in a DMA buffer: 1 = even address (ACSI, Falcon SCSI), 3 = longword (TT SCSI - its
+    // DMA ignores the low 2 bits, so a buffer at ...2 got the data 2 bytes lower, over whatever was before it).
+    // scsiCmdTT() bounces small unaligned transfers through its own buffer; for big ones the caller must use an aligned
+    // buffer (or a middle buffer). Last in the struct - other programs get to hdIf through the CEPI cookie.
+    uint8_t     dmaAlignMask;
 } THDif;
 
 extern THDif hdIf;

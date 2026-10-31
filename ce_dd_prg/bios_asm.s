@@ -54,11 +54,25 @@ bios_call:
 	beq.b	bios_not_handled
 	movea.l	(a0),a0
 
+	| run on our own stack - see the comment in gemdos_asm.s (shared stack, only the outermost call switches)
+	movem.l d1/d2/a1/a2,saveregs	| temp save - d1 is needed now
+	move.l	sp,d1					| d1 = stack of the caller
+	tst.w	_ce_stack_depth			| nested call? stay on the current stack
+	bne.b	bios_stackReady
+	lea		_ce_stack_top,sp		| outermost call - switch to our stack
+bios_stackReady:
+	addq.w	#1,_ce_stack_depth
+	move.l	d1,-(sp)				| stack of the caller, to return to it
+	movem.l saveregs,d1/d2/a1/a2	| original values back...
+	movem.l d1/d2/a1/a2,-(sp)		| ...and keep them on the stack (required by TOS versions earlier than 2), nesting safe
+
 	move.l	d0,-(sp)				| param #1: stack pointer with function params
-	movem.l d1/d2/a1/a2,saveregs	| save registers (required by TOS versions earlier than 2)
 	jsr		(a0)					| call the handler
-	movem.l saveregs,d1/d2/a1/a2	| restore registers (required by TOS versions earlier than 2)
 	addq.l	#4,sp
+
+	movem.l (sp)+,d1/d2/a1/a2		| restore registers
+	subq.w	#1,_ce_stack_depth
+	move.l	(sp),sp					| back to stack of the caller
 	rte								| return from exception, d0 contains return code
 	
 bios_not_handled:

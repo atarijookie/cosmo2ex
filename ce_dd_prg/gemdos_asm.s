@@ -77,12 +77,29 @@ callCustomHandlerNotPexec:                  |
 	beq.b   callOriginalHandler             | if A0 == NULL, we don't have custom handler and use original handler
 	
 	move.l	(a0),a0							| custom function pointer
-	move.l	d0,-(sp)						| param #1: stack pointer with function params
 
-	movem.l d1/d2/a1/a2,saveregs			| save registers (required by TOS versions earlier than 2)
+| The custom handlers run on our own stack: the supervisor stack of the calling program can be very small (on TT it
+| was overflowed by Fread -> ... -> scsiCmdTT, crashing randomly when an interrupt came on top of it).
+| Only the outermost call switches to it. A nested call (handler -> original TOS function -> BIOS call handled by us
+| again) comes on TOS' own stack while our stack is still in use by the outer call, so it stays on the stack it came on.
+	movem.l d1/d2/a1/a2,saveregs			| temp save - d1 is needed now
+	move.l	sp,d1							| d1 = stack of the caller
+	tst.w	_ce_stack_depth					| nested call? stay on the current stack
+	bne.b	gd_stackReady
+	lea		_ce_stack_top,sp				| outermost call - switch to our stack
+gd_stackReady:
+	addq.w	#1,_ce_stack_depth
+	move.l	d1,-(sp)						| stack of the caller, to return to it
+	movem.l saveregs,d1/d2/a1/a2			| original values back...
+	movem.l d1/d2/a1/a2,-(sp)				| ...and keep them on the stack (required by TOS versions earlier than 2), nesting safe
+
+	move.l	d0,-(sp)						| param #1: stack pointer with function params
 	jsr     (a0)                            | call the custom handler
-	movem.l saveregs,d1/d2/a1/a2			| restore registers (required by TOS versions earlier than 2)
     addq.l  #4,sp
+
+	movem.l (sp)+,d1/d2/a1/a2				| restore registers
+	subq.w	#1,_ce_stack_depth
+	move.l	(sp),sp							| back to stack of the caller
 
     rte                                     | return from exception, d0 contains return code
 
@@ -158,3 +175,12 @@ _pexec_callOrig:    dc.w    0       | 1 = after custom handler call original Pex
 
 	.bss
 saveregs:			ds.l	4		| d1/d2/a1/a2 temp space
+
+| private stack for the GEMDOS and BIOS handlers (also used by bios_asm.s); in BSS, so it doesn't make the driver file bigger
+	.globl	_ce_stack_top
+	.globl	_ce_stack_depth
+	.even
+_ce_stack_depth:	ds.w	1		| nesting depth of GEMDOS / BIOS handler calls - only the outermost one switches the stack
+	.even
+_ce_stack:			ds.b	8192
+_ce_stack_top:
