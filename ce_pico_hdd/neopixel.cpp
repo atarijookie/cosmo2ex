@@ -18,7 +18,8 @@ static volatile uint8_t ledErrorCode = 0;
 // colors at full brightness of the status - the WS2812C-2020 is bright, so these are far from 255
 #define ORANGE_R            96
 #define ORANGE_G            28
-#define GREEN_G             48
+#define GREEN_G             48      // running on ACSI
+#define BLUE_B              64      // running on SCSI - the blue looks dimmer than the green at the same value
 #define RED_R               64
 
 // error blinking: code x (on + off), then pause
@@ -26,11 +27,9 @@ static volatile uint8_t ledErrorCode = 0;
 #define ERR_BLINK_OFF_MS    250
 #define ERR_PAUSE_MS        1500
 
-#define REFRESH_MS          1000    // during init / error send the color again even if unchanged - fixes the color after junk bits
-                                    // from shared pin activity; once running (green) it's sent just once, so the bus isn't disturbed
-
-// WS2812C-2020 bit timing in ns (T0H 220-380, T1H / T0L / T1L 580-1000)
-#define T0H_NS              250
+// WS2812C-2020 bit timing in ns (T0H 220-380, T1H / T0L / T1L 580-1000). The H times come out ~100 ns longer at the LED
+// (loop overhead + gates) - T0H 250 was measured as 340-360 ns, too close to the max 380, so it's set shorter.
+#define T0H_NS              180
 #define T0L_NS              800
 #define T1H_NS              700
 #define T1L_NS              600
@@ -83,7 +82,7 @@ static uint32_t currentColor(uint32_t now)
 {
     switch(ledState) {
         case LED_STATE_RUNNING:
-            return toGrb(0, GREEN_G, 0);
+            return IS_ACSI ? toGrb(0, GREEN_G, 0) : toGrb(0, 0, BLUE_B);   // the color tells the variant
 
         case LED_STATE_ERROR: {
             uint32_t code = ledErrorCode;
@@ -119,20 +118,15 @@ void neopixelInit(void)
 void neopixelProcess(void)
 {
     static uint32_t lastColor = 0xffffffff;
-    static uint32_t lastSentTime = 0;
 
-    uint32_t now = millis();
-    uint32_t color = currentColor(now);
+    uint32_t color = currentColor(millis());
 
-    bool refreshDue = (ledState != LED_STATE_RUNNING) && (now - lastSentTime) >= REFRESH_MS;
-
-    if(color == lastColor && !refreshDue) {     // nothing changed, refresh not needed (yet)
+    if(color == lastColor) {        // nothing changed
         return;
     }
 
     neopixelOutput(color);
     lastColor = color;
-    lastSentTime = now;
 }
 
 // 3 cycles per loop, like busy_wait_at_least_cycles(), but always inlined - so it runs from RAM with the caller
@@ -144,9 +138,9 @@ static inline __attribute__((always_inline)) void delayCycles(uint32_t cycles)
 }
 
 // From RAM with interrupts disabled - a flash cache miss or an IRQ during a bit would change it (~31 us in total).
-void __not_in_flash_func(neopixelSendFrame)(uint32_t grb)
+void __not_in_flash_func(neopixelSendFrame)(uint pin, uint32_t grb)
 {
-    uint32_t mask = 1u << PIN_NEOPIXEL;
+    uint32_t mask = 1u << pin;
     uint32_t irqState = save_and_disable_interrupts();
 
     for(int i = 23; i >= 0; i--) {      // MSB first, G R B

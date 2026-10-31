@@ -744,6 +744,8 @@
             margin: 0 auto;
             max-width: 100%;
             height: auto;
+            border: 1px solid #000;     /* shows where the screen ends - a white ST screen blends with the page otherwise */
+            box-sizing: border-box;     /* the border stays inside max-width */
         }
         #canvas {
             display: block;

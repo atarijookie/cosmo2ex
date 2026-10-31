@@ -22,7 +22,6 @@ uint8_t atnSendACSIcommand[ATN_SENDACSICOMMAND_LEN_TX];
 EthernetClient client;
 
 extern volatile bool core1running;
-extern volatile bool core0setupDone;
 extern volatile bool connected;
 void core1_main_loop(void);
 
@@ -118,8 +117,6 @@ void setup(void)
     ikbdInit();
 
     ethernetInit();     // ethernet init
-
-    core0setupDone = true;  // core 1 can start listening on the bus now
 }
 
 void setupAtnBuffers(void)

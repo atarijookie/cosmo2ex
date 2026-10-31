@@ -8,18 +8,17 @@
 ## Status LED (neopixel)
 
 - orange - initializing, brighter with each step: setup started, bus handling running, waiting for ethernet link + DHCP, got IP, looking for / connecting to host
-- green - connected to host
+- green (ACSI) / blue (SCSI) - connected to host, the color shows which variant the board runs
 - red blinks - error, the count of blinks is the error code, then a longer pause:
   - 1 - ethernet chip not found (halted)
   - 2 - ethernet cable not connected (keeps retrying)
   - 3 - no IP from DHCP (keeps retrying)
   - 4 - PIO setup failed (halted)
 
-The LED gets updated only between commands (on SCSI its pin is shared with RST / REQ / C/D). During init / error it's also refreshed
-once per second, once running the green is sent just once - so the bus is not disturbed by the LED while running.
-On SCSI the device doesn't listen on the bus until the init is done (got IP), so the LED is stable during init; after that
-the bus activity can corrupt the color on the first boards (their AND gate is open whenever OUT_OE is H). On the boards
-with IC207 the gate opens only while OUT_LE1 and OUT_LE2 are both H, which happens just for the neopixel update.
+The LED gets updated only between commands, when its color changes. ACSI sends the data on GP9
+(IC6 gate held open by R109). SCSI sends it on OUT_LE1 (IC6.A) with OUT_LE2 (IC6.B) as the gate - the firmware never has both
+H except for the LED update, so the bus activity doesn't get to the LED. On SCSI the device ignores the bus until it's
+connected to the host (the Atari doesn't see the drive till then).
 
 ## Compiling under Linux
 

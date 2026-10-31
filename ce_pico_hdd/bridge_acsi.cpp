@@ -406,5 +406,5 @@ void acsiResetBridge(void)
 // which is H between commands). The pin is an output idling L, so the gap before the frame is a reset already.
 void acsiNeopixelOutput(uint32_t grb)
 {
-    neopixelSendFrame(grb);
+    neopixelSendFrame(PIN_NEOPIXEL, grb);
 }

@@ -5,7 +5,7 @@
 
 // Status shown on the neopixels (LED2 top, LED3 bottom - both get the same data):
 // - orange during init, brighter with each step (LED_STEP_*)
-// - green once connected to the host
+// - once connected to the host: green on ACSI, blue on SCSI
 // - red blinks with the error code (count of blinks, then a longer pause) on error (LED_ERR_*)
 
 #define LED_STEP_SETUP          1       // core 0 setup started
@@ -20,7 +20,7 @@
 #define LED_ERR_NO_DHCP         3       // no IP from DHCP (keeps retrying)
 #define LED_ERR_PIO             4       // failed to claim PIO state machine (halted)
 
-#define NEOPIXEL_RESET_US       300     // L time needed for latching the color, 280 us for the newer WS2812 parts
+#define NEOPIXEL_RESET_US       500     // L time needed for latching the color - WS2812C-2020 needs >= 280 us, this leaves a margin
 
 // setting the status - from any core
 void ledSetInitStep(uint8_t step);      // also clears the error
@@ -30,7 +30,7 @@ void haltWithError(uint8_t code);       // show the error and stop this core for
 
 // output - on core 1, only while the bus is idle (the neopixel pin is shared with SCSI signals)
 void neopixelInit(void);
-void neopixelProcess(void);             // send the current color when changed, during init / error also once per second
-void neopixelSendFrame(uint32_t grb);   // just the 24 bits, the pin must be an SIO output driven L
+void neopixelProcess(void);             // send the current color when changed
+void neopixelSendFrame(uint pin, uint32_t grb);     // just the 24 bits, the pin must be an SIO output driven L
 
 #endif
