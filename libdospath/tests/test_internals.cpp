@@ -377,8 +377,30 @@ TEST_CASE("FilenameShortener special names")
         {"archive.tar.gz",  "ARCHIV~1.GZ"},     // more dots - only the last one separates extension
         {"a.b.c.d",         "A_B_C.D"},         // inner dots replaced with '_'
         {"file.",           "FILE"},            // trailing dot - empty extension
-        {"Caf\xc3\xa9.txt",  "CAF__.TXT"},       // UTF-8 'e with acute' - each byte replaced with '_'
+        {"Caf\xc3\xa9.txt",  "CAFE.TXT"},        // UTF-8 'e with acute' - transliterated to 'E'
+        {"Caf\xe9.txt",      "CAF_.TXT"},        // not valid UTF-8 (Latin-1 'e with acute') - the byte replaced with '_'
+        {"\xe4\xb8\xad.txt",  "_.TXT"},           // CJK char without ASCII equivalent - one '_' for the whole char
         {"   .txt",         "___.TXT"},         // spaces replaced with '_'
+    };
+    checkShortNames(fs, names, sizeof(names) / sizeof(names[0]));
+}
+
+TEST_CASE("FilenameShortener transliterates national characters")
+{
+    FilenameShortener fs(ldpTestRoot());
+
+    const char* names[][2] = {
+        {"\xc4\x8c\x65rven\xc3\xbd trpasl\xc3\xadk - 01x01 - Konec.mp4", "CERVEN~1.MP4"},   // Czech 'Červený trpaslík'
+        {"\xc5\xbd\x6c\x75\xc5\xa5ou\xc4\x8dk\xc3\xbd.txt",   "ZLUTOU~1.TXT"},     // Czech 'Žluťoučký'
+        {"Stra\xc3\x9f\x65.doc",        "STRASSE.DOC"},     // German 'Straße'
+        {"\xc3\x84rger.txt",              "ARGER.TXT"},       // German 'Ärger'
+        {"\xc5\x81\xc3\xb3\x64\xc5\xba.txt", "LODZ.TXT"},  // Polish 'Łódź'
+        {"\xc8\x98\x63oal\xc4\x83.txt", "SCOALA.TXT"},      // Romanian 'Școală'
+        {"\xc3\x86\x62le.txt",           "AEBLE.TXT"},       // Danish 'Æble'
+        {"\xd0\x9c\xd0\xbe\xd1\x81\xd0\xba\xd0\xb2\xd0\xb0.txt", "MOSKVA.TXT"},  // Cyrillic 'Москва'
+        {"\xce\x91\xce\xb8\xce\xae\xce\xbd\xce\xb1.txt", "ATHINA.TXT"},           // Greek 'Αθήνα'
+        {"a\xe2\x80\x93\x62.txt",       "A-B.TXT"},         // en dash -> '-'
+        {"Caf\xc3\xa9.m\xc3\xa4x",      "CAFE.MAX"},        // also in extension
     };
     checkShortNames(fs, names, sizeof(names) / sizeof(names[0]));
 }

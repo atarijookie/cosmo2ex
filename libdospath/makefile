@@ -5,7 +5,7 @@ CFLAGS	= -Wall -g -D_FILE_OFFSET_BITS=64
 CXXFLAGS	= $(CFLAGS) -std=gnu++17	# not c++17 - in that strict mode Cygwin's headers hide e.g. DT_DIR (see ce_cores/makefile)
 
 TARGET	= libdospath.a
-OBJS	= dirtranslator.o filenameshortener.o libexports.o utilslib.o
+OBJS	= dirtranslator.o filenameshortener.o libexports.o transliterate.o utilslib.o
 
 # platform switch, like in ce_cores/makefile - the library is the same everywhere, only the test binary name differs
 UNAME_S ?= $(shell uname -s)

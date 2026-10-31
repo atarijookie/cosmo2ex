@@ -5,6 +5,7 @@
 #include "libdospath.h"
 #include "filenameshortener.h"
 #include "utilslib.h"
+#include "transliterate.h"
 
 FilenameShortener::FilenameShortener(const std::string &path)
 {
@@ -57,8 +58,12 @@ bool FilenameShortener::longToShortFileName(const std::string& longFileName, std
         *createdNotFound = true;            // true == translation was created
 
     // divide longFileName to filename and extension
+    // first turn national chars into ASCII ('Červený' -> 'Cerveny'), otherwise each of their UTF-8 bytes would become '_'
+    std::string asciiFileName;
+    transliterateToAscii(longFileName, asciiFileName);
+
     std::string fileName, fileExt;
-    UtilsLib::splitFilenameFromExt(longFileName, fileName, fileExt);
+    UtilsLib::splitFilenameFromExt(asciiFileName, fileName, fileExt);
 
     replaceNonLettersAndToUpperCase(fileName);  // fix bad characters and capitalize chars
     replaceNonLettersAndToUpperCase(fileExt);
