@@ -520,6 +520,13 @@
 
           slider.addEventListener('change', function() {   // released - save it
             saveFps(parseInt(slider.value, 10));
+            slider.blur();
+          });
+
+          // once released, the slider would keep the focus - keys would then go to it and get stopped above
+          // (never reaching the ST), so give the focus back to the page
+          ['mouseup', 'touchend'].forEach(function(name) {
+            slider.addEventListener(name, function() { slider.blur(); });
           });
         }
 
