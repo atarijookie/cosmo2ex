@@ -29,6 +29,8 @@ typedef unsigned int uint;
 uint32_t millis(void);
 void delay(uint32_t ms);
 void sleep_ms(uint32_t ms);
+uint32_t time_us_32(void);                  // fake clock in us, plus 1 us on each call - busy-wait loops on it always end
+inline void tight_loop_contents(void) { }
 
 typedef int32_t alarm_id_t;
 typedef int64_t (*alarm_callback_t)(alarm_id_t id, void *user_data);

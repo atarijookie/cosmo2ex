@@ -91,6 +91,13 @@ uint32_t millis(void)
 }
 
 void delay(uint32_t ms)    { fakeAdvanceMillis(ms); }
+
+uint32_t time_us_32(void)
+{
+    static uint32_t usCalls = 0;            // advance by 1 us per call, so loops waiting for a time point end without the tests moving the clock
+    usCalls++;
+    return fakeNow * 1000 + usCalls;
+}
 void sleep_ms(uint32_t ms) { fakeAdvanceMillis(ms); }
 
 alarm_id_t add_alarm_in_ms(uint32_t ms, alarm_callback_t callback, void *user_data, bool)
