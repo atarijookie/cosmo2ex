@@ -47,6 +47,15 @@
 // does not always seem to work in practice (maybe Wiznet bugs?)
 #define ETHERNET_LARGE_BUFFERS
 
+// Sockets below this one are never given out by socketBegin() - socket 0 is kept free for MACRAW (W6100 can do it only on socket 0).
+#define ETHERNET_FIRST_SOCKET   1
+
+// W6100 only: buffer size of each socket in KB (0, 1, 2, 4, 8 or 16), each direction must sum up to max 16 KB.
+// socketBegin() gives TCP the lowest free socket and UDP the highest, so on ce_pico_hdd the sockets end up as:
+//      0 - MACRAW (STinG), 1 - HDD TCP, 2 - IKBD TCP, 3 - UDP (host discovery, DHCP)
+#define W6100_RX_SIZES_KB       { 8, 4, 2, 2 }
+#define W6100_TX_SIZES_KB       { 4, 8, 2, 2 }
+
 //#define USE_SERIAL_DEBUG_PRINT
 
 #ifdef USE_SERIAL_DEBUG_PRINT

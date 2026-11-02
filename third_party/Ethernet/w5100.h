@@ -470,11 +470,10 @@ public:
   static const uint16_t SSIZE = 2048;
   static const uint16_t SMASK = 0x07FF;
 #endif
+  // not for W6100 - its sockets have different buffer sizes, use readSnRxBuf() / writeSnTxBuf() there
   static uint16_t SBASE(uint8_t socknum) {
     if (chip == 51 || chip == 50) {
       return socknum * SSIZE + 0x4000;
-    } else if (chip == 61) {
-      return socknum * SSIZE + W6100_TX_BASE_ADDR;
     } else {
       return socknum * SSIZE + 0x8000;
     }
@@ -482,12 +481,24 @@ public:
   static uint16_t RBASE(uint8_t socknum) {
     if (chip == 51 || chip == 50) {
       return socknum * SSIZE + 0x6000;
-    } else if (chip == 61) {
-      return socknum * SSIZE + W6100_RX_BASE_ADDR;
     } else {
       return socknum * SSIZE + 0xC000;
     }
   }
+
+  // TX / RX buffer size of the socket in bytes - per socket on W6100 (W6100_*_SIZES_KB), the same for all sockets on the other chips
+  static uint16_t txSize(uint8_t socknum) { return (chip == 61) ? (uint16_t)w6100TxKB[socknum] << 10 : SSIZE; }
+  static uint16_t rxSize(uint8_t socknum) { return (chip == 61) ? (uint16_t)w6100RxKB[socknum] << 10 : SSIZE; }
+
+  // W6100 only: access socket's TX / RX buffer at the raw Sn_TX_WR / Sn_RX_RD pointer value, the chip wraps it in the buffer itself
+  static void writeSnTxBuf(SOCKET s, uint16_t ptr, const uint8_t *buf, uint16_t len);
+  static void readSnRxBuf(SOCKET s, uint16_t ptr, uint8_t *buf, uint16_t len);
+
+private:
+  static const uint8_t w6100TxKB[MAX_SOCK_NUM];
+  static const uint8_t w6100RxKB[MAX_SOCK_NUM];
+
+public:
 
   static bool hasOffsetAddressMapping(void) {
     if (chip == 55 || chip == 61) return true;

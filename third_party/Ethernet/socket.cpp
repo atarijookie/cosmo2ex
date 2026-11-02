@@ -62,9 +62,38 @@ void EthernetClass::socketPortRand(uint16_t n)
     //Serial.printf("socketPortRand %d, srcport=%d\n", n, local_port);
 }
 
+// Find a socket for socketBegin*(), call it inside SPI transaction. Returns MAX_SOCK_NUM if all are in use.
+// Sockets below ETHERNET_FIRST_SOCKET are never given out (socket 0 is kept for MACRAW, W6100 can do it only there).
+// TCP takes the lowest free socket and UDP the highest, so the first TCP connection (HDD) lands on the socket with the biggest
+// buffers, the next one (IKBD) on the following one, and UDP (discovery, DHCP) on the last one - see W6100_*_SIZES_KB.
+static uint8_t pickSocket(uint8_t protocol, uint8_t maxindex)
+{
+    uint8_t status[MAX_SOCK_NUM];
+    uint8_t count = maxindex - ETHERNET_FIRST_SOCKET;
+    bool fromBottom = (protocol & 0x0F) == (SnMR::TCP & 0x0F);
+    uint8_t i, s;
+
+    // look at all the hardware sockets, use any that are closed (unused)
+    for (i=0; i < count; i++) {
+        s = fromBottom ? (ETHERNET_FIRST_SOCKET + i) : (maxindex - 1 - i);
+        status[s] = W5100.readSnSR(s);
+        if (status[s] == SnSR::CLOSED) return s;
+    }
+    // as a last resort, forcibly close any already closing
+    for (i=0; i < count; i++) {
+        s = fromBottom ? (ETHERNET_FIRST_SOCKET + i) : (maxindex - 1 - i);
+        uint8_t stat = status[s];
+        if (stat == SnSR::LAST_ACK || stat == SnSR::TIME_WAIT || stat == SnSR::FIN_WAIT || stat == SnSR::CLOSING) {
+            W5100.execCmdSn(s, Sock_CLOSE);
+            return s;
+        }
+    }
+    return MAX_SOCK_NUM; // all sockets are in use
+}
+
 uint8_t EthernetClass::socketBegin(uint8_t protocol, uint16_t port)
 {
-    uint8_t s, status[MAX_SOCK_NUM], chip, maxindex=MAX_SOCK_NUM;
+    uint8_t s, chip, maxindex=MAX_SOCK_NUM;
 
     // first check hardware compatibility
     chip = W5100.getChip();
@@ -74,35 +103,11 @@ uint8_t EthernetClass::socketBegin(uint8_t protocol, uint16_t port)
 #endif
     //Serial.printf("W5000socket begin, protocol=%d, port=%d\n", protocol, port);
     SPI.beginTransaction(SPI_ETHERNET_SETTINGS);
-    // look at all the hardware sockets, use any that are closed (unused)
-    for (s=0; s < maxindex; s++) {
-        status[s] = W5100.readSnSR(s);
-        if (status[s] == SnSR::CLOSED) goto makesocket;
+    s = pickSocket(protocol, maxindex);
+    if (s >= MAX_SOCK_NUM) {
+        SPI.endTransaction();
+        return MAX_SOCK_NUM; // all sockets are in use
     }
-    //Serial.printf("W5000socket step2\n");
-    // as a last resort, forcibly close any already closing
-    for (s=0; s < maxindex; s++) {
-        uint8_t stat = status[s];
-        if (stat == SnSR::LAST_ACK) goto closemakesocket;
-        if (stat == SnSR::TIME_WAIT) goto closemakesocket;
-        if (stat == SnSR::FIN_WAIT) goto closemakesocket;
-        if (stat == SnSR::CLOSING) goto closemakesocket;
-    }
-#if 0
-    Serial.printf("W5000socket step3\n");
-    // next, use any that are effectively closed
-    for (s=0; s < MAX_SOCK_NUM; s++) {
-        uint8_t stat = status[s];
-        // TODO: this also needs to check if no more data
-        if (stat == SnSR::CLOSE_WAIT) goto closemakesocket;
-    }
-#endif
-    SPI.endTransaction();
-    return MAX_SOCK_NUM; // all sockets are in use
-closemakesocket:
-    //Serial.printf("W5000socket close\n");
-    W5100.execCmdSn(s, Sock_CLOSE);
-makesocket:
     //Serial.printf("W5000socket %d\n", s);
     socketGen[s]++;                 // new user of this socket - the previous one must not touch it anymore
     EthernetServer::server_port[s] = 0;
@@ -129,7 +134,7 @@ makesocket:
 // multicast version to set fields before open  thd
 uint8_t EthernetClass::socketBeginMulticast(uint8_t protocol, IPAddress ip, uint16_t port)
 {
-    uint8_t s, status[MAX_SOCK_NUM], chip, maxindex=MAX_SOCK_NUM;
+    uint8_t s, chip, maxindex=MAX_SOCK_NUM;
 
     // first check hardware compatibility
     chip = W5100.getChip();
@@ -139,35 +144,11 @@ uint8_t EthernetClass::socketBeginMulticast(uint8_t protocol, IPAddress ip, uint
 #endif
     //Serial.printf("W5000socket begin, protocol=%d, port=%d\n", protocol, port);
     SPI.beginTransaction(SPI_ETHERNET_SETTINGS);
-    // look at all the hardware sockets, use any that are closed (unused)
-    for (s=0; s < maxindex; s++) {
-        status[s] = W5100.readSnSR(s);
-        if (status[s] == SnSR::CLOSED) goto makesocket;
+    s = pickSocket(protocol, maxindex);
+    if (s >= MAX_SOCK_NUM) {
+        SPI.endTransaction();
+        return MAX_SOCK_NUM; // all sockets are in use
     }
-    //Serial.printf("W5000socket step2\n");
-    // as a last resort, forcibly close any already closing
-    for (s=0; s < maxindex; s++) {
-        uint8_t stat = status[s];
-        if (stat == SnSR::LAST_ACK) goto closemakesocket;
-        if (stat == SnSR::TIME_WAIT) goto closemakesocket;
-        if (stat == SnSR::FIN_WAIT) goto closemakesocket;
-        if (stat == SnSR::CLOSING) goto closemakesocket;
-    }
-#if 0
-    Serial.printf("W5000socket step3\n");
-    // next, use any that are effectively closed
-    for (s=0; s < MAX_SOCK_NUM; s++) {
-        uint8_t stat = status[s];
-        // TODO: this also needs to check if no more data
-        if (stat == SnSR::CLOSE_WAIT) goto closemakesocket;
-    }
-#endif
-    SPI.endTransaction();
-    return MAX_SOCK_NUM; // all sockets are in use
-closemakesocket:
-    //Serial.printf("W5000socket close\n");
-    W5100.execCmdSn(s, Sock_CLOSE);
-makesocket:
     //Serial.printf("W5000socket %d\n", s);
     socketGen[s]++;                 // new user of this socket - the previous one must not touch it anymore
     EthernetServer::server_port[s] = 0;
@@ -290,6 +271,11 @@ static void read_data(uint8_t s, uint16_t src, uint8_t *dst, uint16_t len)
     uint16_t src_ptr;
 
     //Serial.printf("read_data, len=%d, at:%d\n", len, src);
+    if (W5100.getChip() == 61) {        // per-socket buffer sizes - addressed by socket number, the chip wraps the pointer itself
+        W5100.readSnRxBuf(s, src, dst, len);
+        return;
+    }
+
     src_mask = (uint16_t)src & W5100.SMASK;
     src_ptr = W5100.RBASE(s) + src_mask;
 
@@ -372,7 +358,7 @@ uint8_t EthernetClass::socketPeek(uint8_t s)
     uint8_t b;
     SPI.beginTransaction(SPI_ETHERNET_SETTINGS);
     uint16_t ptr = state[s].RX_RD;
-    W5100.read((ptr & W5100.SMASK) + W5100.RBASE(s), &b, 1);
+    read_data(s, ptr, &b, 1);
     SPI.endTransaction();
     return b;
 }
@@ -403,6 +389,13 @@ static void write_data(uint8_t s, uint16_t data_offset, const uint8_t *data, uin
 {
     uint16_t ptr = W5100.readSnTX_WR(s);
     ptr += data_offset;
+
+    if (W5100.getChip() == 61) {        // per-socket buffer sizes - addressed by socket number, the chip wraps the pointer itself
+        W5100.writeSnTxBuf(s, ptr, data, len);
+        W5100.writeSnTX_WR(s, ptr + len);
+        return;
+    }
+
     uint16_t offset = ptr & W5100.SMASK;
     uint16_t dstAddr = offset + W5100.SBASE(s);
 
@@ -429,8 +422,8 @@ uint16_t EthernetClass::socketSend(uint8_t s, const uint8_t * buf, uint16_t len)
     uint16_t ret=0;
     uint16_t freesize=0;
 
-    if (len > W5100.SSIZE) {
-        ret = W5100.SSIZE; // check size not to exceed MAX size.
+    if (len > W5100.txSize(s)) {
+        ret = W5100.txSize(s); // check size not to exceed MAX size.
     } else {
         ret = len;
     }

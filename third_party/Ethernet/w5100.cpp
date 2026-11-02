@@ -12,6 +12,8 @@
 #include "Ethernet.h"
 #include "w5100.h"
 
+void debug(const char *fmt, ...);
+
 
 /***************************************************/
 /**            Default SS pin setting             **/
@@ -58,6 +60,29 @@ uint8_t  W5100Class::ss_pin = SS_PIN_DEFAULT;
 uint16_t W5100Class::SSIZE = 2048;
 uint16_t W5100Class::SMASK = 0x07FF;
 #endif
+
+// W6100 per-socket buffer sizes, see W6100_*_SIZES_KB in Ethernet.h
+static constexpr uint8_t w6100TxKBcfg[] = W6100_TX_SIZES_KB;
+static constexpr uint8_t w6100RxKBcfg[] = W6100_RX_SIZES_KB;
+
+static constexpr bool w6100SizesValid(const uint8_t *kb)
+{
+    int sum = 0;
+    for (int i = 0; i < MAX_SOCK_NUM; i++) {
+        if (kb[i] != 0 && kb[i] != 1 && kb[i] != 2 && kb[i] != 4 && kb[i] != 8 && kb[i] != 16) return false;
+        if (i >= ETHERNET_FIRST_SOCKET && kb[i] == 0) return false;     // socketBegin() could hand out a socket without buffer
+        sum += kb[i];
+    }
+    return sum <= 16;
+}
+
+static_assert(sizeof(w6100TxKBcfg) == MAX_SOCK_NUM && sizeof(w6100RxKBcfg) == MAX_SOCK_NUM, "W6100_*_SIZES_KB need a value for each of MAX_SOCK_NUM sockets");
+static_assert(w6100SizesValid(w6100TxKBcfg), "W6100_TX_SIZES_KB: each size must be 0/1/2/4/8/16 KB, non-zero for usable sockets, max 16 KB in total");
+static_assert(w6100SizesValid(w6100RxKBcfg), "W6100_RX_SIZES_KB: each size must be 0/1/2/4/8/16 KB, non-zero for usable sockets, max 16 KB in total");
+
+const uint8_t W5100Class::w6100TxKB[MAX_SOCK_NUM] = W6100_TX_SIZES_KB;
+const uint8_t W5100Class::w6100RxKB[MAX_SOCK_NUM] = W6100_RX_SIZES_KB;
+
 W5100Class W5100;
 
 // pointers and bitmasks for optimized SS pin
@@ -212,26 +237,18 @@ uint8_t W5100Class::init(void)
     } else if (isW6100()) {
         CH_BASE_MSB = 0x60;
         CH_SIZE = 0x0400;	// W6100
-#ifdef ETHERNET_LARGE_BUFFERS
-#if MAX_SOCK_NUM <= 1
-        SSIZE = 16384;
-#elif MAX_SOCK_NUM <= 2
-        SSIZE = 8192;
-#elif MAX_SOCK_NUM <= 4
-        SSIZE = 4096;
-#else
-        SSIZE = 2048;
-#endif
-        SMASK = SSIZE - 1;
+        // per-socket buffer sizes - must be set before any socket is opened
         for (i=0; i<MAX_SOCK_NUM; i++) {
-            writeSnRX_SIZE(i, SSIZE >> 10);
-            writeSnTX_SIZE(i, SSIZE >> 10);
+            writeSnRX_SIZE(i, w6100RxKB[i]);
+            writeSnTX_SIZE(i, w6100TxKB[i]);
         }
         for (; i<8; i++) {
             writeSnRX_SIZE(i, 0);
             writeSnTX_SIZE(i, 0);
         }
-#endif
+        for (i=0; i<MAX_SOCK_NUM; i++) {    // read back what the chip took
+            debug("W6100 socket %d: RX %d KB, TX %d KB\n", i, readSnRX_SIZE(i), readSnTX_SIZE(i));
+        }
     // No hardware seems to be present.  Or it could be a W5200
     // that's heard other SPI communication if its chip select
     // pin wasn't high when a SD card or other SPI chip was used.
@@ -470,48 +487,10 @@ uint16_t W5100Class::write(uint16_t addr, const uint8_t *buf, uint16_t len)
                     | W6100_SPI_FRAME_CTL_WD
                     | W6100_SPI_FRAME_CTL_OPM_VDM
                     ;
-        } else if (addr < W6100_RX_BASE_ADDR) {
-            // transmit buffers
-
-            cmd[0] = addr>>8;
-            cmd[1] = addr & 0xFF;
-
-            #if defined(ETHERNET_LARGE_BUFFERS) && MAX_SOCK_NUM <= 1
-            cmd[2] = 0;						// 16K buffers
-            #elif defined(ETHERNET_LARGE_BUFFERS) && MAX_SOCK_NUM <= 2
-            cmd[2] = ((addr >> 8) & 0x20);	// 8K buffers
-            #elif defined(ETHERNET_LARGE_BUFFERS) && MAX_SOCK_NUM <= 4
-            cmd[2] = ((addr >> 7) & 0x60);	// 4K buffers
-            #else
-            cmd[2] = ((addr >> 6) & 0xE0);	// 2K buffers
-            #endif
-
-            cmd[2] |= W6100_SPI_FRAME_CTL_BSB_BLK(0)
-                    | W6100_SPI_FRAME_CTL_BSB_TXBF
-                    | W6100_SPI_FRAME_CTL_WD
-                    | W6100_SPI_FRAME_CTL_OPM_VDM
-                    ;
         } else {
-            // receive buffers
-
-            cmd[0] = addr>>8;
-            cmd[1] = addr & 0xFF;
-
-            #if defined(ETHERNET_LARGE_BUFFERS) && MAX_SOCK_NUM <= 1
-            cmd[2] = 0;						// 16K buffers
-            #elif defined(ETHERNET_LARGE_BUFFERS) && MAX_SOCK_NUM <= 2
-            cmd[2] = ((addr >> 8) & 0x20);	// 8K buffers
-            #elif defined(ETHERNET_LARGE_BUFFERS) && MAX_SOCK_NUM <= 4
-            cmd[2] = ((addr >> 7) & 0x60);	// 4K buffers
-            #else
-            cmd[2] = ((addr >> 6) & 0xE0);	// 2K buffers
-            #endif
-
-            cmd[2] |= W6100_SPI_FRAME_CTL_BSB_BLK(0)
-                    | W6100_SPI_FRAME_CTL_BSB_RXBF
-                    | W6100_SPI_FRAME_CTL_WD
-                    | W6100_SPI_FRAME_CTL_OPM_VDM
-                    ;
+            // TX / RX buffers - with per-socket buffer sizes the socket number can't be told from addr, use writeSnTxBuf()
+            resetSS();
+            return 0;
         }
         if (len <= 5) {
             for (uint8_t i=0; i < len; i++) {
@@ -651,48 +630,11 @@ uint16_t W5100Class::read(uint16_t addr, uint8_t *buf, uint16_t len)
                     | W6100_SPI_FRAME_CTL_RD
                     | W6100_SPI_FRAME_CTL_OPM_VDM
                     ;
-        } else if (addr < W6100_RX_BASE_ADDR) {
-            // transmit buffers
-
-            cmd[0] = addr>>8;
-            cmd[1] = addr & 0xFF;
-
-            #if defined(ETHERNET_LARGE_BUFFERS) && MAX_SOCK_NUM <= 1
-            cmd[2] = 0;						// 16K buffers
-            #elif defined(ETHERNET_LARGE_BUFFERS) && MAX_SOCK_NUM <= 2
-            cmd[2] = ((addr >> 8) & 0x20);	// 8K buffers
-            #elif defined(ETHERNET_LARGE_BUFFERS) && MAX_SOCK_NUM <= 4
-            cmd[2] = ((addr >> 7) & 0x60);	// 4K buffers
-            #else
-            cmd[2] = ((addr >> 6) & 0xE0);	// 2K buffers
-            #endif
-
-            cmd[2] |= W6100_SPI_FRAME_CTL_BSB_BLK(0)
-                    | W6100_SPI_FRAME_CTL_BSB_TXBF
-                    | W6100_SPI_FRAME_CTL_RD
-                    | W6100_SPI_FRAME_CTL_OPM_VDM
-                    ;
         } else {
-            // receive buffers
-
-            cmd[0] = addr>>8;
-            cmd[1] = addr & 0xFF;
-
-            #if defined(ETHERNET_LARGE_BUFFERS) && MAX_SOCK_NUM <= 1
-            cmd[2] = 0;						// 16K buffers
-            #elif defined(ETHERNET_LARGE_BUFFERS) && MAX_SOCK_NUM <= 2
-            cmd[2] = ((addr >> 8) & 0x20);	// 8K buffers
-            #elif defined(ETHERNET_LARGE_BUFFERS) && MAX_SOCK_NUM <= 4
-            cmd[2] = ((addr >> 7) & 0x60);	// 4K buffers
-            #else
-            cmd[2] = ((addr >> 6) & 0xE0);	// 2K buffers
-            #endif
-
-            cmd[2] |= W6100_SPI_FRAME_CTL_BSB_BLK(0)
-                    | W6100_SPI_FRAME_CTL_BSB_RXBF
-                    | W6100_SPI_FRAME_CTL_RD
-                    | W6100_SPI_FRAME_CTL_OPM_VDM
-                    ;
+            // TX / RX buffers - with per-socket buffer sizes the socket number can't be told from addr, use readSnRxBuf()
+            resetSS();
+            memset(buf, 0, len);
+            return 0;
         }
         spi_write_blocking(spi0, cmd, 3);
         memset(buf, 0, len);
@@ -744,6 +686,49 @@ uint16_t W5100Class::read(uint16_t addr, uint8_t *buf, uint16_t len)
         resetSS();
     }
     return len;
+}
+
+// W6100: write to socket's TX buffer. ptr is the raw pointer (Sn_TX_WR + offset), the chip wraps it in the buffer of socket s itself.
+void W5100Class::writeSnTxBuf(SOCKET s, uint16_t ptr, const uint8_t *buf, uint16_t len)
+{
+    uint8_t cmd[3];
+
+    cmd[0] = ptr >> 8;
+    cmd[1] = ptr & 0xFF;
+    cmd[2] = W6100_SPI_FRAME_CTL_BSB_BLK(s)
+            | W6100_SPI_FRAME_CTL_BSB_TXBF
+            | W6100_SPI_FRAME_CTL_WD
+            | W6100_SPI_FRAME_CTL_OPM_VDM
+            ;
+
+    setSS();
+    spi_write_blocking(spi0, cmd, 3);
+#ifdef SPI_HAS_TRANSFER_BUF
+    SPI.transfer(buf, NULL, len);
+#else
+    spi_write_blocking(spi0, buf, len);
+#endif
+    resetSS();
+}
+
+// W6100: read from socket's RX buffer. ptr is the raw pointer (Sn_RX_RD), the chip wraps it in the buffer of socket s itself.
+void W5100Class::readSnRxBuf(SOCKET s, uint16_t ptr, uint8_t *buf, uint16_t len)
+{
+    uint8_t cmd[3];
+
+    cmd[0] = ptr >> 8;
+    cmd[1] = ptr & 0xFF;
+    cmd[2] = W6100_SPI_FRAME_CTL_BSB_BLK(s)
+            | W6100_SPI_FRAME_CTL_BSB_RXBF
+            | W6100_SPI_FRAME_CTL_RD
+            | W6100_SPI_FRAME_CTL_OPM_VDM
+            ;
+
+    setSS();
+    spi_write_blocking(spi0, cmd, 3);
+    memset(buf, 0, len);
+    spi_read_blocking(spi0, 0, buf, len);
+    resetSS();
 }
 
 void W5100Class::execCmdSn(SOCKET s, SockCMD _cmd)
