@@ -1,4 +1,6 @@
 #include <string.h>
+#include <stdio.h>
+#include <unistd.h>
 #include <time.h>
 #include <sys/stat.h>
 #include <thread>
@@ -33,16 +35,10 @@ static const SlmPaper papers[] = {
 SlmPrinter::SlmPrinter(AcsiDataTrans* dataTrans)
 {
     this->dataTrans = dataTrans;
+    lastPageTime  = 0;
+    lastPageIndex = 0;
     paper = paperByKey(SLM_PAPER_DEFAULT);
-    macHex = "000000000000";
     reset();
-}
-
-void SlmPrinter::setMac(const uint8_t* mac)
-{
-    char hex[16];
-    Settings::binToHex((uint8_t*) mac, 6, hex);
-    macHex = hex;
 }
 
 void SlmPrinter::setWaitForCommand(WaitForCommandFn fn)
@@ -309,7 +305,6 @@ bool SlmPrinter::onPrint(const uint8_t* cmd, uint8_t statusBase, uint8_t* nextCm
     uint16_t firstBurst = (uint16_t) ((bpl + 2 < total) ? (bpl + 2) : total);    // + two-byte FIFO of the controller
 
     std::vector<uint8_t> page(total);
-    time_t jobTime = time(NULL);
 
     logHdd(LOG_INFO, "SlmPrinter::onPrint - transfer length %d, page %d x %d, %d bytes", transferLength, params.blockWidth, params.blockHeight, total);
 
@@ -323,7 +318,7 @@ bool SlmPrinter::onPrint(const uint8_t* cmd, uint8_t statusBase, uint8_t* nextCm
         }
 
         pageCount++;
-        savePageAsync(page.data(), jobTime, pageNo);
+        savePageAsync(page.data());
         sendStatus(statusBase | SLM_ST_OK);
 
         if(!indefinite && pageNo >= pagesTotal) {       // last page done
@@ -370,26 +365,53 @@ void SlmPrinter::bitmapToGray(const uint8_t* bitmap, uint32_t bytesPerLine, uint
     }
 }
 
-std::string SlmPrinter::pageFileName(const std::string& macHex, time_t jobTime, int pageNo)
+// date and time when the page was printed - no ':', it's not valid in Windows file names
+std::string SlmPrinter::pageFileName(time_t t, int index)
 {
     struct tm tm;
-    localtime_r(&jobTime, &tm);
+    localtime_r(&t, &tm);
 
     char name[64];
-    snprintf(name, sizeof(name), "%s_%04d%02d%02d_%02d%02d%02d_p%03d.png", macHex.c_str(),
-             tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, pageNo);
-    return name;
+    int len = snprintf(name, sizeof(name), "%04d-%02d-%02d_%02d-%02d-%02d",
+                       tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+    if(index > 1) {                     // more pages in the same second
+        snprintf(name + len, sizeof(name) - len, "_%d", index);
+    }
+
+    return std::string(name) + ".png";
+}
+
+// path for the next page file - not existing yet, and not one of those which are just being written in background
+std::string SlmPrinter::newPagePath(void)
+{
+    std::string dir = Utils::dotEnvValue("PRINTOUTS_DIR", "./printouts", false);
+    time_t now = time(NULL);
+
+    int index = (now == lastPageTime) ? (lastPageIndex + 1) : 1;
+
+    while(true) {
+        std::string path = Utils::mergeHostPaths2(dir, pageFileName(now, index));
+
+        if(!Utils::fileExists(path)) {
+            lastPageTime  = now;
+            lastPageIndex = index;
+            return path;
+        }
+
+        index++;
+    }
 }
 
 // PNG encoding takes a while - don't let the next page wait for it
-void SlmPrinter::savePageAsync(const uint8_t* bitmap, time_t jobTime, int pageNo)
+void SlmPrinter::savePageAsync(const uint8_t* bitmap)
 {
     uint32_t bpl    = bytesPerLine();
     uint32_t width  = params.blockWidth;
     uint32_t height = params.blockHeight;
 
     std::string dir = Utils::dotEnvValue("PRINTOUTS_DIR", "./printouts", false);
-    std::string path = Utils::mergeHostPaths2(dir, pageFileName(macHex, jobTime, pageNo));
+    std::string path = newPagePath();
 
     std::vector<uint8_t> copy(bitmap, bitmap + bpl * height);
 
@@ -399,9 +421,13 @@ void SlmPrinter::savePageAsync(const uint8_t* bitmap, time_t jobTime, int pageNo
         std::vector<uint8_t> gray((size_t) width * height);
         bitmapToGray(copy.data(), bpl, width, height, gray.data());
 
-        if(stbi_write_png(path.c_str(), width, height, 1, gray.data(), width)) {
+        // write to temp file and rename it - the web UI lists just the complete .png files
+        std::string tmpPath = path + ".tmp";
+
+        if(stbi_write_png(tmpPath.c_str(), width, height, 1, gray.data(), width) && rename(tmpPath.c_str(), path.c_str()) == 0) {
             logHdd(LOG_INFO, "SlmPrinter - page saved to %s", path.c_str());
         } else {
+            unlink(tmpPath.c_str());
             logHdd(LOG_ERROR, "SlmPrinter - failed to save page to %s", path.c_str());
         }
     }).detach();

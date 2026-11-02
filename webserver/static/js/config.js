@@ -215,8 +215,14 @@ function onComboChanged(index) {
         case "0": td.innerHTML = ""; break;
         case "2": td.innerHTML = "<button type=\"button\" onclick=\"handleSelectClick(" + index + ");\">Select file</button> &nbsp; " + paths[index]; break;
         case "3": td.innerHTML = "[CE_DD.PRG]"; break;
-        case "4": td.innerHTML = "[SLM 605/804 laser printer - pages saved as PNG]"; break;
+        case "4": td.innerHTML = "[SLM 605/804 laser printer - pages saved as PNG] &nbsp; " +
+                                 "<button type=\"button\" onclick=\"openPrintouts();\">Printouts</button>"; break;
     }
+}
+
+// open the browser of pages printed on the SLM laser printer - keep mac & name, so the breadcrumbs lead back to this device
+function openPrintouts() {
+    window.location.href = '/printouts.html' + window.location.search;
 }
 
 // on 'Select file' button clicked, get the dir content and show the file selector

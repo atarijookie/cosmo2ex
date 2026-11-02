@@ -58,7 +58,9 @@ Override the host path with CE_FLOPPY_HOST=/your/path.
 
 Pages printed on the emulated SLM 605/804 laser printer (an ACSI ID set to
 SLM 605/804 on the ACSI IDs page) are saved as PNG files, one per page, on
-the host at /opt/ce/printouts (PRINTOUTS_DIR in .env).
+the host at /opt/ce/printouts (PRINTOUTS_DIR in .env), named by the time of
+printing (e.g. 2026-11-02_10-42-31.png). The web UI shows them: ACSI IDs page ->
+Printouts button next to the SLM 605/804 ID.
 Override the host path with CE_PRINTOUTS_HOST=/your/path.
 
 Logs of ce_cores and the webserver are on the host at /opt/ce/log, next to the

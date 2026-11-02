@@ -238,6 +238,8 @@ func newServer() *Server {
 		protected.Put("/settings/loglevel", s.handlePutLogLevel)
 		protected.Get("/settings/slm", s.handleGetSlm)
 		protected.Put("/settings/slm", s.handlePutSlm)
+		protected.Get("/printouts", s.handleGetPrintouts)
+		protected.Get("/printouts/file/{name}", s.handleGetPrintoutFile)
 		protected.Get("/settings/logs", s.handleGetLogs)
 		protected.Delete("/settings/logs", s.handleDeleteLogs)
 

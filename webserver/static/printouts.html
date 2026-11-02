@@ -1,0 +1,367 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html lang="en">
+    <head>
+        <meta http-equiv="content-type" content="text/html; charset=utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0"/>
+        <title>Cosmo2ex Printouts</title>
+        <script>
+        document.write('<link rel="stylesheet" type="text/css" href="css/combined.css">');
+        </script>
+        <style>
+            body {
+                background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+                min-height: 100vh;
+                margin: 0;
+                padding: 20px 0;
+            }
+            .container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                max-width: 1200px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 12px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+                padding: 30px;
+                margin-top: 20px;
+                margin-bottom: 20px;
+                position: relative;
+            }
+            .row {
+                width: 100%;
+                display: flex;
+                justify-content: center;
+            }
+            .span12 {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+            #breadcrumbs-container {
+                width: 100%;
+            }
+            h2, h3 {
+                text-align: center;
+            }
+            #account-buttons {
+                position: absolute;
+                top: 15px;
+                right: 15px;
+                z-index: 1000;
+                display: flex;
+                gap: 8px;
+            }
+            #account-buttons button {
+                padding: 8px 16px;
+                font-size: 14px;
+                background-color: #666;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            }
+            #account-buttons button:hover {
+                background-color: #555;
+            }
+            #printouts-path {
+                width: 100%;
+                text-align: left;
+                font-size: 14px;
+                margin-bottom: 12px;
+            }
+            #printouts-path code {
+                font-family: monospace;
+                background: #f4f4f4;
+                padding: 2px 6px;
+                border-radius: 4px;
+                word-break: break-all;
+            }
+            #printouts-status {
+                font-size: 13px;
+                color: #666;
+                min-height: 1.5em;
+            }
+            #printouts-status.error {
+                color: #c0392b;
+            }
+            #printouts-browser {
+                width: 100%;
+                display: flex;
+                gap: 16px;
+                text-align: left;
+                align-items: flex-start;
+            }
+            #printouts-list {
+                flex: 0 0 260px;
+                max-height: 75vh;
+                overflow-y: auto;
+                overflow-x: hidden;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+            }
+            .printout-item {
+                padding: 6px 10px;
+                border-bottom: 1px solid #eee;
+                cursor: pointer;
+                font-family: monospace;
+                font-size: 13px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .printout-item:hover {
+                background-color: #f0f0f0;
+            }
+            .printout-item.selected {
+                background-color: #cccccc;
+            }
+            .printout-item .printout-size {
+                color: #888;
+                font-size: 11px;
+            }
+            .printouts-empty {
+                padding: 10px;
+                color: #888;
+            }
+            #printout-view {
+                flex: 1 1 auto;
+                min-width: 0;
+            }
+            #printout-toolbar {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin-bottom: 8px;
+                min-height: 32px;
+            }
+            #printout-name {
+                font-family: monospace;
+                font-weight: bold;
+            }
+            #printout-image {
+                display: block;
+                width: 100%;
+                border: 1px solid #ccc;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                background: white;
+            }
+            #printout-image.actual-size {
+                width: auto;
+                max-width: none;
+            }
+            #printout-image-wrap {
+                overflow: auto;
+                max-height: 75vh;
+            }
+            .footer-links {
+                margin-top: 40px;
+                padding-top: 20px;
+                border-top: 1px solid #e0e0e0;
+                text-align: center;
+                font-size: 14px;
+                color: #666;
+                width: 100%;
+            }
+            .footer-links a {
+                color: #0066cc;
+                text-decoration: none;
+                margin: 0 10px;
+            }
+            .footer-links span {
+                color: #999;
+                margin: 0 5px;
+            }
+        </style>
+        <script>
+            function logout() {
+                fetch('/auth/logout', { method: 'POST', credentials: 'include' })
+                .then(function() {
+                    if (localStorage.getItem('auth_token')) {
+                        localStorage.removeItem('auth_token');
+                    }
+                    window.location.href = '/login.html';
+                })
+                .catch(function() {
+                    window.location.href = '/login.html';
+                });
+            }
+
+            var REFRESH_MS = 5000;          // new pages show up while printing
+            var selectedName = null;
+            var shownNames = '';            // list of names currently shown, to rebuild the list only when it changes
+
+            function fileUrl(name, download) {
+                return '/printouts/file/' + encodeURIComponent(name) + (download ? '?download=1' : '');
+            }
+
+            function showStatus(text, isError) {
+                var el = document.getElementById('printouts-status');
+                el.textContent = text || '';
+                el.className = isError ? 'error' : '';
+            }
+
+            function formatSize(bytes) {
+                return bytes >= 1024 * 1024 ? (bytes / (1024 * 1024)).toFixed(1) + ' MB' : Math.round(bytes / 1024) + ' kB';
+            }
+
+            function showList(data) {
+                var pathEl = document.getElementById('printouts-path-value');
+                pathEl.textContent = data.dir;
+
+                var names = data.files.map(function(f) { return f.name; }).join('|');
+                if (names === shownNames) {         // nothing changed - keep the list (and its scroll position) as it is
+                    return;
+                }
+                shownNames = names;
+
+                var list = document.getElementById('printouts-list');
+                list.innerHTML = '';
+
+                if (data.files.length === 0) {
+                    var empty = document.createElement('div');
+                    empty.className = 'printouts-empty';
+                    empty.textContent = data.exists ? 'No printed pages yet.' :
+                        'No printed pages yet - the folder is created with the first printed page.';
+                    list.appendChild(empty);
+                }
+
+                data.files.forEach(function(f) {
+                    var item = document.createElement('div');
+                    item.className = 'printout-item' + (f.name === selectedName ? ' selected' : '');
+                    item.setAttribute('data-name', f.name);
+
+                    var nameEl = document.createElement('div');
+                    nameEl.textContent = f.name;
+                    var sizeEl = document.createElement('div');
+                    sizeEl.className = 'printout-size';
+                    sizeEl.textContent = formatSize(f.size);
+
+                    item.appendChild(nameEl);
+                    item.appendChild(sizeEl);
+                    item.onclick = function() { selectPrintout(f.name); };
+                    list.appendChild(item);
+                });
+
+                // the shown page was deleted on the host? clear the view
+                if (selectedName && data.files.every(function(f) { return f.name !== selectedName; })) {
+                    selectPrintout(null);
+                }
+            }
+
+            function loadList() {
+                fetch('/printouts', { credentials: 'include' })
+                .then(function(response) {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(function(data) {
+                    showList(data);
+                    showStatus('', false);
+                })
+                .catch(function(error) {
+                    console.error('Load printouts error:', error);
+                    showStatus('Failed to load the list of printouts: ' + error.message, true);
+                });
+            }
+
+            function selectPrintout(name) {
+                selectedName = name;
+
+                var items = document.querySelectorAll('.printout-item');
+                for (var i = 0; i < items.length; i++) {
+                    items[i].className = 'printout-item' + (items[i].getAttribute('data-name') === name ? ' selected' : '');
+                }
+
+                var img = document.getElementById('printout-image');
+                var toolbar = document.getElementById('printout-toolbar');
+                var hint = document.getElementById('printout-hint');
+
+                if (!name) {
+                    img.style.display = 'none';
+                    img.removeAttribute('src');
+                    toolbar.style.display = 'none';
+                    hint.style.display = 'block';
+                    return;
+                }
+
+                document.getElementById('printout-name').textContent = name;
+                img.src = fileUrl(name, false);
+                img.style.display = 'block';
+                toolbar.style.display = 'flex';
+                hint.style.display = 'none';
+            }
+
+            // save to browser's download folder - the server sends it as attachment, a plain link keeps the auth cookie
+            function savePrintout() {
+                if (!selectedName) {
+                    return;
+                }
+                var link = document.createElement('a');
+                link.href = fileUrl(selectedName, true);
+                link.download = selectedName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+
+            function toggleActualSize(checked) {
+                var img = document.getElementById('printout-image');
+                img.className = checked ? 'actual-size' : '';
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+                selectPrintout(null);
+                loadList();
+                setInterval(loadList, REFRESH_MS);
+            });
+        </script>
+    </head>
+    <body>
+    <div class="container">
+        <div id="account-buttons">
+            <button id="settings-button" onclick="window.location.href='/settings.html'">Settings</button>
+            <button id="logout-button" onclick="logout()">Logout</button>
+        </div>
+        <div class="row">
+            <div class="span12">
+                <div id="breadcrumbs-container"></div>
+                <script src="js/breadcrumbs.js"></script>
+                <h2>Cosmo2ex</h2>
+                <h3>Printouts</h3>
+            </div>
+        </div>
+
+        <div id="printouts-path">
+            Pages printed on the SLM 605/804 laser printer are saved on the host in: <code id="printouts-path-value">...</code>
+        </div>
+        <div id="printouts-status"></div>
+
+        <div id="printouts-browser">
+            <div id="printouts-list"></div>
+            <div id="printout-view">
+                <div id="printout-hint" class="printouts-empty">Click a page on the left to show it.</div>
+                <div id="printout-toolbar">
+                    <span id="printout-name"></span>
+                    <button class="btn" onclick="savePrintout()">Save</button>
+                    <label style="margin: 0; font-weight: normal;">
+                        <input type="checkbox" onchange="toggleActualSize(this.checked)"> actual size
+                    </label>
+                </div>
+                <div id="printout-image-wrap">
+                    <img id="printout-image" alt="printed page">
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-links">
+            <a href="https://joo.kie.sk/?page_id=384" target="_blank">homepage</a><span>|</span><a href="https://joo.kie.sk/?page_id=415" target="_blank">manual</a><span>|</span><a href="credits.html">credits</a>
+        </div>
+    </div>
+    <script src="/js/server_check.js"></script>
+</body>
+</html>

@@ -268,7 +268,6 @@ void HddClient::onMacUpdated(void)
 
     scsi->setMac(ci->mac);
     translated->setMac(ci->mac);
-    slm->setMac(ci->mac);
 }
 
 void HddClient::handleFwVersion_hans(void)

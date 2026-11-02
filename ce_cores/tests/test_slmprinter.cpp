@@ -258,7 +258,8 @@ TEST_CASE_FIXTURE(SlmDirs, "SlmPrinter - page file name")
     tm.tm_year = 126; tm.tm_mon = 10; tm.tm_mday = 1; tm.tm_hour = 9; tm.tm_min = 5; tm.tm_sec = 7; tm.tm_isdst = -1;
     time_t t = mktime(&tm);
 
-    CHECK(SlmPrinter::pageFileName("001122334455", t, 3) == "001122334455_20261101_090507_p003.png");
+    CHECK(SlmPrinter::pageFileName(t, 1) == "2026-11-01_09-05-07.png");
+    CHECK(SlmPrinter::pageFileName(t, 3) == "2026-11-01_09-05-07_3.png");
 }
 
 // small page, so PNG writing in tests is fast

@@ -91,7 +91,6 @@ public:
 
     SlmPrinter(AcsiDataTrans* dataTrans);
 
-    void setMac(const uint8_t* mac);            // used in names of the page files
     void setWaitForCommand(WaitForCommandFn fn);
     void reset(void);                           // power on state - default parameters, page count 0
 
@@ -116,14 +115,15 @@ public:
     static const SlmPaper* paperByKey(const std::string& key);     // unknown key - default paper
     static SlmParams defaultParams(const SlmPaper* paper);
     static void bitmapToGray(const uint8_t* bitmap, uint32_t bytesPerLine, uint32_t width, uint32_t height, uint8_t* gray);
-    static std::string pageFileName(const std::string& macHex, time_t jobTime, int pageNo);
+    static std::string pageFileName(time_t t, int index);          // e.g. 2026-11-02_10-42-31.png, index > 1: 2026-11-02_10-42-31_2.png
 
 private:
     AcsiDataTrans*      dataTrans;
     SlmParams           params;
     const SlmPaper*     paper;              // paper in the cassette
     uint16_t            pageCount;          // pages printed since power on
-    std::string         macHex;
+    time_t              lastPageTime;       // page files are written in background - the last ones might not exist yet,
+    int                 lastPageIndex;      // so the names used in the same second are remembered
     WaitForCommandFn    waitForCommand;
 
     void sendStatus(uint8_t statusByte);
@@ -134,7 +134,8 @@ private:
     void onModeSense(const uint8_t* cmd, uint8_t statusBase);
     bool onPrint(const uint8_t* cmd, uint8_t statusBase, uint8_t* nextCmd);
 
-    void savePageAsync(const uint8_t* bitmap, time_t jobTime, int pageNo);
+    std::string newPagePath(void);
+    void savePageAsync(const uint8_t* bitmap);
 };
 
 #endif
