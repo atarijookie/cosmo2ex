@@ -288,6 +288,11 @@ CosmosEx.Remote=function(){
     	var iTouchMouseY=null;
     	var iCurrentDX=null;
     	var iCurrentDY=null;
+    	//relative mouse speed multiplier (1 = unchanged), set from remote.html slider
+    	var fMouseSpeed=1;
+    	//fractional parts left after scaling - carried to the next move, so slow speeds don't lose small moves
+    	var fRestDX=0;
+    	var fRestDY=0;
     	//touch devices keyboard status
     	var bShowKeyboard=false;
     	//Help display status
@@ -296,6 +301,9 @@ CosmosEx.Remote=function(){
     	var bShowStKeyboard=false;
     	//a simple "queue" - gather only one mouse delta per timeslice
     	var currentMouseMove=null;
+    	//mouse move POSTs not finished yet - next move is sent only when all are done (moves meanwhile add up), so
+    	//requests don't pile up / come out of order on a slow connection
+    	var iMouseRequestsInFlight=0;
     	//helper canvas for pointerlock (grabbing the pointer in the window), only works on Chrome/FF/Safari/IE, not used on touch devices 
     	var canvas=null;
     	//pointerlock states
@@ -386,13 +394,26 @@ CosmosEx.Remote=function(){
 
 			};
 		var sendMouseRelative=function(iDX,iDY){
+				//apply the speed multiplier, keep the fraction for the next move
+				if( fMouseSpeed!=1 ){
+					var fDX=iDX*fMouseSpeed+fRestDX;
+					var fDY=iDY*fMouseSpeed+fRestDY;
+					iDX=fDX<0 ? Math.ceil(fDX) : Math.floor(fDX);
+					iDY=fDY<0 ? Math.ceil(fDY) : Math.floor(fDY);
+					fRestDX=fDX-iDX;
+					fRestDY=fDY-iDY;
+				}
 				var transmit=function(iDX,iDY){
 					$.ajax({
 						type: 'POST',
 						url: '/hid/mouse',
 						data: JSON.stringify({ "type":"relative", "x": iDX, "y": iDY }),
-						contentType: 'application/json'
+						contentType: 'application/json',
+						complete: function(){
+							iMouseRequestsInFlight=Math.max(0, iMouseRequestsInFlight-1);
+						}
 					});
+					iMouseRequestsInFlight++;
 				}
 				//we only can transmit movement distance of -128 to 127 in one go, so slice this into several packets if necessary
 				if( !(iDX>=-128 && iDX<128 && iDY>=-128 && iDY<128) ){
@@ -712,15 +733,15 @@ CosmosEx.Remote=function(){
               $("#info-features").removeClass("hidden");
             }
 
-	        	//timer for sending mouse movements every 1/10s
+	        	//timer for sending mouse movements ~60 times per second (if previous move was already delivered)
 	        	window.setInterval(function(){
-	        		if( currentMouseMove!=null ){
+	        		if( currentMouseMove!=null && iMouseRequestsInFlight==0 ){
 	        			//empty queue before we send, to make sure we don't call the queue with the old value again if this operation takes >50ms for some reason
 	        			var x=currentMouseMove;
 	        			currentMouseMove=null;
 	        			x();
 	        		}
-	        	}, 50);
+	        	}, 16);
 
 	        	//UI
             //Toggle System Keyboard Button
@@ -808,6 +829,12 @@ CosmosEx.Remote=function(){
               if (w < 768) { $('meta[name=viewport]').attr('content','initial-scale='+w/768+', maximum-scale='+w/768+', user-scalable=0'); }
             }, false);
 	        },
-			onMouseMove: onMouseMove
+			onMouseMove: onMouseMove,
+			//relative mouse speed multiplier - 1 = unchanged
+			setMouseSpeed: function(fSpeed){
+				fMouseSpeed=fSpeed;
+				fRestDX=0;
+				fRestDY=0;
+			}
 		}
     }();        

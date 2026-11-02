@@ -530,9 +530,51 @@
           });
         }
 
+        // relative mouse speed multiplier (25% - 200%) - kept per browser, only scales relative moves (not absolute)
+        function initMouseSpeed() {
+          var STORAGE_KEY = 'remote_mouse_speed';
+          var slider = document.getElementById('mouse-speed');
+          var valueLabel = document.getElementById('mouse-speed-value');
+          if (!slider || !valueLabel) {
+            return;
+          }
+
+          // keep mouse / touch / keys away from the remote control handlers, like for the fps slider
+          ['mousedown', 'mouseup', 'click', 'touchstart', 'touchmove', 'touchend', 'keydown', 'keyup'].forEach(function(name) {
+            slider.addEventListener(name, function(e) { e.stopPropagation(); });
+          });
+
+          function applySpeed(save) {
+            var percent = parseInt(slider.value, 10);
+            valueLabel.textContent = percent + '%';
+            CosmosEx.Remote.setMouseSpeed(percent / 100);
+            if (save) {
+              try { localStorage.setItem(STORAGE_KEY, String(percent)); } catch (e) {}
+            }
+          }
+
+          var stored = null;
+          try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) {}
+          if (stored !== null && !isNaN(parseInt(stored, 10))) {
+            slider.value = parseInt(stored, 10);   // browser keeps it within min / max
+          }
+          applySpeed(false);
+
+          slider.addEventListener('input', function() { applySpeed(false); });
+          slider.addEventListener('change', function() {
+            applySpeed(true);
+            slider.blur();
+          });
+          // once released, the slider would keep the focus - keys would then go to it and get stopped above
+          ['mouseup', 'touchend'].forEach(function(name) {
+            slider.addEventListener(name, function() { slider.blur(); });
+          });
+        }
+
         $(document).ready(function () {
           setScreenCurrent(false);
           initScreencastFps();
+          initMouseSpeed();
           loadDeviceBus();
 
           // Load initial screen on page load
@@ -642,15 +684,24 @@
             justify-content: center;
             margin: 20px 0;
         }
-        #screencast-settings {
-            display: flex;
-            align-items: center;
+        #remote-settings {
+            display: grid;
+            grid-template-columns: auto auto auto auto;   /* label, slider, value, status */
             justify-content: center;
-            gap: 10px;
+            align-items: center;
+            column-gap: 10px;
+            row-gap: 4px;
             margin-top: 10px;
             font-size: 14px;
         }
-        #screencast-fps-value {
+        #screencast-settings, #mouse-settings {
+            display: contents;          /* children go straight into the #remote-settings grid */
+        }
+        #remote-settings label {
+            text-align: right;
+            margin: 0;
+        }
+        #screencast-fps-value, #mouse-speed-value {
             min-width: 50px;
             text-align: left;
             font-weight: bold;
@@ -675,6 +726,7 @@
             to { transform: rotate(360deg); }
         }
         #screencast-info {
+            text-align: center;
             margin-top: 4px;
             font-size: 12px;
             color: #999;
@@ -910,11 +962,19 @@
             </div>
         </div>
 
+        <!-- one grid for all slider rows, so labels / sliders / values are aligned in columns -->
+        <div id="remote-settings">
         <div id="screencast-settings">
             <label for="screencast-fps">Screencast frame rate:</label>
             <input type="range" id="screencast-fps" min="1" max="25" step="1" value="3">
             <span id="screencast-fps-value">3 fps</span>
             <span id="screencast-fps-status"></span>
+        </div>
+        <div id="mouse-settings">
+            <label for="mouse-speed">Mouse speed:</label>
+            <input type="range" id="mouse-speed" min="25" max="200" step="5" value="100">
+            <span id="mouse-speed-value">100%</span>
+        </div>
         </div>
         <div id="screencast-info"></div>
 
