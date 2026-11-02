@@ -623,6 +623,39 @@ CosmosEx.Remote=function(){
 			}else{
 				bPointerLocked=true;
 			}
+			//button stays pressed while grabbed and tells how to get out
+			var $btn=$("button#lockpointer");
+			if( bPointerLocked ){
+				$btn.addClass("grabbed").html("Esc releases mouse");
+			}else{
+				$btn.removeClass("grabbed").html("Grab mouse");
+			}
+			fWheelRest=0;
+		};
+		//mouse wheel while grabbed - don't scroll the page, send cursor up / down to ST instead
+		var fWheelRest=0;
+		var onWheel=function(e){
+			if( !bPointerLocked ){
+				return;
+			}
+			e.preventDefault();
+			var fDY=e.deltaY || 0;
+			if( e.deltaMode==1 ){			//lines
+				fDY*=40;
+			}else if( e.deltaMode==2 ){		//pages
+				fDY*=400;
+			}
+			fWheelRest+=fDY;
+			//at most one key per wheel event (one per notch on a mouse), touchpads need to scroll a bit for each key
+			if( Math.abs(fWheelRest)<30 ){
+				return;
+			}
+			var iCode=(fWheelRest<0) ? 103 : 108;	//linux KEY_UP / KEY_DOWN
+			fWheelRest=0;
+			sendKey(iCode,"down");
+			window.setTimeout(function(){
+				sendKey(iCode,"up");
+			},30);
 		};
 		var ignoreEvent=function(e){
         		e.preventDefault();
@@ -715,6 +748,7 @@ CosmosEx.Remote=function(){
 	        	$(window).mouseup(onMouseUp);
 	        	$(window).keydown(onKeyDown);
 	        	$(window).keyup(onKeyUp);
+	        	window.addEventListener('wheel', onWheel, { passive: false });
 	        	$(window).doubletap(onDoubleTap,onDoubleTap2Fingers,300);
 
 	        	var bHasTouch = /android|iphone|ipad/i.test(navigator.userAgent.toLowerCase());

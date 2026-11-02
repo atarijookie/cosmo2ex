@@ -711,6 +711,14 @@
             text-align: left;
             color: #666;
         }
+        /* 'Grab mouse' stays pressed while the mouse is grabbed */
+        button#lockpointer.grabbed {
+            background: #1e6fd9;
+            border-color: #1858ad;
+            color: #fff;
+            text-shadow: none;
+            box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.4);
+        }
         .btn-spinner {
             display: inline-block;
             width: 12px;
@@ -1033,7 +1041,7 @@
             <li>move your mouse on this webpage to move your STs mouse</li>
             <li>left click in the browser to left click on the ST</li>
             <li>right click in the browser to right click on the ST</li>
-            <li>click "Grab mouse" (if available in your browser) to attach your mouse to the browser, so you won't leave its boundaries. Press ESC to leave this mode.</li>
+            <li>click "Grab mouse" (if available in your browser) to attach your mouse to the browser, so you won't leave its boundaries. Press ESC to leave this mode. While grabbed, the mouse wheel sends cursor up / down to the ST.</li>
             <li>use your PCs keyboard to type</li>
             <li>for Special Keys you can click "Toggle ST keyboard" to show a ST Keyboard. Just click the Key you want to enter</li>
             <li>recieve a screencast from ST (you must have CE_DD.PRG running on the ST) by clicking "Start Screencast", or a single screenshot by clicking "Take Screenshot"</li>
