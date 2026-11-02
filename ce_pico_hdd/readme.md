@@ -20,6 +20,12 @@ The LED gets updated only between commands, when its color changes. ACSI sends t
 H except for the LED update, so the bus activity doesn't get to the LED. On SCSI the device ignores the bus until it's
 connected to the host (the Atari doesn't see the drive till then).
 
+## Network for STinG
+
+`sting_net.cpp` answers the HOSTMOD 7 (`HOSTMOD_RAW_NET`) ACSI / SCSI commands of the STinG driver `CE_ETH.STX` itself,
+without the host. It sends / receives raw ethernet frames on W6100 socket 0 (MACRAW), with its own MAC address for STinG,
+and does ARP for it. The other sockets (HDD, IKBD, UDP) keep working as before. Protocol and details: [ce_sting/README.md](../ce_sting/README.md).
+
 ## Compiling under Linux
 
 - from the repo root: `make firmware` (or `firmware/build.sh ce_pico_hdd`), needs just docker - see firmware/README.md

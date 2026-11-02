@@ -155,6 +155,7 @@ int main( int argc, char* argv[] )
 
 	// search for CosmosEx on ACSI bus
 	deviceID = findDevice(FIND_DEV_CE);
+	hdIf.ceDeviceId = deviceID;         // for the programs using the CEPI cookie
 
 	if(deviceID == DEVICE_NOT_FOUND) {  // not found? quit
 		sleep(3);

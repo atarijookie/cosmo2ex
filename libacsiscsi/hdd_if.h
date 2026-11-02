@@ -58,6 +58,10 @@ typedef struct {
     // scsiCmdTT() bounces small unaligned transfers through its own buffer; for big ones the caller must use an aligned
     // buffer (or a middle buffer). Last in the struct - other programs get to hdIf through the CEPI cookie.
     uint8_t     dmaAlignMask;
+
+    // ACSI / SCSI ID of the CosmosEx found by CE_DD, for other programs which find hdIf through the CEPI cookie (CE_ETH.STX).
+    // Older CE_DD doesn't have this field - the readers must check the ID they got (and the value is 0xff when not found).
+    uint8_t     ceDeviceId;
 } THDif;
 
 extern THDif hdIf;

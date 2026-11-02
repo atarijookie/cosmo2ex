@@ -38,5 +38,6 @@ clean:
 	$(MAKE) -C libacsiscsi clean
 	$(MAKE) -C ce_dd_prg clean
 	$(MAKE) -C ce_dd_bootsectors clean
+	$(MAKE) -C ce_sting clean
 	$(MAKE) -C test_ce clean
 	rm -rf firmware/out

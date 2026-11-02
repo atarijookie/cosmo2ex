@@ -3,6 +3,8 @@
 *.ttp
 *.tos
 *.acc
+*.stx
+*.STX
 *.bs
 ce_dd_bootsectors/convertor
 *.d

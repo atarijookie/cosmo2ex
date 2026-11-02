@@ -294,6 +294,7 @@ public:
     friend class EthernetClient;
     friend class EthernetServer;
     friend class EthernetUDP;
+    friend class EthernetMacraw;
 
     // Incremented each time a hw socket is (re)opened. A client remembers it on connect - if it differs later, the socket
     // was closed under the client (e.g. RST from host) and then reused by another client, so it's not this client's anymore.
@@ -303,6 +304,7 @@ public:
 private:
     // Opens a socket(TCP or UDP or IP_RAW mode)
     static uint8_t socketBegin(uint8_t protocol, uint16_t port);
+    static uint8_t socketBeginOn(uint8_t s, uint8_t protocol, uint16_t port);
     static uint8_t socketBeginMulticast(uint8_t protocol, IPAddress ip,uint16_t port);
     static uint8_t socketStatus(uint8_t s);
     // Close socket
@@ -337,6 +339,33 @@ private:
 };
 
 extern EthernetClass Ethernet;
+
+// Raw ethernet frames on socket 0 (W6100 / W5500 can do MACRAW only there, socketBegin() keeps it free for this).
+// The other sockets keep working with the chip's own MAC and IP at the same time.
+class EthernetMacraw {
+public:
+    // macFilter: true - receive only frames for the chip's own MAC + broadcast / multicast, false - receive all frames
+    bool begin(bool macFilter);
+    void stop();
+    bool isOpen() const { return _open; }
+
+    // Start reading the next received frame (drops the rest of the previous one). Returns its length, 0 if none, -1 on error (socket reopened).
+    int parseFrame();
+    // Read up to len bytes of the current frame, returns the count read.
+    int read(uint8_t *buf, uint16_t len);
+    // Drop the rest of the current frame - without transferring it over SPI.
+    void skip();
+
+    // Send one frame made of header + data (the ethernet header is part of the frame, no FCS). Pads short frames to 60 bytes.
+    bool sendFrame(const uint8_t *hdr, uint16_t hdrLen, const uint8_t *data, uint16_t dataLen);
+
+private:
+    static bool openWithMode(uint8_t mode);
+
+    bool _open = false;
+    bool _macFilter = false;
+    uint16_t _remaining = 0;    // bytes of the current frame not read yet
+};
 
 #define UDP_TX_PACKET_MAX_SIZE 24
 

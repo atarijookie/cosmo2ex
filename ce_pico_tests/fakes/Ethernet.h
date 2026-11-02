@@ -10,6 +10,7 @@
 #include <deque>
 #include <vector>
 #include <string>
+#include <cstring>
 #include "Arduino.h"
 #include "Dhcp.h"
 
@@ -131,6 +132,56 @@ private:
 enum EthernetHardwareStatus { EthernetNoHardware, EthernetW5100, EthernetW5200, EthernetW5500 };
 enum EthernetLinkStatus { Unknown, LinkON, LinkOFF };
 
+// MACRAW socket 0: frames queued by the test in rxFrames are received, sent frames end in sent. The state is static, so
+// the tests reach it although the firmware has its own (static) instance.
+class EthernetMacraw
+{
+public:
+    static inline std::deque<std::vector<uint8_t>>  rxFrames;
+    static inline std::vector<std::vector<uint8_t>> sent;
+    static inline bool beginResult = true;          // what the next begin() returns
+    static inline bool open        = false;
+    static inline int  beginCount  = 0;
+
+    static void resetFake(void) { rxFrames.clear(); sent.clear(); beginResult = true; open = false; beginCount = 0; }
+
+    bool begin(bool macFilter) { (void) macFilter; beginCount++; open = beginResult; current.clear(); return open; }
+    void stop(void) { open = false; }
+    bool isOpen(void) const { return open; }
+
+    int parseFrame(void)
+    {
+        if (!open || rxFrames.empty()) return 0;
+        current = rxFrames.front();
+        rxFrames.pop_front();
+        pos = 0;
+        return current.size();
+    }
+
+    int read(uint8_t *buf, uint16_t len)
+    {
+        size_t n = MIN((size_t) len, current.size() - pos);
+        memcpy(buf, current.data() + pos, n);
+        pos += n;
+        return n;
+    }
+
+    void skip(void) { pos = current.size(); }
+
+    bool sendFrame(const uint8_t *hdr, uint16_t hdrLen, const uint8_t *data, uint16_t dataLen)
+    {
+        if (!open) return false;
+        std::vector<uint8_t> f(hdr, hdr + hdrLen);
+        if (data) f.insert(f.end(), data, data + dataLen);
+        sent.push_back(f);
+        return true;
+    }
+
+private:
+    std::vector<uint8_t> current;
+    size_t pos = 0;
+};
+
 class EthernetClass
 {
 public:
@@ -141,7 +192,10 @@ public:
     int       maintainResult = DHCP_CHECK_NONE;     // what the next maintain() returns
     IPAddress maintainNewIp;                        // ip after a successful renew / rebind, 0.0.0.0 = keep the current one
 
+    EthernetLinkStatus link = LinkON;
+
     IPAddress localIP(void) { return ip; }
+    EthernetLinkStatus linkStatus(void) { return link; }
     uint8_t socketStatusOf(uint8_t s) { (void) s; return 0; }
     IPAddress subnetMask(void) { return mask; }
 

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds the config drive drivers (boot sectors, ce_dd.prg) with m68k-atari-mint-gcc and copies them
+# Builds the config drive drivers (boot sectors, ce_dd.prg, ce_eth.stx) with m68k-atari-mint-gcc and copies them
 # to ce_cores/configdrive/drivers/, where docker/Dockerfile expects them (they are gitignored build outputs).
 # Used by docker/build_all.sh and by the CI workflows.
 
@@ -11,6 +11,7 @@ echo "Building Atari drivers"
 make -C "$ROOT/libacsiscsi"
 make -C "$ROOT/ce_dd_prg"                   # on its own - ce_dd_bootsectors 'all' builds it only when the boot sectors are built
 make -C "$ROOT/ce_dd_bootsectors" all
+make -C "$ROOT/ce_sting"                     # ce_eth.stx - STinG driver
 mkdir -p "$ROOT/ce_cores/configdrive/drivers"
 cp "$ROOT/ce_dd_bootsectors/ce_dd.bs" "$ROOT/ce_dd_bootsectors/ce_dd_l2.bs" "$ROOT/ce_dd_prg/ce_dd.prg" \
-    "$ROOT/ce_cores/configdrive/drivers/"
+    "$ROOT/ce_sting/ce_eth.stx" "$ROOT/ce_cores/configdrive/drivers/"

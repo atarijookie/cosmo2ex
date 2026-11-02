@@ -124,6 +124,8 @@ inline void resetFirmwareState(void)
     clientHdd.reset();
     clientFdd.reset();
     clientIkbd.reset();
+    EthernetMacraw::resetFake();
+    Ethernet.link = LinkON;
     memset(hostIp, 0, sizeof(hostIp));
     hostIpString = String();
     hostPortHdd  = hostPortFdd = hostPortIkbd = 0;

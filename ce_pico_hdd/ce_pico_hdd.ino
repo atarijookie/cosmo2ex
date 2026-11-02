@@ -12,6 +12,7 @@
 #include "ipc.h"
 #include "ikbd.h"
 #include "neopixel.h"
+#include "sting_net.h"
 #include "pin_test.h"
 
 uint16_t version[2] = {0xa026, 0x1022}; // this means: hAns, 2026-10-22
@@ -173,18 +174,28 @@ void loop(void)
 
                 // send ACSI command to host
                 case STATE_GET_COMMAND:
+                    if(stingNetCommand(bfr->data, bfr->length)) {      // network command of CE_ETH.STX, answered here, not by host
+                        break;
+                    }
                     memcpy(atnSendACSIcommand + TX_HEADER_SIZE, bfr->data, bfr->length);
                     sendHeaderAndDataToHost(SOCK_HDD, atnSendACSIcommand, ATN_SENDACSICOMMAND_LEN_TX - TX_HEADER_SIZE);
                     break;
 
                 // create and send one header at the start
                 case STATE_SEND_WRITE_MORE_DATA:
+                    if(stingNetOwnsWrite()) {           // DMA write of STinG SEND, host doesn't know about it
+                        break;
+                    }
                     storeHeader(header, ATN_WRITE_MORE_DATA, bfr->length);
                     sendDataToHost(SOCK_HDD, header, TX_HEADER_SIZE);
                     break;
 
                 // should write this data to host
                 case STATE_DATA_WRITE:
+                    if(stingNetOwnsWrite()) {
+                        stingNetWriteData(bfr->data, bfr->length);
+                        break;
+                    }
                     sendDataToHost(SOCK_HDD, bfr->data, bfr->length);
                     break;
             }
@@ -193,5 +204,7 @@ void loop(void)
         }
 
         ikbdProcessing();
+
+        stingNetProcess();      // raw ethernet frames for STinG
     }
 }

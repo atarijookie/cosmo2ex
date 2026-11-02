@@ -5,6 +5,7 @@
 #include "connection.h"
 #include "utils.h"
 #include "ipc.h"
+#include "sting_net.h"
 
 #define SERVER_UDP_PORT 7200 // port number where CE listens for client requests
 #define CLIENT_UDP_PORT 7201 // port where this client should listen for CE responses
@@ -593,6 +594,8 @@ void handleReadDataReceived(void)
 
         ipcSetBufferAndPutToFifo(bfr, 1, STATE_DATA_READ, actualCnt, NULL, 0);
         dataCnt -= actualCnt;                   // update total data needed to be read
+
+        stingNetProcess();                      // long reads would let W6100 socket 0 buffer overflow meanwhile
     }
 
     // if we should end reading by sending status byte

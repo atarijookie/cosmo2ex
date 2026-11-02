@@ -422,7 +422,8 @@ private:
 public:
   __SOCKET_REGISTER8(SnMR,        0x0000, 0x0000)        // Mode
   __SOCKET_REGISTER8(SnCR,        0x0001, 0x0010)        // Command
-  __SOCKET_REGISTER8(SnIR,        0x0002, 0x0020)        // Interrupt
+  __SOCKET_REGISTER8(SnIR,        0x0002, 0x0020)        // Interrupt (W6100: read only, cleared through SnIRCLR)
+  __SOCKET_REGISTER8(SnIRCLR,     0x0002, 0x0028)        // Interrupt clear - W5x00: writing 1s to Sn_IR clears them too
   __SOCKET_REGISTER8(SnSR,        0x0003, 0x0030)        // Status
   __SOCKET_REGISTER16(SnPORT,     0x0004, 0x0114)        // Source Port
   __SOCKET_REGISTER_N(SnDHAR,     0x0006, 0x0118, 6)     // Destination Hardw Addr

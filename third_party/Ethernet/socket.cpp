@@ -104,9 +104,21 @@ uint8_t EthernetClass::socketBegin(uint8_t protocol, uint16_t port)
     //Serial.printf("W5000socket begin, protocol=%d, port=%d\n", protocol, port);
     SPI.beginTransaction(SPI_ETHERNET_SETTINGS);
     s = pickSocket(protocol, maxindex);
+    SPI.endTransaction();
     if (s >= MAX_SOCK_NUM) {
-        SPI.endTransaction();
         return MAX_SOCK_NUM; // all sockets are in use
+    }
+    return socketBeginOn(s, protocol, port);
+}
+
+// Open the given socket, closing it first if it's open. For sockets which are not given out by socketBegin() - MACRAW on socket 0.
+uint8_t EthernetClass::socketBeginOn(uint8_t s, uint8_t protocol, uint16_t port)
+{
+    if (!W5100.getChip() || s >= MAX_SOCK_NUM) return MAX_SOCK_NUM;
+
+    SPI.beginTransaction(SPI_ETHERNET_SETTINGS);
+    if (W5100.readSnSR(s) != SnSR::CLOSED) {
+        W5100.execCmdSn(s, Sock_CLOSE);
     }
     //Serial.printf("W5000socket %d\n", s);
     socketGen[s]++;                 // new user of this socket - the previous one must not touch it anymore

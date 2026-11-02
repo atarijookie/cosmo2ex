@@ -29,7 +29,7 @@ LDFLAGS        ?=
 
 SANITIZE_FLAGS  = -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer
 
-FW_SRCS         = utils.cpp ipc.cpp connection.cpp command_handling.cpp
+FW_SRCS         = utils.cpp ipc.cpp connection.cpp command_handling.cpp sting_net.cpp
 TEST_COMMON     = $(wildcard tests/*.cpp tests/common/*.cpp) fakes/fakes.cpp
 
 .PHONY: all test test-asan test-known-bugs clean test-fdd test-display $(addprefix test-,$(PROJECTS))
