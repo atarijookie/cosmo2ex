@@ -17,6 +17,7 @@ LDLIBS = -ldospath
 OBJDIR = obj
 
 CFLAGS += -I./
+CFLAGS += -I../third_party/stb     # stb_image_write.h - single header library for writing PNG (SLM printer pages)
 
 # platform switch - the system we build for, e.g. 'make UNAME_S=Linux' when cross compiling from elsewhere
 #   BIN_EXT         - extension of ce_cores and the test binary
@@ -88,6 +89,7 @@ SUBDIR6	= hdd/translated
 SUBDIR7	= hdd/acsicommand
 SUBDIR8 = fdd
 SUBDIR9 = ikbd
+SUBDIR10 = hdd/slm
 
 SRCS  = $(wildcard *.cpp)
 SRCS += $(wildcard $(SUBDIR1)/*.cpp)
@@ -99,6 +101,7 @@ SRCS += $(wildcard $(SUBDIR6)/*.cpp)
 SRCS += $(wildcard $(SUBDIR7)/*.cpp)
 SRCS += $(wildcard $(SUBDIR8)/*.cpp)
 SRCS += $(wildcard $(SUBDIR9)/*.cpp)
+SRCS += $(wildcard $(SUBDIR10)/*.cpp)
 
 HDRS  = $(wildcard *.h)
 HDRS += $(wildcard $(SUBDIR1)/*.h)
@@ -110,6 +113,7 @@ HDRS += $(wildcard $(SUBDIR6)/*.h)
 HDRS += $(wildcard $(SUBDIR7)/*.h)
 HDRS += $(wildcard $(SUBDIR8)/*.h)
 HDRS += $(wildcard $(SUBDIR9)/*.h)
+HDRS += $(wildcard $(SUBDIR10)/*.h)
 HDRS += ../libdospath/libdospath.h
 
 OBJS = $(addprefix $(OBJDIR)/, $(patsubst %.cpp,%.o,$(SRCS:.c=.o)))

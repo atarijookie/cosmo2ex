@@ -17,6 +17,7 @@ class ChipInterfaceClient;
 class ChipInterface;
 class TranslatedDisk;
 class Scsi;
+class SlmPrinter;
 
 class HddClient
 {
@@ -42,12 +43,15 @@ private:
     Scsi* scsi;
     TranslatedDisk* translated;
     AcsiDataTrans* dataTrans;
+    SlmPrinter* slm;                // SLM laser printer emulation - for ACSI IDs set to DEVTYPE_SLM*
 
     //-----------------------------------
     // hard disk stuff
     RetryModule* retryMod;
 
     void handleAcsiCommand(uint8_t *bufIn);
+    void handleSlmCommand(uint8_t *bufIn);
+    bool slmWaitForCommand(uint32_t timeoutMs, uint8_t* cmd);
 
     //-----------------------------------
     // handle FW version

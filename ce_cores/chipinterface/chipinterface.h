@@ -65,6 +65,12 @@ public:
 
     bool hdd_sendStatusToHans(int& fdClient, uint8_t statusByte);
 
+    // HDD: ACSI only, for the SLM laser printer (hdd/slm/)
+    bool hdd_pioRead(int& fdClient, uint8_t* data, uint32_t len);          // send bytes to ST with CS / INT handshake (len 0: no bytes, device just goes to waiting for next command)
+    bool hdd_pioWrite_start(int& fdClient, uint32_t totalDataCount);       // get bytes from ST with CS / INT handshake, receive them with hdd_recvData_transferBlock()
+    bool hdd_recvDataPaced_start(int& fdClient, uint32_t totalDataCount, uint16_t firstBurst, uint16_t burst,
+                                 uint32_t burstPeriodUs, uint16_t startDelayMs, uint8_t timeoutStatus);    // DMA write in bursts, receive with hdd_recvData_transferBlock()
+
     //----------------
     // FDD: all you need for handling the floppy interface
     void fdd_sendTrackToChip(int& fdClient, int byteCount, uint8_t *encodedTrack);    // send encodedTrack to chip for MFM streaming

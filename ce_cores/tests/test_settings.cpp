@@ -234,6 +234,45 @@ TEST_CASE_FIXTURE(SettingsDir, "loadAcsiIDs - old SD type and unknown types are 
     }
 }
 
+TEST_CASE_FIXTURE(SettingsDir, "loadAcsiIDs - SLM laser printers")
+{
+    Settings s;
+    AcsiIDinfo aii;
+
+    SUBCASE("SLM IDs are enabled and marked, next to TRANSLATED") {
+        const int types[8] = {DEVTYPE_OFF, DEVTYPE_TRANSLATED, DEVTYPE_OFF, DEVTYPE_OFF, DEVTYPE_OFF, DEVTYPE_SLM, DEVTYPE_OFF, DEVTYPE_SLM};
+        setAcsiDevTypes(s, types);
+        s.loadAcsiIDs(&aii);
+
+        CHECK(aii.acsiIDdevType[7] == DEVTYPE_SLM);
+        CHECK(aii.acsiIDdevType[5] == DEVTYPE_SLM);
+        CHECK(aii.slmIDbits == ((1 << 5) | (1 << 7)));
+        CHECK(aii.enabledIDbits == ((1 << 1) | (1 << 5) | (1 << 7)));
+        CHECK(aii.ceddId == 1);
+    }
+
+    SUBCASE("only SLM - no defaults stored, CE_DD boots from default ID") {
+        const int types[8] = {DEVTYPE_OFF, DEVTYPE_OFF, DEVTYPE_OFF, DEVTYPE_OFF, DEVTYPE_OFF, DEVTYPE_OFF, DEVTYPE_OFF, DEVTYPE_SLM};
+        setAcsiDevTypes(s, types);
+        s.loadAcsiIDs(&aii);
+
+        CHECK(aii.acsiIDdevType[7] == DEVTYPE_SLM);
+        CHECK(aii.acsiIDdevType[1] == DEVTYPE_OFF);
+        CHECK(s.getInt("ACSI_DEVTYPE_7", -1) == DEVTYPE_SLM);       // printer not turned off by defaults
+        CHECK(aii.ceddId == CEDD_DEFAULT_ACSI_ID);
+        CHECK(aii.enabledIDbits == ((1 << 1) | (1 << 7)));
+    }
+
+    SUBCASE("SLM on ID 1 - no CE_DD boot ID") {
+        const int types[8] = {DEVTYPE_OFF, DEVTYPE_SLM, DEVTYPE_OFF, DEVTYPE_OFF, DEVTYPE_OFF, DEVTYPE_OFF, DEVTYPE_OFF, DEVTYPE_OFF};
+        setAcsiDevTypes(s, types);
+        s.loadAcsiIDs(&aii);
+
+        CHECK(aii.ceddId == ACSI_ID_NONE);
+        CHECK(aii.enabledIDbits == (1 << 1));
+    }
+}
+
 TEST_CASE_FIXTURE(SettingsDir, "settings dir is created on write, not on read")
 {
     uint8_t mac[6] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};

@@ -278,6 +278,50 @@ bool AcsiDataTrans::sendStatusToHans(uint8_t statusByte)
     return res;
 }
 
+bool AcsiDataTrans::pioRead(uint8_t *data, uint32_t cnt)
+{
+    if(!com) {
+        logHdd(LOG_ERROR, "AcsiDataTrans::pioRead -- no communication object, fail!");
+        return false;
+    }
+
+    return com->hdd_pioRead(*fdClient, data, cnt);
+}
+
+bool AcsiDataTrans::pioWrite(uint8_t *data, uint32_t cnt)
+{
+    if(!com) {
+        logHdd(LOG_ERROR, "AcsiDataTrans::pioWrite -- no communication object, fail!");
+        return false;
+    }
+
+    dataDirection = DATA_DIRECTION_WRITE;
+
+    if(!com->hdd_pioWrite_start(*fdClient, cnt)) {
+        return false;
+    }
+
+    return recvData_transferBlock(data, cnt);
+}
+
+bool AcsiDataTrans::recvDataPaced(uint8_t *data, uint32_t cnt, uint16_t firstBurst, uint16_t burst, uint32_t burstPeriodUs,
+                                  uint16_t startDelayMs, uint8_t timeoutStatus)
+{
+    if(!com) {
+        logHdd(LOG_ERROR, "AcsiDataTrans::recvDataPaced -- no communication object, fail!");
+        return false;
+    }
+
+    dataDirection = DATA_DIRECTION_WRITE;
+    receivedDataCount += cnt;
+
+    if(!com->hdd_recvDataPaced_start(*fdClient, cnt, firstBurst, burst, burstPeriodUs, startDelayMs, timeoutStatus)) {
+        return false;
+    }
+
+    return recvData_transferBlock(data, cnt);
+}
+
 uint32_t AcsiDataTrans::getCount(void)
 {
     return count;

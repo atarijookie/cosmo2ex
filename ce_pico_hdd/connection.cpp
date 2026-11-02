@@ -431,6 +431,63 @@ void handleWriteStart(void)
     }
 }
 
+// ACSI only (SLM printer) - send bytes to ST with CS / INT handshake; no bytes = just end the command
+void handlePioRead(uint32_t len)
+{
+    uint8_t data[PAYLOAD_MAX_WAIT_SIZE];
+    uint32_t readLen = MIN(len, PAYLOAD_MAX_WAIT_SIZE);
+
+    if(readLen > 0) {
+        clientHdd.read(data, readLen);
+    }
+
+    for(uint32_t i=readLen; i<len; i++) {   // drop what doesn't fit (host doesn't send more), so the next header can be found
+        clientHdd.read();
+    }
+
+    IPCbuffer* bfr = ipcGetFreeBuffer(1, CMD_TIMEOUT_SHORT);
+    if(bfr) {
+        ipcSetBufferAndPutToFifo(bfr, 1, STATE_PIO_READ, readLen, data, readLen);
+    } else {
+        debug("handlePioRead - ipcGetFreeBuffer failed\n");
+    }
+}
+
+// ACSI only (SLM printer) - get bytes from ST with CS / INT handshake
+void handlePioWriteStart(void)
+{
+    uint8_t data[4];
+    memset(data, 0, 4);
+    clientHdd.read(data, 4);
+
+    IPCbuffer* bfr = ipcGetFreeBuffer(1, CMD_TIMEOUT_SHORT);
+    if(bfr) {
+        ipcSetBufferAndPutToFifo(bfr, 1, STATE_PIO_WRITE, get24bits(data), NULL, 0);
+    } else {
+        debug("handlePioWriteStart - ipcGetFreeBuffer failed\n");
+    }
+}
+
+// ACSI only (SLM printer) - DMA write in bursts of printer scan lines, see onDataWritePaced()
+void handleWritePacedStart(uint32_t len)
+{
+    uint8_t data[DATA_WRITE_PACED_PAYLOAD_SIZE];
+    memset(data, 0, sizeof(data));
+    uint32_t readLen = MIN(len, sizeof(data));
+    clientHdd.read(data, readLen);
+
+    for(uint32_t i=readLen; i<len; i++) {
+        clientHdd.read();
+    }
+
+    IPCbuffer* bfr = ipcGetFreeBuffer(1, CMD_TIMEOUT_SHORT);
+    if(bfr) {
+        ipcSetBufferAndPutToFifo(bfr, 1, STATE_DATA_WRITE_PACED, sizeof(data), data, sizeof(data));
+    } else {
+        debug("handleWritePacedStart - ipcGetFreeBuffer failed\n");
+    }
+}
+
 void handleReadDataReceived(void)
 {
     uint32_t dataCnt = hddHeader.len;
@@ -534,6 +591,9 @@ void handleIncommingData(void)
         case CMD_DATA_MARKER: handleReadDataReceived(); break;
         case CMD_DATA_WRITE: handleWriteStart(); break;
         case CMD_SEND_STATUS: handleSendStatus(); break;
+        case CMD_PIO_READ: handlePioRead(hddHeader.len); break;
+        case CMD_PIO_WRITE: handlePioWriteStart(); break;
+        case CMD_DATA_WRITE_PACED: handleWritePacedStart(hddHeader.len); break;
         default: debug("unknown cmdCode %d\n", hddHeader.cmdCode); break;
     }
 }

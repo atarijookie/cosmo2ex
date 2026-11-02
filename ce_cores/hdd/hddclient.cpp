@@ -14,6 +14,7 @@
 #include "translated/translateddisk.h"
 #include "native/scsi.h"
 #include "native/scsi_defs.h"
+#include "slm/slmprinter.h"
 #include "../misc/utils.h"
 #include "../misc/statusreport.h"
 
@@ -37,6 +38,9 @@ HddClient::HddClient(ChipInterface* chipInterfaceIn, ClientInfo* ci)
     scsi->updateTranslatedBootMedia();   // update CE_DD bootsector with proper SCSI ID
 
     translated = new TranslatedDisk(dataTrans, &hwConfig);
+
+    slm = new SlmPrinter(dataTrans);
+    slm->setWaitForCommand([this](uint32_t timeoutMs, uint8_t* cmd) { return slmWaitForCommand(timeoutMs, cmd); });
 }
 
 void HddClient::resetHwConfig(void)
@@ -61,6 +65,8 @@ void HddClient::onClientConnected(void)
     dataTrans->clear();
 
     translated->resetClientState();         // close files, drop find storages, reset current drive & paths
+
+    slm->reset();                           // new device - printer as after power on
 }
 
 HddClient::~HddClient()
@@ -72,6 +78,7 @@ HddClient::~HddClient()
     scsi = NULL;
 
     delete translated;
+    delete slm;
 }
 
 bool HddClient::handleHdd(uint8_t* inBuff)
@@ -118,6 +125,11 @@ void HddClient::handleAcsiCommand(uint8_t *bufIn)
         dataTrans->clear();                                     // drop data / direction left over from previous command, send just status
         dataTrans->setStatus(SCSI_ST_CHECK_CONDITION);
         dataTrans->sendDataAndStatus();
+        return;
+    }
+
+    if(acsiIdInfo->slmIDbits & (1 << acsiId)) {             // SLM laser printer? It has its own command set, no retries
+        handleSlmCommand(bufIn);
         return;
     }
 
@@ -191,12 +203,72 @@ void HddClient::handleAcsiCommand(uint8_t *bufIn)
     }
 }
 
+void HddClient::handleSlmCommand(uint8_t *bufIn)
+{
+    AcsiIDinfo* acsiIdInfo = scsi->getAcsiIDinfo();
+    uint8_t cmd[ACSI_CMD_SIZE];
+    memcpy(cmd, bufIn, ACSI_CMD_SIZE);
+
+    while(true) {
+        if(hwConfig.hddIface == HDD_IF_SCSI) {          // printer is ACSI only, on SCSI this ID isn't even enabled - see getIdBits()
+            logHdd(LOG_WARNING, "HddClient::handleSlmCommand - SLM printer on SCSI bus is not supported");
+            dataTrans->clear();
+            dataTrans->setStatus(SCSI_ST_CHECK_CONDITION);
+            dataTrans->sendDataAndStatus();
+            return;
+        }
+
+        bool gotOtherCmd = slm->processCommand(cmd, cmd);   // printing multiple pages can end by another command, which is then in cmd
+
+        if(!gotOtherCmd) {
+            return;
+        }
+
+        if((acsiIdInfo->slmIDbits & (1 << (cmd[0] >> 5))) == 0) {     // not for printer? handle it the usual way
+            handleAcsiCommand(cmd);
+            return;
+        }
+    }
+}
+
+// While printing multiple pages, wait for the next ACSI command (STOP PRINT). Other packets from the device (e.g. the
+// FW version it sends every second) are handled / dropped meanwhile.
+bool HddClient::slmWaitForCommand(uint32_t timeoutMs, uint8_t* cmd)
+{
+    static uint8_t inBuf[INBUF_SIZE];       // only the core HDD thread gets here, and it's too big for stack
+    Timeout timeout(timeoutMs);
+
+    while(!timeout.expired()) {
+        if(!chipInterface->actionNeeded(ci, inBuf)) {
+            Utils::sleepMs(1);
+            continue;
+        }
+
+        uint8_t atnCode = inBuf[3];
+
+        if(atnCode == ATN_ACSI_COMMAND) {
+            memcpy(cmd, inBuf + 8, ACSI_CMD_SIZE);
+            chipInterface->dropRestOfData(ci, inBuf, INBUF_SIZE);
+            return true;
+        }
+
+        if(atnCode == ATN_FW_VERSION) {
+            handleFwVersion_hans();
+        }
+
+        chipInterface->dropRestOfData(ci, inBuf, INBUF_SIZE);
+    }
+
+    return false;
+}
+
 void HddClient::onMacUpdated(void)
 {
     StatusReport::storeTosAndMachine(ci->mac, hwConfig.tosVersion, hwConfig.scsiMachine);
 
     scsi->setMac(ci->mac);
     translated->setMac(ci->mac);
+    slm->setMac(ci->mac);
 }
 
 void HddClient::handleFwVersion_hans(void)
@@ -229,6 +301,10 @@ uint8_t HddClient::getIdBits(void)
     // get the bits from struct
     AcsiIDinfo* acsiIdInfo = scsi->getAcsiIDinfo();
     uint8_t enabledIDbits = acsiIdInfo->enabledIDbits;
+
+    if(hwConfig.hddIface == HDD_IF_SCSI) {          // SLM printers are ACSI only - don't answer on their IDs on SCSI
+        enabledIDbits &= ~acsiIdInfo->slmIDbits;
+    }
 
     if(hwConfig.hddIface != HDD_IF_SCSI) {          // not SCSI? Don't change anything
 //        logHdd(LOG_DEBUG, "HddClient::getIdBits() -- we're running on ACSI");

@@ -236,6 +236,8 @@ func newServer() *Server {
 		protected.Get("/host/dir", s.handleHostDir)
 		protected.Get("/settings/loglevel", s.handleGetLogLevel)
 		protected.Put("/settings/loglevel", s.handlePutLogLevel)
+		protected.Get("/settings/slm", s.handleGetSlm)
+		protected.Put("/settings/slm", s.handlePutSlm)
 		protected.Get("/settings/logs", s.handleGetLogs)
 		protected.Delete("/settings/logs", s.handleDeleteLogs)
 

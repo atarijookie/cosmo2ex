@@ -267,6 +267,23 @@ void TranslatedDisk::onFsfirst(uint8_t *cmd)
 
     uint8_t findAttribs    = dataBuffer[4];                // get find attribs (dirs | hidden | ...)
 
+    // TOS ignores spaces in the search mask (names are space-padded 8.3 internally), so apps like Signum
+    // send e.g. "C:\SIGNUM3\*.SDK       " and expect it to match "*.SDK". Remove spaces from the
+    // last path component before convertAtariASCIItoPc() would turn them into '_' and break the match.
+    {
+        char *s = (char *) (dataBuffer + 5);
+        s[512 - 5 - 1] = 0;                             // make sure it's terminated within the buffer
+        char *name = strrchr(s, '\\');
+        name = name ? (name + 1) : s;
+        char *dst = name;
+        for(char *src = name; *src; src++) {
+            if(*src != ' ') {
+                *dst++ = *src;
+            }
+        }
+        *dst = 0;
+    }
+
     convertAtariASCIItoPc((char *) (dataBuffer + 5));   // try to fix the path with only allowed chars
     atariSearchString   = (char *) (dataBuffer + 5);    // get search string, e.g.: C:\\*.*
 

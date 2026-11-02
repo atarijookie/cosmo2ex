@@ -7,6 +7,9 @@
 # Floppy images (FLOPPY_IMAGES_DIR in .env) are kept on the host next to the settings
 # (default: /opt/ce/floppy_images). Override with CE_FLOPPY_HOST=/some/host/path
 #
+# Pages printed on the emulated SLM laser printer (PRINTOUTS_DIR in .env) are kept on the
+# host next to the settings (default: /opt/ce/printouts). Override with CE_PRINTOUTS_HOST=/some/host/path
+#
 # Logs (LOG_DIR in .env, /var/log/ce in the container) are written to the host
 # next to the settings (default: /opt/ce/log). Override with CE_LOG_HOST=/some/host/path
 #
@@ -62,6 +65,12 @@ services:
       - type: bind
         source: ${CE_FLOPPY_HOST:-/opt/ce/floppy_images}
         target: /opt/ce/floppy_images
+        bind:
+          create_host_path: true
+      # Printed pages of the SLM laser printer emulation (writable). Target matches PRINTOUTS_DIR in .env.
+      - type: bind
+        source: ${CE_PRINTOUTS_HOST:-/opt/ce/printouts}
+        target: /opt/ce/printouts
         bind:
           create_host_path: true
       # Logs of ce_cores and webserver (writable). Target matches LOG_DIR in .env.

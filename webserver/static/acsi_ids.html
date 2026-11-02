@@ -66,6 +66,17 @@
                 // Replace ACSI with SCSI if scsi is true (but not if acsi is also true)
                 // If acsi is true, keep ACSI (even if scsi is also true)
                 if (features.scsi && !features.acsi) {
+                  // SLM laser printers are ACSI only - remove them from SCSI device
+                  $(".slm-note").remove();
+                  for (var i = 0; i < 8; i++) {
+                    $("#devtype" + i + " option[value='4']").remove();
+                    if (devTypes[i] == 4) {
+                      devTypes[i] = 0;
+                      document.getElementById("devtype" + i).value = "0";
+                      onComboChanged(i);
+                    }
+                  }
+
                   // Replace all occurrences of "ACSI" with "SCSI" throughout the document
                   replaceTextInNode(document.body, 'ACSI', 'SCSI');
                   // Also update title
@@ -305,6 +316,7 @@
                 <h2>Cosmo2ex</h2>
                 <h3>ACSI IDs</h3>
                 <p>Configure the ACSI IDs of your device. You need at least one ID set to CE_DD to be able to boot the CE_DD driver.</p>
+                <p class="slm-note">SLM 605/804 emulates the Atari laser printer (ACSI only), the printed pages are saved as PNG files to PRINTOUTS_DIR. The printer drivers look for it on ID 7 first.</p>
             </div>
         </div>
 
@@ -315,49 +327,49 @@
 
               <tr>
                 <td><center>0</center></td>
-                <td><select id="devtype0" name="devtype0"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option></select></td>
+                <td><select id="devtype0" name="devtype0"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option><option value="4">SLM 605/804</option></select></td>
                 <td id="path0"></td>
               </tr>
 
               <tr>
                 <td><center>1</center></td>
-                <td><select id="devtype1" name="devtype1"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option></select></td>
+                <td><select id="devtype1" name="devtype1"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option><option value="4">SLM 605/804</option></select></td>
                 <td id="path1"></td>
               </tr>
 
               <tr>
                 <td><center>2</center></td>
-                <td><select id="devtype2" name="devtype2"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option></select></td>
+                <td><select id="devtype2" name="devtype2"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option><option value="4">SLM 605/804</option></select></td>
                 <td id="path2"></td>
               </tr>
 
               <tr>
                 <td><center>3</center></td>
-                <td><select id="devtype3" name="devtype3"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option></select></td>
+                <td><select id="devtype3" name="devtype3"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option><option value="4">SLM 605/804</option></select></td>
                 <td id="path3"></td>
               </tr>
 
               <tr>
                 <td><center>4</center></td>
-                <td><select id="devtype4" name="devtype4"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option></select></td>
+                <td><select id="devtype4" name="devtype4"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option><option value="4">SLM 605/804</option></select></td>
                 <td id="path4"></td>
               </tr>
 
               <tr>
                 <td><center>5</center></td>
-                <td><select id="devtype5" name="devtype5"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option></select></td>
+                <td><select id="devtype5" name="devtype5"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option><option value="4">SLM 605/804</option></select></td>
                 <td id="path5"></td>
               </tr>
 
               <tr>
                 <td><center>6</center></td>
-                <td><select id="devtype6" name="devtype6"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option></select></td>
+                <td><select id="devtype6" name="devtype6"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option><option value="4">SLM 605/804</option></select></td>
                 <td id="path6"></td>
               </tr>
 
               <tr>
                 <td><center>7</center></td>
-                <td><select id="devtype7" name="devtype7"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option></select></td>
+                <td><select id="devtype7" name="devtype7"><option value="0">off</option><option value="3">ce_dd</option><option value="2">raw</option><option value="4">SLM 605/804</option></select></td>
                 <td id="path7"></td>
               </tr>
             </table>

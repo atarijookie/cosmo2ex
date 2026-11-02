@@ -402,8 +402,52 @@
                 .then(loadDevices);     // refresh in both cases - e.g. device might have connected meanwhile
             }
 
+            function showSlmStatus(text, isError) {
+                var el = document.getElementById('slm-status');
+                el.textContent = text;
+                el.className = 'setting-status ' + (isError ? 'error' : 'ok');
+            }
+
+            function slmRequest(options, changed) {
+                var select = document.getElementById('slm-paper-select');
+                select.disabled = true;
+
+                fetch('/settings/slm', options)
+                .then(function(response) {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(function(slm) {
+                    select.value = slm.paper;
+                    showSlmStatus(changed ? 'Paper size changed.' : '', false);
+                })
+                .catch(function(error) {
+                    console.error('SLM settings error:', error);
+                    showSlmStatus('Failed to ' + (changed ? 'set' : 'load') + ' paper size: ' + error.message, true);
+                })
+                .then(function() {
+                    select.disabled = false;
+                });
+            }
+
+            function loadSlmPaper() {
+                slmRequest({ credentials: 'include' }, false);
+            }
+
+            function setSlmPaper(value) {
+                slmRequest({
+                    method: 'PUT',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paper: value })
+                }, true);
+            }
+
             document.addEventListener('DOMContentLoaded', function() {
                 loadLogLevel();
+                loadSlmPaper();
                 loadDevices();
             });
         </script>
@@ -448,6 +492,25 @@
                 Wipe empties all current logs and deletes the rotated (.1) ones - e.g. before reproducing a problem.
             </div>
             <div id="logfiles-status" class="setting-status"></div>
+        </div>
+
+        <div class="settings-section">
+            <h4>SLM laser printer</h4>
+            <div class="setting-row">
+                <label for="slm-paper-select">Paper size</label>
+                <select id="slm-paper-select" onchange="setSlmPaper(this.value)">
+                    <option value="letter">Letter - 2400 x 3180 dots</option>
+                    <option value="a4">A4 - 2336 x 3386 dots</option>
+                    <option value="legal">Legal - 2400 x 4080 dots</option>
+                    <option value="b5">B5 - 2016 x 2914 dots</option>
+                </select>
+            </div>
+            <div class="setting-hint">
+                Paper in the cassette of the emulated SLM 605/804 printer (an ACSI ID set to SLM 605/804), for all devices.
+                Applies from the next printer command. The SLM804 emulator DIAB630.PRG works only with Letter, GDOS drivers,
+                Signum and Papyrus use the selected size.
+            </div>
+            <div id="slm-status" class="setting-status"></div>
         </div>
 
         <div class="settings-section">

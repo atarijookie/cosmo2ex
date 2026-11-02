@@ -131,7 +131,7 @@ function onIdsSave() {
     }
 
     if (!foundEnabled) {
-        alert("No device ID was enabled (set to RAW or CE_DD). Your device will not respond to your Atari. Please select at least one device ID as RAW or CE_DD before saving.");
+        alert("No device ID was enabled (set to RAW, CE_DD or SLM printer). Your device will not respond to your Atari. Please select at least one device ID before saving.");
         return;
     }
 
@@ -191,11 +191,14 @@ function setSaveMessage(text, isError) {
 // go through all the rows, switch combo boxes to selected values and show paths on screen
 function updateIdsFromData() {
     for (let i = 0; i < 8; i++) {
-        if (devTypes[i] != 0 && devTypes[i] != 2 && devTypes[i] != 3) {    // unknown type (e.g. old SD type 1)? show and save it as off
+        if ([0, 2, 3, 4].indexOf(devTypes[i]) < 0) {    // unknown type (e.g. old SD type 1)? show and save it as off
             devTypes[i] = 0;
         }
 
         var elem = document.getElementById("devtype" + i);
+        if (!elem.querySelector("option[value='" + devTypes[i] + "']")) {  // type not offered here (SLM printer on SCSI device)? show and save it as off
+            devTypes[i] = 0;
+        }
         elem.value = devTypes[i].toString();
         onComboChanged(i);
     }
@@ -212,6 +215,7 @@ function onComboChanged(index) {
         case "0": td.innerHTML = ""; break;
         case "2": td.innerHTML = "<button type=\"button\" onclick=\"handleSelectClick(" + index + ");\">Select file</button> &nbsp; " + paths[index]; break;
         case "3": td.innerHTML = "[CE_DD.PRG]"; break;
+        case "4": td.innerHTML = "[SLM 605/804 laser printer - pages saved as PNG]"; break;
     }
 }
 

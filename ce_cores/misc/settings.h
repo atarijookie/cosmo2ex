@@ -14,6 +14,8 @@ typedef struct {
 
     uint8_t enabledIDbits;          // bit map of which ACSI IDs are enabled
 
+    uint8_t slmIDbits;              // bit map of which ACSI IDs are SLM laser printers (ACSI only - not on SCSI bus)
+
     bool gotDevTypeRaw;
     bool gotDevTypeTranslated;
 } AcsiIDinfo;

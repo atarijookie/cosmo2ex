@@ -65,6 +65,13 @@ public:
 
     virtual bool sendStatusToHans       (uint8_t statusByte);
 
+    //----------------
+    // ACSI only, for the SLM laser printer (hdd/slm/)
+    virtual bool pioRead                (uint8_t *data, uint32_t cnt);   // send bytes with CS / INT (status, EXTENDED STATUS PHASE); cnt 0 = device just ends the command
+    virtual bool pioWrite               (uint8_t *data, uint32_t cnt);   // get bytes with CS / INT (EXTENDED COMMAND PHASE)
+    virtual bool recvDataPaced          (uint8_t *data, uint32_t cnt, uint16_t firstBurst, uint16_t burst, uint32_t burstPeriodUs,
+                                         uint16_t startDelayMs, uint8_t timeoutStatus);  // DMA write in printer scan line bursts
+
 protected:
     uint32_t    sentDataCount;
     uint32_t    receivedDataCount;

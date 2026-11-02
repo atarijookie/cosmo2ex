@@ -56,6 +56,11 @@ the device start browsing there. Put the images there, e.g. with
 github.com/atarijookie/atari-st-floppy-image-downloader.
 Override the host path with CE_FLOPPY_HOST=/your/path.
 
+Pages printed on the emulated SLM 605/804 laser printer (an ACSI ID set to
+SLM 605/804 on the ACSI IDs page) are saved as PNG files, one per page, on
+the host at /opt/ce/printouts (PRINTOUTS_DIR in .env).
+Override the host path with CE_PRINTOUTS_HOST=/your/path.
+
 Logs of ce_cores and the webserver are on the host at /opt/ce/log, next to the
 settings (inside the container it is LOG_DIR=/var/log/ce from .env).
 Override the host path with CE_LOG_HOST=/your/path.

@@ -108,10 +108,10 @@ func (s *Server) handlePutHDDRaw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate dev types - only off, raw and ce_dd are supported
+	// Validate dev types - only off, raw, ce_dd and SLM printers are supported
 	for i, devType := range payload.DevTypes {
 		if !isValidDevType(devType) {
-			http.Error(w, "dev_types["+strconv.Itoa(i)+"] must be 0 (off), 2 (raw) or 3 (ce_dd)", http.StatusBadRequest)
+			http.Error(w, "dev_types["+strconv.Itoa(i)+"] must be 0 (off), 2 (raw), 3 (ce_dd) or 4 (slm)", http.StatusBadRequest)
 			return
 		}
 	}
@@ -361,9 +361,10 @@ const (
 	devTypeOff        = 0
 	devTypeRaw        = 2
 	devTypeTranslated = 3 // ce_dd
+	devTypeSlm        = 4 // Atari SLM605 / SLM804 laser printer (ACSI only)
 )
 
 // isValidDevType returns true for supported ACSI device types; 1 (SD card) was used only on old HW, this HW has no SD card slot
 func isValidDevType(devType int) bool {
-	return devType == devTypeOff || devType == devTypeRaw || devType == devTypeTranslated
+	return devType == devTypeOff || devType == devTypeRaw || devType == devTypeTranslated || devType == devTypeSlm
 }

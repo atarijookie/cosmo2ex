@@ -160,6 +160,55 @@ void core1_main_loop(void)
                     break;
                 }
 
+                // SLM printer: status + EXTENDED STATUS PHASE bytes to ST (none = just end the command), then next command
+                case STATE_PIO_READ:
+                {
+                    if(IS_ACSI) {
+                        timeoutStart();
+                        onPioRead(bfr->data, bfr->length);
+                    }
+                    core1state = STATE_GET_COMMAND;
+                    timeoutClear();
+                    break;
+                }
+
+                // SLM printer: EXTENDED COMMAND PHASE bytes from ST - host sends the status after them
+                case STATE_PIO_WRITE:
+                {
+                    bool res = false;
+
+                    if(IS_ACSI) {
+                        timeoutStart(CMD_TIMEOUT_ONESECOND);    // ST waits for INT up to 400 ms per byte, then gives up
+                        res = onPioWrite(bfr->length);
+                    }
+
+                    if(!res) {
+                        core1state = STATE_GET_COMMAND;
+                        timeoutClear();
+                    } else {
+                        timeoutStart();                         // status from host must come in time
+                    }
+                    break;
+                }
+
+                // SLM printer: page data from ST, paced by printer scan lines
+                case STATE_DATA_WRITE_PACED:
+                {
+                    bool res = false;
+
+                    if(IS_ACSI) {
+                        res = onDataWritePaced(bfr->data);      // sets its own timeouts
+                    }
+
+                    if(!res) {      // failed - SYSTEM TIMEOUT status was sent to ST, go back to command receiving
+                        core1state = STATE_GET_COMMAND;
+                        timeoutClear();
+                    } else {
+                        timeoutStart();                         // status from host must come in time
+                    }
+                    break;
+                }
+
                 // this happens after READ - send status byte to ST (read)
                 case STATE_READ_STATUS:
                 {

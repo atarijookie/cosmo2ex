@@ -15,4 +15,8 @@ bool onDataRead(uint32_t cnt, uint8_t* bfr);
 bool onDataWrite(uint32_t dataCnt);
 void onReadStatus(uint8_t statusByte);
 
+bool onPioRead(uint8_t* bfr, uint32_t cnt);
+bool onPioWrite(uint32_t dataCnt);
+bool onDataWritePaced(uint8_t* params);
+
 #endif

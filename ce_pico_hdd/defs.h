@@ -42,6 +42,12 @@
 #define CMD_FLOPPY_SWITCH                   0x80
 #define CMD_DATA_MARKER                     0xda
 
+// ACSI only - for the SLM laser printer emulation on host (ce_cores/hdd/slm/)
+#define CMD_PIO_READ                        0x90    // send the payload bytes to ST with CS / INT handshake (status + EXTENDED STATUS PHASE), then wait for next command
+#define CMD_PIO_WRITE                       0xc0    // get N bytes from ST with CS / INT handshake (EXTENDED COMMAND PHASE), sent to host as on DMA write
+#define CMD_DATA_WRITE_PACED                0xd0    // DMA write in printer scan line bursts, see onDataWritePaced()
+#define DATA_WRITE_PACED_PAYLOAD_SIZE       16
+
 // these states define if the device should get command or transfer data
 #define STATE_GET_COMMAND                       0
 // #define STATE_SEND_COMMAND                   1
@@ -55,6 +61,9 @@
 #define STATE_SEND_FW_VER                       10
 #define STATE_SEND_WRITE_MORE_DATA              11
 #define STATE_DATA_READ                         12
+#define STATE_PIO_READ                          13
+#define STATE_PIO_WRITE                         14
+#define STATE_DATA_WRITE_PACED                  15
 
 ///////////////////////////
 

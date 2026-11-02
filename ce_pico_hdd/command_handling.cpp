@@ -7,6 +7,7 @@
 #include "connection.h"
 #include "scsi.h"
 #include "ipc.h"
+#include "pico/time.h"
 
 extern EthernetClient clientHdd;
 extern EthernetClient clientIkbd;
@@ -258,6 +259,205 @@ bool onDataWrite(uint32_t dataCnt)
 void onReadStatus(uint8_t statusByte)
 {
     statusAndMsgRead(statusByte);       // send the status to Atari
+}
+
+//--------------------------------------------------------
+// ACSI only - for the SLM laser printer emulation on host
+
+// send bytes to ST with CS / INT handshake - the status byte and the EXTENDED STATUS PHASE bytes
+bool onPioRead(uint8_t* bfr, uint32_t cnt)
+{
+    for(uint32_t i = 0; i < cnt; i++) {
+        statusAndMsgRead(bfr[i]);
+
+        if(brStat != E_OK) {
+            debug("onPioRead - timeout on byte %d of %d\n", i, cnt);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// get bytes from ST with CS / INT handshake (EXTENDED COMMAND PHASE), send them to host as with DMA write
+bool onPioWrite(uint32_t dataCnt)
+{
+    IPCbuffer* bfr = ipcGetFreeBuffer(0, CMD_TIMEOUT_SHORT);
+    if(!bfr) {
+        debug("onPioWrite - ipcGetFreeBuffer failed\n");
+        return false;
+    }
+    ipcSetBufferAndPutToFifo(bfr, 0, STATE_SEND_WRITE_MORE_DATA, dataCnt, NULL, 0);     // header for host
+
+    while(dataCnt > 0) {
+        uint32_t cntNow = MIN(dataCnt, IPC_BUFFER_SIZE);
+        dataCnt -= cntNow;
+
+        bfr = ipcGetFreeBuffer(0, CMD_TIMEOUT_SHORT);
+        if(!bfr) {
+            debug("onPioWrite - ipcGetFreeBuffer failed\n");
+            return false;
+        }
+
+        for(uint32_t i = 0; i < cntNow; i++) {
+            bfr->data[i] = PIO_write();         // INT L, wait for CS, get byte
+
+            if(brStat != E_OK) {
+                debug("onPioWrite - timeout\n");
+                ipcReleaseBuffer(bfr);
+                return false;
+            }
+        }
+
+        ipcSetBufferAndPutToFifo(bfr, 0, STATE_DATA_WRITE, cntNow, NULL, 0);
+    }
+
+    return true;
+}
+
+// fill the rest of the page with blank (0 = no mark) and send it to host, starting with the partly filled buffer bfr
+static void padPageToHost(IPCbuffer* bfr, uint32_t inBfr, uint32_t missing)
+{
+    while(true) {
+        if(bfr) {
+            uint32_t cntNow = MIN(missing, IPC_BUFFER_SIZE - inBfr);
+            memset(bfr->data + inBfr, 0, cntNow);
+            inBfr += cntNow;
+            missing -= cntNow;
+
+            ipcSetBufferAndPutToFifo(bfr, 0, STATE_DATA_WRITE, inBfr, NULL, 0);
+            bfr = NULL;
+        }
+
+        if(missing == 0) {
+            return;
+        }
+
+        bfr = ipcGetFreeBuffer(0, CMD_TIMEOUT_LONG);
+        if(!bfr) {                              // core 0 is stuck - host won't get the whole page and will give up on it
+            debug("padPageToHost - ipcGetFreeBuffer failed\n");
+            return;
+        }
+        inBfr = 0;
+    }
+}
+
+#define PACED_FIRST_BURST_TIMEOUT_MS    2500    // ST has to start the DMA after the PRINT command / page status - keep it below host's 3 s receive timeout
+#define PACED_BURST_TIMEOUT_MS          1000    // no data from ST for this long during the page = ST stopped sending, rest of page is blank
+#define PACED_MIN_GAP_US                100     // pause after each burst even if the burst took longer than the period
+
+/*
+    DMA write from ST in bursts - for the SLM laser printer page. The printer takes one scan line at the time, then
+    waits for the next scan line. The drivers depend on this: they switch the DMA to the next band of the page when the
+    DMA address reaches the end of the current band, waiting for the exact value - with the data taken at full speed the
+    DMA address would get past that value before the driver sees it.
+
+    params (big endian): 0..3 total byte count, 4..5 first burst size, 6..7 burst size, 8..11 burst period in us,
+    12..13 delay before the first burst in ms, 14 status byte sent to ST when it stops sending the data.
+*/
+bool onDataWritePaced(uint8_t* params)
+{
+    uint32_t total          = getDword(params + 0);
+    uint32_t burstNow       = getWord(params + 4);
+    uint32_t burst          = getWord(params + 6);
+    uint32_t periodUs       = getDword(params + 8);
+    uint32_t startDelayMs   = getWord(params + 12);
+    uint8_t  timeoutStatus  = params[14];
+
+    if(total == 0 || burstNow == 0 || burst == 0) {
+        debug("onDataWritePaced - bad params\n");
+        return false;
+    }
+
+    IPCbuffer* bfr = ipcGetFreeBuffer(0, CMD_TIMEOUT_SHORT);
+    if(!bfr) {
+        debug("onDataWritePaced - ipcGetFreeBuffer failed\n");
+        return false;
+    }
+    ipcSetBufferAndPutToFifo(bfr, 0, STATE_SEND_WRITE_MORE_DATA, total, NULL, 0);       // header for host
+    bfr = NULL;
+
+    pioConfig(MODE_DMA_WRITE);
+    sleep_ms(startDelayMs);                     // paper feed
+
+    timeoutStart(PACED_FIRST_BURST_TIMEOUT_MS);
+
+    uint32_t left = total;
+    uint32_t inBfr = 0;
+
+    while(left > 0) {
+        uint32_t cnt = MIN(burstNow, left);
+        uint32_t burstStart = time_us_32();
+
+        DMA_write_startWithCount(cnt);          // DRQ for cnt bytes, then the PIO waits for the next count with DRQ H
+
+        uint32_t got = 0;
+        while(got < cnt) {
+            if(!bfr) {
+                bfr = ipcGetFreeBuffer(0, CMD_TIMEOUT_SHORT);
+                if(!bfr) {
+                    debug("onDataWritePaced - ipcGetFreeBuffer failed\n");
+                    goto failed;
+                }
+                inBfr = 0;
+            }
+
+            uint32_t cntNow = MIN(cnt - got, IPC_BUFFER_SIZE - inBfr);
+            DMA_writeBlock(bfr->data + inBfr, cntNow);
+
+            if(brStat == E_TimeOut) {
+                uint32_t missing = left - got;
+
+                if(missing == total) {          // ST didn't send anything - didn't start the DMA at all
+                    debug("onDataWritePaced - timeout, no data\n");
+                    ipcReleaseBuffer(bfr);
+                    goto failed;
+                }
+
+                // ST stopped sending in the middle of the page - e.g. Signum sends only height / 8 bands of 8 lines.
+                // The real printer can't stop the paper, the rest of the page just stays white - do the same.
+                debug("onDataWritePaced - ST stopped sending, %d of %d bytes left, rest of page is blank\n", missing, total);
+                pioConfig(MODE_RESET);          // stop the DMA transfer, DRQ to H
+                padPageToHost(bfr, inBfr, missing);
+                return true;
+            }
+
+            inBfr += cntNow;
+            got += cntNow;
+
+            if(inBfr == IPC_BUFFER_SIZE) {      // buffer full? send it to host
+                ipcSetBufferAndPutToFifo(bfr, 0, STATE_DATA_WRITE, inBfr, NULL, 0);
+                bfr = NULL;
+            }
+        }
+
+        left -= cnt;
+        burstNow = burst;
+
+        if(left == 0) {
+            break;
+        }
+
+        timeoutStart(PACED_BURST_TIMEOUT_MS);
+
+        // wait for the next scan line, but always with some pause after the burst
+        uint32_t burstEnd = time_us_32();
+        while((time_us_32() - burstStart) < periodUs || (time_us_32() - burstEnd) < PACED_MIN_GAP_US) {
+            tight_loop_contents();
+        }
+    }
+
+    if(bfr) {                                   // send the rest to host
+        ipcSetBufferAndPutToFifo(bfr, 0, STATE_DATA_WRITE, inBfr, NULL, 0);
+    }
+
+    return true;
+
+failed:
+    // ST waits for the status byte (e.g. after the driver gave up on this page) - tell it that the printer timed out
+    timeoutStart(CMD_TIMEOUT_SHORT);
+    statusAndMsgRead(timeoutStatus);
+    return false;
 }
 
 void getCmdLengthFromCmdBytesAcsi(void)

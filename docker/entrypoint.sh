@@ -18,17 +18,18 @@ LOG_DIR="${LOG_DIR:-/var/log/ce}"
 PID_DIR="${PID_DIR:-/run/ce}"
 SETTINGS_DIR="${SETTINGS_DIR:-/opt/ce/settings}"
 FLOPPY_IMAGES_DIR="${FLOPPY_IMAGES_DIR:-/opt/ce/floppy_images}"
+PRINTOUTS_DIR="${PRINTOUTS_DIR:-/opt/ce/printouts}"
 
-mkdir -p "$DATA_DIR" "$LOG_DIR" "$PID_DIR" "$SETTINGS_DIR" "$FLOPPY_IMAGES_DIR"
+mkdir -p "$DATA_DIR" "$LOG_DIR" "$PID_DIR" "$SETTINGS_DIR" "$FLOPPY_IMAGES_DIR" "$PRINTOUTS_DIR"
 chmod 0700 "$DATA_DIR"    # owner only - command token
 
 # PID files survive a container restart, and PIDs inside the container repeat,
 # so a stale file would make the apps think another instance is running.
 rm -f "$PID_DIR"/*.pid
 
-# SETTINGS_DIR and FLOPPY_IMAGES_DIR are host bind-mounts; keep them writable even if the host
+# SETTINGS_DIR, FLOPPY_IMAGES_DIR and PRINTOUTS_DIR are host bind-mounts; keep them writable even if the host
 # directories were created with restrictive permissions.
-chmod a+rwx "$SETTINGS_DIR" "$FLOPPY_IMAGES_DIR" 2>/dev/null || true
+chmod a+rwx "$SETTINGS_DIR" "$FLOPPY_IMAGES_DIR" "$PRINTOUTS_DIR" 2>/dev/null || true
 
 CORE_PID=""
 WEB_PID=""

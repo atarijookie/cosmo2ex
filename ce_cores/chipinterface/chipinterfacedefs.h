@@ -56,6 +56,13 @@
 #define CMD_DO_UPDATE                   0xb0
 #define CMD_DATA_MARKER                 0xda
 
+// Hans (HDD) - ACSI only, for the SLM laser printer emulation (hdd/slm/)
+#define CMD_PIO_READ                    0x90        // send the payload bytes to ST one by one with CS / INT handshake (status + EXTENDED STATUS PHASE), then wait for the next command; no payload = just wait for the next command
+#define CMD_PIO_WRITE                   0xc0        // get N bytes from ST with CS / INT handshake (EXTENDED COMMAND PHASE), N in 24 bits; data comes back as on CMD_DATA_WRITE
+#define CMD_DATA_WRITE_PACED            0xd0        // get N bytes from ST using DMA, in bursts of one printer scan line (payload: see ChipInterface::hdd_recvDataPaced_start())
+#define DATA_WRITE_PACED_PAYLOAD_SIZE   16
+#define PIO_READ_MAX_LEN                64          // device waits for at most this many payload bytes (PAYLOAD_MAX_WAIT_SIZE in ce_pico_hdd)
+
 // Franz (FDD)
 #define CMD_WRITE_PROTECT_OFF           0x10
 #define CMD_WRITE_PROTECT_ON            0x20

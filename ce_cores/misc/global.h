@@ -28,6 +28,7 @@
 #define DEVTYPE_SD_UNUSED           1       // SD card on old HW only - this HW has no SD card slot, treated as DEVTYPE_OFF; number kept so stored settings keep their meaning
 #define DEVTYPE_RAW                 2
 #define DEVTYPE_TRANSLATED          3
+#define DEVTYPE_SLM                 4       // Atari SLM605 / SLM804 laser printer (ACSI only), see hdd/slm/
 
 // types of devices / modules we support
 #define HOSTMOD_CONFIG              1

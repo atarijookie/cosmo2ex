@@ -117,3 +117,52 @@ func TestClampLogLevel(t *testing.T) {
 		}
 	}
 }
+
+// SLM paper size: default letter, stored to SETTINGS_DIR/SLM_PAPER_SIZE, invalid values rejected
+func TestSlmPaperSetting(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SETTINGS_DIR", dir)
+	s := &Server{}
+
+	get := func() string {
+		rec := httptest.NewRecorder()
+		s.handleGetSlm(rec, httptest.NewRequest(http.MethodGet, "/settings/slm", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET status %d", rec.Code)
+		}
+		return strings.TrimSpace(rec.Body.String())
+	}
+	put := func(body string) int {
+		rec := httptest.NewRecorder()
+		s.handlePutSlm(rec, httptest.NewRequest(http.MethodPut, "/settings/slm", strings.NewReader(body)))
+		return rec.Code
+	}
+
+	if got := get(); got != `{"paper":"letter"}` {
+		t.Errorf("default = %s", got)
+	}
+
+	if code := put(`{"paper":"a4"}`); code != http.StatusOK {
+		t.Fatalf("PUT a4 status %d", code)
+	}
+	if got := get(); got != `{"paper":"a4"}` {
+		t.Errorf("after PUT a4 = %s", got)
+	}
+	if content, _ := os.ReadFile(filepath.Join(dir, "SLM_PAPER_SIZE")); string(content) != "a4" {
+		t.Errorf("stored %q", content)
+	}
+
+	for _, bad := range []string{`{"paper":"A5"}`, `{}`, `not json`} {
+		if code := put(bad); code != http.StatusBadRequest {
+			t.Errorf("PUT %s status %d, want 400", bad, code)
+		}
+	}
+	if got := get(); got != `{"paper":"a4"}` {
+		t.Errorf("after bad PUTs = %s", got)
+	}
+
+	os.WriteFile(filepath.Join(dir, "SLM_PAPER_SIZE"), []byte("garbage\n"), 0o644)
+	if got := get(); got != `{"paper":"letter"}` {
+		t.Errorf("garbage stored = %s", got)
+	}
+}

@@ -335,6 +335,7 @@ void Settings::setChar(const char *key, char value)
 void Settings::loadAcsiIDs(AcsiIDinfo *aii, bool useDefaultsIfNoSettings)
 {
     aii->enabledIDbits = 0;                                 // no bits / IDs enabled yet
+    aii->slmIDbits     = 0;                                 // no SLM printers yet
     aii->ceddId        = ACSI_ID_NONE;                      // no CE_DD boot ID until TRANSLATED device is found
 
     aii->gotDevTypeRaw          = false;                    // no raw and translated types found yet
@@ -346,7 +347,8 @@ void Settings::loadAcsiIDs(AcsiIDinfo *aii, bool useDefaultsIfNoSettings)
 
         int devType = getInt(key, DEVTYPE_OFF);
 
-        if(devType != DEVTYPE_RAW && devType != DEVTYPE_TRANSLATED) {   // only RAW and TRANSLATED are supported, anything else (e.g. old DEVTYPE_SD_UNUSED) is OFF
+        // only RAW, TRANSLATED and SLM printers are supported, anything else (e.g. old DEVTYPE_SD_UNUSED) is OFF
+        if(devType != DEVTYPE_RAW && devType != DEVTYPE_TRANSLATED && devType != DEVTYPE_SLM) {
             devType = DEVTYPE_OFF;
         }
 
@@ -356,6 +358,10 @@ void Settings::loadAcsiIDs(AcsiIDinfo *aii, bool useDefaultsIfNoSettings)
 
         if(devType != DEVTYPE_OFF) {                    // if ON
             aii->enabledIDbits |= (1 << id);            // set the bit to 1
+        }
+
+        if(devType == DEVTYPE_SLM) {                     // SLM laser printer?
+            aii->slmIDbits |= (1 << id);
         }
 
         if(devType == DEVTYPE_RAW) {                    // found at least one RAW device?
@@ -368,8 +374,9 @@ void Settings::loadAcsiIDs(AcsiIDinfo *aii, bool useDefaultsIfNoSettings)
         }
     }
 
-    // no RAW or TRANSLATED device enabled? store defaults (ACSI ID 1 as TRANSLATED) and load them
-    if(!aii->gotDevTypeRaw && !aii->gotDevTypeTranslated) {
+    // nothing enabled? store defaults (ACSI ID 1 as TRANSLATED) and load them
+    // (only SLM printers enabled is fine - CE_DD then boots from default ID below, defaults would turn the printers off)
+    if(!aii->gotDevTypeRaw && !aii->gotDevTypeTranslated && aii->slmIDbits == 0) {
         if(useDefaultsIfNoSettings) {                   // if should use defaults if no settings found, store those defaults and call this function again
             storeDefaultValues();
             loadAcsiIDs(aii, false);                    // ...but call this function without storing defaults next time - to avoid endless loop in some weird case

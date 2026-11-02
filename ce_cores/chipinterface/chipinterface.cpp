@@ -421,6 +421,84 @@ bool ChipInterface::hdd_sendStatusToHans(int& fdClient, uint8_t statusByte)
     return good;
 }
 
+bool ChipInterface::hdd_pioRead(int& fdClient, uint8_t* data, uint32_t len)
+{
+    if(len > PIO_READ_MAX_LEN) {                    // device waits for at most 64 payload bytes, longer payload would be cut
+        Debug::out(whichLog, LOG_ERROR, "hdd_pioRead - %d bytes is more than %d, fail", len, PIO_READ_MAX_LEN);
+        return false;
+    }
+
+    bool good = sendHeaderAndDataToChip(fdClient, CMD_PIO_READ, data, len);
+
+    if(!good) {
+        Debug::out(whichLog, LOG_ERROR, "hdd_pioRead - failed to send to Hans");
+    }
+
+    return good;
+}
+
+bool ChipInterface::hdd_pioWrite_start(int& fdClient, uint32_t totalDataCount)
+{
+    if(totalDataCount == 0 || totalDataCount > 0xffffff) {
+        Debug::out(whichLog, LOG_ERROR, "hdd_pioWrite_start - bad data count %u, fail", totalDataCount);
+        return false;
+    }
+
+    Utils::store24bits(&bufOut[0], totalDataCount);
+    bufOut[3] = 0;
+
+    bool good = sendHeaderAndDataToChip(fdClient, CMD_PIO_WRITE, bufOut, 4);
+
+    if(!good) {
+        Debug::out(whichLog, LOG_ERROR, "hdd_pioWrite_start - failed to send command to Hans");
+    }
+
+    return good;
+}
+
+/*
+    DMA write from ST, but the device takes the data in bursts: firstBurst bytes, then burst bytes each, the burst starts
+    every burstPeriodUs. Before the 1st burst it waits startDelayMs. If ST doesn't start sending the data at all, device
+    sends timeoutStatus to ST by itself (the ST waits for the status), and the transfer to host is not finished. If ST stops
+    sending in the middle (e.g. Signum sends just height / 8 bands of 8 lines), the device fills the rest with zeros
+    (blank, as the real printer which can't stop the paper) and the transfer to host finishes normally.
+
+    Payload (big endian):
+        0..3    total data count
+        4..5    first burst size
+        6..7    burst size
+        8..11   burst period in us
+        12..13  start delay in ms
+        14      status byte on timeout
+        15      reserved
+*/
+bool ChipInterface::hdd_recvDataPaced_start(int& fdClient, uint32_t totalDataCount, uint16_t firstBurst, uint16_t burst,
+                                            uint32_t burstPeriodUs, uint16_t startDelayMs, uint8_t timeoutStatus)
+{
+    if(totalDataCount == 0 || totalDataCount > 0xffffff || firstBurst == 0 || burst == 0) {
+        Debug::out(whichLog, LOG_ERROR, "hdd_recvDataPaced_start - bad params: total %u, firstBurst %d, burst %d - fail", totalDataCount, firstBurst, burst);
+        return false;
+    }
+
+    uint8_t bfr[DATA_WRITE_PACED_PAYLOAD_SIZE];
+    memset(bfr, 0, sizeof(bfr));
+
+    Utils::storeDword(bfr +  0, totalDataCount);
+    Utils::storeWord (bfr +  4, firstBurst);
+    Utils::storeWord (bfr +  6, burst);
+    Utils::storeDword(bfr +  8, burstPeriodUs);
+    Utils::storeWord (bfr + 12, startDelayMs);
+    bfr[14] = timeoutStatus;
+
+    bool good = sendHeaderAndDataToChip(fdClient, CMD_DATA_WRITE_PACED, bfr, sizeof(bfr));
+
+    if(!good) {
+        Debug::out(whichLog, LOG_ERROR, "hdd_recvDataPaced_start - failed to send command to Hans");
+    }
+
+    return good;
+}
+
 void ChipInterface::fdd_sendTrackToChip(int& fdClient, int byteCount, uint8_t *encodedTrack)
 {
     // Debug::out(whichLog, LOG_DEBUG, "fdd_sendTrackToChip -- byteCount: %d", byteCount);
