@@ -12,6 +12,8 @@
 EthernetUDP udp;
 bool udpInitialized;
 
+extern EthernetClient clientIkbd;
+
 EthernetClient clientHdd;
 EthernetClient clientFdd;
 EthernetClient clientIkbd;
@@ -38,16 +40,44 @@ uint32_t hddHeaderTime; // when hddHeader was received
 #define PAYLOAD_MAX_WAIT_SIZE       64      // wait for at most this many payload bytes - all the commands except CMD_DATA_MARKER are smaller
 
 uint8_t connectFailCount;                   // count of failed connection attempts in a row
-#define CONNECT_FAILS_BEFORE_REDISCOVERY 3  // after this many failed connects forget the host and discover it again (it might have new IP / port)
+static uint32_t connLostAt;                 // millis() when the connection to host was lost (or boot)
+static uint32_t connAttempts;               // connect attempts since connLostAt
+static uint32_t connLastAttempt = 0xffff0000;   // millis() of the last connect attempt, -65k: first one right away
+static uint32_t discoverySendCount;         // broadcasts sent in this discovery round, for throttled logging
+
+// states of all the hw sockets (SnSR: 00 closed, 17 established, 1C close wait, 22 udp, ...) and who has which one
+void logSockets(const char* where)
+{
+    char states[MAX_SOCK_NUM * 3 + 1];
+    for(int i=0; i<MAX_SOCK_NUM; i++) {
+        snprintf(states + i * 3, 4, "%02X ", Ethernet.socketStatusOf(i));
+    }
+
+    debug("%s - sockets: %s(hdd #%d, ikbd #%d, udp #%d)\n", where, states,
+          clientHdd.getSocketNumber(), clientIkbd.getSocketNumber(), udp.getSocketNumber());
+}
+
+// how long ago the connection was lost, for logs
+static uint32_t msSinceLost(void)
+{
+    return millis() - connLostAt;
+}
+#define CONNECT_FAILS_BEFORE_REDISCOVERY 5  // after this many failed connects forget the host and discover it again (it might have new IP / port)
+#define CONNECT_RETRY_MS                1000    // connect attempt this often - refused connect takes ~1 ms, only unreachable host blocks (up to 1 s)
+#define DISCOVERY_LOG_EVERY             10      // log only every Nth discovery broadcast (1 per second), not to flood the log
 
 // Send broadcast to find any CE server on the network.
 void ceDiscoverySend(void)
 {
     static uint32_t lastAttempt = 0xffff0000; // -65k
     static bool whichBroadcastAddr = false;
-
     // already got hostIp and port? don't do discovery
     if (hostIp[0] != 0 && hostPortHdd != 0)
+    {
+        return;
+    }
+
+    if (!udpInitialized)        // didn't get udp socket? can't send (sockindex would point to a socket we don't have)
     {
         return;
     }
@@ -66,6 +96,7 @@ void ceDiscoverySend(void)
     memcpy(updPacket + 4, settings.mac, 6);     // 4..9 - mac
 
     whichBroadcastAddr = !whichBroadcastAddr;   // toggle this flag
+    String target;
 
     if(whichBroadcastAddr)      // send to subnet broadcast addr?
     {
@@ -81,22 +112,24 @@ void ceDiscoverySend(void)
 
         IPAddress addrBroadcast((uint8_t) (ip32broadcast >> 24), (uint8_t) (ip32broadcast >> 16), (uint8_t) (ip32broadcast >> 8), (uint8_t) ip32broadcast);    // from uint32_t to object
 
-        debug("ceDiscoverySend to %s\n", addrBroadcast.toString().c_str());
-
-        // broadcast to subnet devices (e.g. 192.168.1.255)
-        udp.beginPacket(addrBroadcast.toString().c_str(), SERVER_UDP_PORT);
-        udp.write(updPacket, 10);
-        udp.endPacket();
+        target = addrBroadcast.toString();    // broadcast to subnet devices (e.g. 192.168.1.255)
     }
     else        // send to generic broadcast addr
     {
-        debug("ceDiscoverySend to 255.255.255.255\n");
-
-        // broadcast to all possible devices (255.255.255.255)
-        udp.beginPacket("255.255.255.255", SERVER_UDP_PORT);
-        udp.write(updPacket, 10);
-        udp.endPacket();
+        target = "255.255.255.255";             // broadcast to all possible devices
     }
+
+    int okBegin = udp.beginPacket(target.c_str(), SERVER_UDP_PORT);
+    udp.write(updPacket, 10);
+    int okEnd = udp.endPacket();
+
+    // log the first one, then every Nth, and any failure
+    bool failed = !okBegin || !okEnd;
+    if((discoverySendCount % DISCOVERY_LOG_EVERY) == 0 || failed) {
+        debug("ceDiscoverySend #%u to %s - udp #%d, begin: %d, end: %d, %u ms since connection lost\n",
+              discoverySendCount + 1, target.c_str(), udp.getSocketNumber(), okBegin, okEnd, msSinceLost());
+    }
+    discoverySendCount++;
 }
 
 // Receive response from server if there is any and store it if it's valid.
@@ -112,6 +145,11 @@ void ceDiscoveryReceive(void)
     }
 
     lastAttempt = millis();
+
+    if (!udpInitialized)        // didn't get udp socket? nothing to receive
+    {
+        return;
+    }
 
     // check if any udp packet was received, handle it
     while (true)
@@ -138,6 +176,7 @@ void ceDiscoveryReceive(void)
         // start of the data isn't CELR? skip the rest
         if (strncmp((const char *)buffer, "CELR", 4) != 0)
         {
+            debug("ceDiscoveryReceive - ignoring %d bytes packet from %s\n", packetSize, udp.remoteIP().toString().c_str());
             continue;
         }
 
@@ -156,22 +195,23 @@ void ceDiscoveryReceive(void)
         hostPortFdd = getWord(buffer + 6);
         hostPortIkbd = getWord(buffer + 8);
 
-        debug("ceDiscoveryReceive - got host ip: %s, ports: %d, %d, %d\n", hostIpString.c_str(), hostPortHdd, hostPortFdd, hostPortIkbd);
+        debug("ceDiscoveryReceive - got host ip: %s, ports: %d, %d, %d, %u ms since connection lost\n", hostIpString.c_str(), hostPortHdd, hostPortFdd, hostPortIkbd, msSinceLost());
+
+        connLastAttempt = millis() - CONNECT_RETRY_MS;  // host just answered - connect right away, don't wait for the retry time
+        discoverySendCount = 0;                         // next discovery round logs its first broadcast again
     }
 }
 
 void connectToCEhost(void)
 {
-    static uint32_t lastAttempt = 0xffff0000; // -65k
-
     // if last attempt was less than a moment ago, don't try
-    if ((millis() - lastAttempt) < 3000)
+    if ((millis() - connLastAttempt) < CONNECT_RETRY_MS)
     {
         return;
     }
 
     // we're connecting now
-    lastAttempt = millis();
+    connLastAttempt = millis();
 
     // no host IP? not connecting
     if (hostIpString.length() == 0)
@@ -179,16 +219,24 @@ void connectToCEhost(void)
         return;
     }
 
-    debug("connectToCEhost - IP: %s, port: %d\n", hostIpString.c_str(), hostPortHdd);
+    connAttempts++;
+    debug("connectToCEhost - IP: %s, port: %d, attempt #%u, %u ms since connection lost\n",
+          hostIpString.c_str(), hostPortHdd, connAttempts, msSinceLost());
 
     // start connection attempt
     clientHdd.stop();                                       // close socket if still open
+    uint32_t start = millis();
     connected = clientHdd.connect(hostIpString.c_str(), hostPortHdd);
 
-    debug("connectToCEhost - connected: %d\n", connected);
+    debug("connectToCEhost - connected: %d (connect took %u ms)\n", connected, millis() - start);
+
+    if(!connected) {
+        logSockets("connectToCEhost failed");
+    }
 
     if(connected)
     {
+        debug("connectToCEhost - RECONNECTED %u ms after connection lost, %u attempts\n", msSinceLost(), connAttempts);
         connectFailCount = 0;
 
         hddHeader.syncTag = 0;          // new stream - don't use anything left from the previous connection
@@ -196,7 +244,7 @@ void connectToCEhost(void)
     }
     else if(++connectFailCount >= CONNECT_FAILS_BEFORE_REDISCOVERY)
     {
-        debug("connectToCEhost - %d failed attempts, discovering host again\n", connectFailCount);
+        debug("connectToCEhost - %d failed attempts, discovering host again (%u ms since connection lost)\n", connectFailCount, msSinceLost());
         connectFailCount = 0;
 
         memset(hostIp, 0, sizeof(hostIp));
@@ -212,10 +260,20 @@ void connectToCEhost(void)
 // if UDP not initialized, do that now
 void udpSocketOpen(void)
 {
+    static uint32_t lastFailLog = 0;
+
     if (!udpInitialized)
     {
-        udp.begin(CLIENT_UDP_PORT);
-        udpInitialized = true;
+        udpInitialized = udp.begin(CLIENT_UDP_PORT);     // no free socket? try again next time, don't send through a socket we don't have
+
+        if(udpInitialized) {
+            debug("udpSocketOpen - ok, %u ms since connection lost\n", msSinceLost());
+            logSockets("udpSocketOpen");
+        } else if(millis() - lastFailLog >= 1000) {
+            lastFailLog = millis();
+            debug("udpSocketOpen - FAILED, no free socket\n");
+            logSockets("udpSocketOpen");
+        }
     }
 }
 
@@ -279,8 +337,11 @@ void connectToHost(void)
     {
         prevConnected = connected;
 
-        if(connected) {     // now in connected state, display state on display
-
+        if(!connected) {    // just lost the connection - remember when, to see how long the reconnect takes
+            connLostAt = millis();
+            connAttempts = 0;
+            debug("connectToHost - CONNECTION LOST at %u ms\n", connLostAt);
+            logSockets("connection lost");
         }
     }
 

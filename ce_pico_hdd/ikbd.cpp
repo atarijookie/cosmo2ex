@@ -15,6 +15,8 @@ extern volatile bool ikbdConnected;
 
 extern EthernetClient clientIkbd;
 
+void logSockets(const char* where);
+
 #define IKBD_BFR_SIZE 128
 uint8_t buffer[IKBD_BFR_SIZE];
 
@@ -120,24 +122,41 @@ void onIkbdEnabled(void)
 
 void ikbdConnectDisconnect(void)
 {
-    if(settings.ikbdEnabled)
-    {
-        // ikbd is enabled, ikdb chip is sending data (chip present), eth is connected, but our ikbd socket is NOT connected, connect now
-        if(connected && !ikbdConnected)
-        {
-            debug("I con\n");
-            ikbdConnected = clientIkbd.connect(hostIpString.c_str(), hostPortIkbd);
-            // clientIkbd.setNoDelay(true);
-        }
+    static uint32_t lastAttempt = 0xffff0000;   // -65k
+
+    // the socket might have been closed by the host (e.g. ce_cores restarted) - take the real state, not just what we did last time
+    if(ikbdConnected && !clientIkbd.connected()) {
+        debug("ikbd - connection lost\n");
+        logSockets("ikbd lost");
+        ikbdConnected = false;
+        clientIkbd.stop();                      // free the socket, so it can be used for the next connect
     }
-    else
+
+    bool wanted = settings.ikbdEnabled && connected && hostPortIkbd != 0;
+
+    if(!wanted)
     {
-        // ikbd not sending data (chip not present) or ikbd not enabled, but the ikbd socket is connected, then disconnect
+        // ikbd not enabled or hdd connection to host lost (host restarted?), but the ikbd socket is connected, then disconnect
         if(ikbdConnected)
         {
-            debug("I dis\n");
+            debug("ikbd - disconnect (enabled: %d, hdd connected: %d)\n", settings.ikbdEnabled, connected);
             ikbdConnected = false;
             clientIkbd.stop();
+        }
+        return;
+    }
+
+    // ikbd is enabled, eth is connected, but our ikbd socket is NOT connected, connect now (not too often, connect() blocks)
+    uint32_t now = millis();
+    if(!ikbdConnected && (now - lastAttempt) >= 1000)
+    {
+        lastAttempt = now;
+
+        clientIkbd.stop();                      // close socket if still open
+        ikbdConnected = clientIkbd.connect(hostIpString.c_str(), hostPortIkbd);
+        debug("ikbd - connect to port %d: %d (took %u ms)\n", hostPortIkbd, ikbdConnected, millis() - now);
+        if(!ikbdConnected) {
+            logSockets("ikbd connect failed");
         }
     }
 }

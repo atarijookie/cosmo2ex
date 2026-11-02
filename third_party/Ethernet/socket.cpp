@@ -40,6 +40,8 @@ typedef struct {
 
 static socketstate_t state[MAX_SOCK_NUM];
 
+uint8_t EthernetClass::socketGen[MAX_SOCK_NUM];
+
 
 static uint16_t getSnTX_FSR(uint8_t s);
 static uint16_t getSnRX_RSR(uint8_t s);
@@ -102,6 +104,7 @@ closemakesocket:
     W5100.execCmdSn(s, Sock_CLOSE);
 makesocket:
     //Serial.printf("W5000socket %d\n", s);
+    socketGen[s]++;                 // new user of this socket - the previous one must not touch it anymore
     EthernetServer::server_port[s] = 0;
     delayMicroseconds(250); // TODO: is this needed??
     W5100.writeSnMR(s, protocol);
@@ -166,6 +169,7 @@ closemakesocket:
     W5100.execCmdSn(s, Sock_CLOSE);
 makesocket:
     //Serial.printf("W5000socket %d\n", s);
+    socketGen[s]++;                 // new user of this socket - the previous one must not touch it anymore
     EthernetServer::server_port[s] = 0;
     delayMicroseconds(250); // TODO: is this needed??
     W5100.writeSnMR(s, protocol);

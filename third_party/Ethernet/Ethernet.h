@@ -285,6 +285,12 @@ public:
     friend class EthernetClient;
     friend class EthernetServer;
     friend class EthernetUDP;
+
+    // Incremented each time a hw socket is (re)opened. A client remembers it on connect - if it differs later, the socket
+    // was closed under the client (e.g. RST from host) and then reused by another client, so it's not this client's anymore.
+    static uint8_t socketGen[MAX_SOCK_NUM];
+
+    static uint8_t socketStatusOf(uint8_t s) { return (s < MAX_SOCK_NUM) ? socketStatus(s) : 0xff; }    // for debug logs
 private:
     // Opens a socket(TCP or UDP or IP_RAW mode)
     static uint8_t socketBegin(uint8_t protocol, uint16_t port);
@@ -338,6 +344,7 @@ protected:
 
 public:
     EthernetUDP() : sockindex(MAX_SOCK_NUM) {}  // Constructor
+    uint8_t getSocketNumber() const { return sockindex; }
     virtual uint8_t begin(uint16_t);      // initialize, start listening on specified port. Returns 1 if successful, 0 if there are no sockets available to use
     virtual uint8_t beginMulticast(IPAddress, uint16_t);  // initialize, start listening on specified port. Returns 1 if successful, 0 if there are no sockets available to use
     virtual void stop();  // Finish with the UDP socket
@@ -387,8 +394,8 @@ public:
 
 class EthernetClient : public Client {
 public:
-    EthernetClient() : sockindex(MAX_SOCK_NUM), _timeout(1000) { }
-    EthernetClient(uint8_t s) : sockindex(s), _timeout(1000) { }
+    EthernetClient() : sockindex(MAX_SOCK_NUM), _gen(0), _timeout(1000) { }
+    EthernetClient(uint8_t s);
 
     uint8_t status();
     virtual int connect(IPAddress ip, uint16_t port);
@@ -403,7 +410,7 @@ public:
     virtual void flush();
     virtual void stop();
     virtual uint8_t connected();
-    virtual operator bool() { return sockindex < MAX_SOCK_NUM; }
+    virtual operator bool() { return owns(); }
     virtual bool operator==(const bool value) { return bool() == value; }
     virtual bool operator!=(const bool value) { return bool() != value; }
     virtual bool operator==(const EthernetClient&);
@@ -419,7 +426,10 @@ public:
     using Print::write;
 
 private:
+    bool owns();        // false if no socket, or the socket got reused by someone else (then forgets it)
+
     uint8_t sockindex; // MAX_SOCK_NUM means client not in use
+    uint8_t _gen;      // Ethernet.socketGen[sockindex] when this client got the socket
     uint16_t _timeout;
 };
 

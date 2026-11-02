@@ -13,6 +13,8 @@
 #include "Arduino.h"
 #include "Dhcp.h"
 
+#define MAX_SOCK_NUM 4
+
 class EthernetClient
 {
 public:
@@ -26,6 +28,7 @@ public:
     int                  stopCount     = 0;
 
     void reset(void) { *this = EthernetClient(); }
+    uint8_t getSocketNumber(void) const { return isConnected ? 0 : MAX_SOCK_NUM; }
 
     void pushRx(const std::vector<uint8_t> &data) { rx.insert(rx.end(), data.begin(), data.end()); }
 
@@ -88,6 +91,7 @@ public:
     void reset(void) { *this = EthernetUDP(); }
 
     uint8_t begin(uint16_t port) { begun = true; localPort = port; return 1; }
+    uint8_t getSocketNumber(void) const { return begun ? 2 : MAX_SOCK_NUM; }
     void stop(void) { begun = false; }
 
     int beginPacket(const char *host, uint16_t port) { current = Packet{host, port, {}}; return 1; }
@@ -138,6 +142,7 @@ public:
     IPAddress maintainNewIp;                        // ip after a successful renew / rebind, 0.0.0.0 = keep the current one
 
     IPAddress localIP(void) { return ip; }
+    uint8_t socketStatusOf(uint8_t s) { (void) s; return 0; }
     IPAddress subnetMask(void) { return mask; }
 
     int maintain(void)

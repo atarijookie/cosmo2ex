@@ -518,6 +518,7 @@ TEST_CASE_FIXTURE(FirmwareFixture, "sendDataToHost fails when not connected or w
 TEST_SUITE("connection - discovery") {
 
 TEST_CASE_FIXTURE(FirmwareFixture, "discovery broadcasts CELC + mac, alternating subnet and global broadcast") {
+    udpInitialized = true;              // udp socket opened by connectToHost()
     uint8_t mac[6] = { 0x02, 0xaa, 0xbb, 0xcc, 0xdd, 0xee };
     memcpy(settings.mac, mac, 6);
 
@@ -542,6 +543,7 @@ TEST_CASE_FIXTURE(FirmwareFixture, "discovery broadcasts CELC + mac, alternating
 }
 
 TEST_CASE_FIXTURE(FirmwareFixture, "discovery subnet broadcast follows the netmask") {
+    udpInitialized = true;              // udp socket opened by connectToHost()
     Ethernet.ip   = IPAddress(10, 1, 2, 3);
     Ethernet.mask = IPAddress(255, 255, 240, 0);
 
@@ -554,6 +556,17 @@ TEST_CASE_FIXTURE(FirmwareFixture, "discovery subnet broadcast follows the netma
     CHECK(hosts.count("10.1.15.255") == 1);
 }
 
+TEST_CASE_FIXTURE(FirmwareFixture, "no discovery send / receive without udp socket (udp.begin() failed)") {
+    udp.incoming.push_back({ "10.0.0.7", 7201, { 'C', 'E', 'L', 'R', 0x1f, 0x90, 0x1f, 0x91, 0x1f, 0x92 } });
+
+    ceDiscoverySend();
+    ceDiscoveryReceive();
+
+    CHECK(udp.sent.empty());
+    CHECK(hostIp[0] == 0);
+    CHECK(udp.incoming.size() == 1);
+}
+
 TEST_CASE_FIXTURE(FirmwareFixture, "no discovery broadcast when the host is already known") {
     setKnownHost();
     ceDiscoverySend();
@@ -561,6 +574,7 @@ TEST_CASE_FIXTURE(FirmwareFixture, "no discovery broadcast when the host is alre
 }
 
 TEST_CASE_FIXTURE(FirmwareFixture, "CELR response sets host ip and ports, other packets are ignored") {
+    udpInitialized = true;              // udp socket opened by connectToHost()
     udp.incoming.push_back({ "10.9.9.9", 7201, { 'J', 'U', 'N', 'K', 0, 1, 0, 2, 0, 3 } });
     udp.incoming.push_back({ "10.0.0.7", 7201, { 'C', 'E', 'L', 'R', 0x1f, 0x90, 0x1f, 0x91, 0x1f, 0x92 } });
 
@@ -575,6 +589,7 @@ TEST_CASE_FIXTURE(FirmwareFixture, "CELR response sets host ip and ports, other 
 }
 
 TEST_CASE_FIXTURE(FirmwareFixture, "only junk received - host stays unknown") {
+    udpInitialized = true;              // udp socket opened by connectToHost()
     udp.incoming.push_back({ "10.9.9.9", 7201, { 'C', 'E', 'L', 'C', 0, 1, 0, 2, 0, 3 } });
 
     ceDiscoveryReceive();
@@ -593,7 +608,7 @@ TEST_CASE_FIXTURE(FirmwareFixture, "connectToHost without a host opens udp and d
     CHECK(clientHdd.connectCount == 0);
 }
 
-TEST_CASE_FIXTURE(FirmwareFixture, "connectToHost with a known host closes udp and connects, retrying every 3 s") {
+TEST_CASE_FIXTURE(FirmwareFixture, "connectToHost with a known host closes udp and connects, retrying every 1 s") {
     setKnownHost();
     udpInitialized = true;
     udp.begun = true;
@@ -606,7 +621,7 @@ TEST_CASE_FIXTURE(FirmwareFixture, "connectToHost with a known host closes udp a
     CHECK(clientHdd.connectPort == 1234);
     CHECK_FALSE(connected);
 
-    fakeAdvanceMillis(2999);
+    fakeAdvanceMillis(999);
     connectToHost();
     CHECK(clientHdd.connectCount == 1);
 
@@ -621,20 +636,22 @@ TEST_CASE_FIXTURE(FirmwareFixture, "connectToHost with a known host closes udp a
     CHECK(clientHdd.connectCount == 2);
 }
 
-TEST_CASE_FIXTURE(FirmwareFixture, "host is forgotten after 3 failed connects, so it gets discovered again") {
+TEST_CASE_FIXTURE(FirmwareFixture, "host is forgotten after 5 failed connects, so it gets discovered again") {
     setKnownHost();
     clientHdd.connectResult = false;
 
     connectToHost();
-    fakeAdvanceMillis(3000);
-    connectToHost();
-    CHECK(clientHdd.connectCount == 2);
-    CHECK(hostPortHdd == 1234);                     // 2 failures - still the same host
+    for (int i = 0; i < 3; i++) {
+        fakeAdvanceMillis(1000);
+        connectToHost();
+    }
+    CHECK(clientHdd.connectCount == 4);
+    CHECK(hostPortHdd == 1234);                     // 4 failures - still the same host
 
-    fakeAdvanceMillis(3000);
+    fakeAdvanceMillis(1000);
     connectToHost();
-    CHECK(clientHdd.connectCount == 3);
-    CHECK(hostIp[0] == 0);                          // 3 failures - forgotten
+    CHECK(clientHdd.connectCount == 5);
+    CHECK(hostIp[0] == 0);                          // 5 failures - forgotten
     CHECK(hostIpString.length() == 0);
     CHECK(hostPortHdd == 0);
     CHECK(hostPortFdd == 0);
@@ -658,12 +675,12 @@ TEST_CASE_FIXTURE(FirmwareFixture, "successful connect resets the failure count"
 
     clientHdd.connectResult = false;
     connectToCEhost();
-    fakeAdvanceMillis(3000);
+    fakeAdvanceMillis(1000);
     connectToCEhost();
     CHECK(connectFailCount == 2);
 
     clientHdd.connectResult = true;
-    fakeAdvanceMillis(3000);
+    fakeAdvanceMillis(1000);
     connectToCEhost();
     CHECK(connectFailCount == 0);
     CHECK(hostPortHdd == 1234);
@@ -691,6 +708,42 @@ TEST_CASE_FIXTURE(FirmwareFixture, "discovery response leads to connection") {
 
     CHECK(clientHdd.connectHost == "10.0.0.8");
     CHECK(clientHdd.connectPort == 1234);
+}
+
+TEST_CASE_FIXTURE(FirmwareFixture, "discovery response connects right away, without waiting for the retry time") {
+    connectToCEhost();                              // a connect attempt just now (no host - nothing to connect to)
+    CHECK(clientHdd.connectCount == 0);
+
+    udp.incoming.push_back({ "10.0.0.8", 7201, { 'C', 'E', 'L', 'R', 0x04, 0xd2, 0, 0, 0, 0 } });
+    udpInitialized = true;
+
+    fakeAdvanceMillis(100);                         // well within the retry time
+    ceDiscoveryReceive();
+    connectToCEhost();
+
+    CHECK(clientHdd.connectCount == 1);
+    CHECK(clientHdd.connectHost == "10.0.0.8");
+    CHECK(connected);
+}
+
+TEST_CASE_FIXTURE(FirmwareFixture, "discovery broadcasts are logged only once in a while") {
+    udpInitialized = true;
+
+    for (int i = 0; i < 20; i++) {
+        ceDiscoverySend();
+        fakeAdvanceMillis(1000);
+    }
+    CHECK(udp.sent.size() == 20);
+
+#ifdef LOG_LED
+    debugFromQueue();
+#endif
+    size_t logged = 0, pos = 0;
+    while ((pos = fakeDebugOut.find("ceDiscoverySend #", pos)) != std::string::npos) {
+        logged++;
+        pos++;
+    }
+    CHECK(logged == 2);
 }
 
 }
