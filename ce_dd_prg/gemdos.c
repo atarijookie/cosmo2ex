@@ -604,6 +604,13 @@ int32_t custom_fopen( void *sp )
 		return RET_CEDD;
 	}
 
+	// log line from an Atari app to the host log (e.g. test_ce) - Fopen("CELG<text>", TAG_CE). Apps call it between
+	// their other GEMDOS calls, so it's never sent in the middle of another ACSI / SCSI transaction.
+	if(mode == TAG_CE && strncmp(fileName, "CELG", 4) == 0) {
+		sendStLog(fileName + 4);
+		return RET_CELG;
+	}
+
 	if(mode == TAG_CX && strncmp(fileName, "CEXT", 4) == 0) {	// mode matches CX, filename matches CEXT - do the extension call
 		CEXcall *cc = (CEXcall*) *((uint32_t*) (fileName + 4));	// get pointer to CEXcall which is right after CEXT tag
 		ceExtensionCall(cc);
@@ -730,6 +737,7 @@ uint8_t fseek_cur(int32_t offset, uint8_t ceHandle, TFileBuffer *fb)
 
     // seek fits in the local buffer?
     fb->currentPos  += offset;                                          // update absolute position in stream
+    fb->bytesToEOF  -= offset;                                          // and the count of bytes to EOF (offset can be negative)
     fb->rStart       = newPos;                                          // store the new position in the buffer
     return FALSE;                                                       // don't do fseek_invalSeekStore() after this
 }
@@ -747,7 +755,10 @@ void fseek_invalSeekStore(int32_t offset, uint8_t ceHandle, uint8_t seekMode, TF
 		return;
 	}
 
-	if(hdIf.statusByte != E_OK) {				    					    // if some other error, fail
+	if(hdIf.statusByte != E_OK) {				    					    // if some other error (e.g. ERANGE), fail
+        uint8_t status = hdIf.statusByte;
+        fseek_hdif_command(fb->currentPos, ceHandle, SEEK_SET);         // read buffer was dropped - host must be at currentPos again
+        hdIf.statusByte = status;                                       // custom_fseek() returns this error
         return;
 	}
 
@@ -830,7 +841,8 @@ void sendStLog(const char *str)
 	commandShort[4] = ST_LOG_TEXT;											    // store GEMDOS function number
 	commandShort[5] = 0;
 
-    strncpy((char *) pDmaBuffer, str, 512);
+    strncpy((char *) pDmaBuffer, str, 511);
+    pDmaBuffer[511] = 0;                                                        // strncpy doesn't terminate long strings
 	(*hdIf.cmd)(ACSI_WRITE, commandShort, CMD_LENGTH_SHORT, pDmaBuffer, 1);	    // send command to host over ACSI
 }
 

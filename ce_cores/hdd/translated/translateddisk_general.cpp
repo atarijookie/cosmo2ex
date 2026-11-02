@@ -919,7 +919,7 @@ void TranslatedDisk::onStLog(uint8_t *cmd)
 
     dataBuffer[511] = 0;                            // make sure the text from ST is terminated
 
-    logHdd(LOG_DEBUG, "ST log: %s", dataBuffer);
+    logHdd(LOG_INFO, "ST log: %s", dataBuffer);     // app explicitly asked for this, show it on default log level
     dataTrans->setStatus(E_OK);
 }
 

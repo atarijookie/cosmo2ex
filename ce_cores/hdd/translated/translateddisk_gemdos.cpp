@@ -1348,7 +1348,29 @@ void TranslatedDisk::onFseek(uint8_t *cmd)
         case 2: hostSeekMode = SEEK_END; break;
     }
 
-    int iRes = fseek(files[index].hostHandle, offset, hostSeekMode);
+    // TOS doesn't allow seeking outside of the file - returns ERANGE and the position stays where it was
+    FILE *fh        = files[index].hostHandle;
+    long  curPos    = ftell(fh);
+    long  fileSize  = -1;
+
+    if(curPos != -1 && fseek(fh, 0, SEEK_END) == 0) {
+        fileSize = ftell(fh);
+        fseek(fh, curPos, SEEK_SET);        // back where we were
+    }
+
+    if(curPos != -1 && fileSize != -1) {
+        long base   = (hostSeekMode == SEEK_SET) ? 0 : ((hostSeekMode == SEEK_CUR) ? curPos : fileSize);
+        long target = base + offset;
+
+        if(target < 0 || target > fileSize) {
+            logHdd(LOG_DEBUG, "TranslatedDisk::onFseek - target position %ld is outside of file (size %ld) - ERANGE", target, fileSize);
+
+            dataTrans->setStatus(ERANGEERROR);
+            return;
+        }
+    }
+
+    int iRes = fseek(fh, offset, hostSeekMode);
 
     if(iRes != 0) {                         // on ERROR
         logHdd(LOG_ERROR, "TranslatedDisk::onFseek - fseek %d, %d failed", offset, hostSeekMode);

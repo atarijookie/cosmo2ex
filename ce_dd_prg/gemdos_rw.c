@@ -43,6 +43,8 @@ uint32_t fread_small(uint16_t ceHandle, uint32_t countNeeded, uint8_t *buffer);
 uint32_t fread_big(uint16_t ceHandle, uint32_t countNeeded, uint8_t *buffer);
 
 void invalidateFileBuffer(TFileBuffer *fb, uint16_t ceHandle, uint8_t seekMode);
+void fseek_hdif_command(int32_t offset, uint8_t ceHandle, uint8_t seekMode);
+static void syncReadBufferBeforeWrite(uint16_t ceHandle, TFileBuffer *fb);
 
 // ------------------------------------------------------------------
 int32_t custom_fread( void *sp )
@@ -66,6 +68,8 @@ int32_t custom_fread( void *sp )
 	if(!fileBufs[ceHandle].isOpen) {                                    // file not open? fail - INVALID HANDLE
         return extendByteToDword(EIHNDL);
     }
+
+    commitChanges(ceHandle);                                            // write the buffered data first, so the host file position is where we read from
 
     if(fileBufs[ceHandle].bytesToEOFinvalid) {                          // if the bytes to EOF value is invalid, we need to re-read it
         getBytesToEof(ceHandle);
@@ -218,7 +222,9 @@ uint32_t fread_big(uint16_t ceHandle, uint32_t countNeeded, uint8_t *buffer)
 
     // Third phase of BIG fread: if the rest after reading big blocks is not 0, we need to finish it with one last buffered read
 	if(countNeeded != 0) {
-		fillReadBuffer(ceHandle);
+        // fill the read buffer - with seekOffset, which is still -1 if phase 1 kept back 1 byte and phase 2 didn't run
+        fb->rStart = 0;
+        fb->rCount = readData(ceHandle, fb->rBuf, 512, seekOffset);
 
 		uint32_t rest = (countNeeded <= fb->rCount) ? countNeeded : fb->rCount;    // see if we have enough data to read the rest, and use which is lower - either what we want to read, or what we can read
 
@@ -257,6 +263,7 @@ int32_t custom_fwrite( void *sp )
     fileBufs[ceHandle].bytesToEOFinvalid = 1;                           // mark that after this write the bytes to EOF will be invalid
 
 	TFileBuffer *fb = &fileBufs[ceHandle];								// to shorten the following operations use this pointer
+    syncReadBufferBeforeWrite(ceHandle, fb);                            // read buffer data would be stale after write, host position must be currentPos
 	uint16_t spaceLeft = (RW_BUFFER_SIZE - fb->wCount);						// how much space we have in the buffer left?
 
 	if(count <= RW_BUFFER_SIZE) {										// if writing less than size of our buffer
@@ -411,6 +418,22 @@ uint32_t writeData(uint8_t ceHandle, uint8_t *bfr, uint32_t cnt)
 
     uint32_t count = getDword(pDmaBuffer);						// read how much data was written
 	return count;
+}
+
+// Before write: the host file position is at the end of the read buffer, not at currentPos (if not all the buffered
+// data were used), and the buffered data would be stale after the write. Drop the read buffer and seek host to currentPos.
+static void syncReadBufferBeforeWrite(uint16_t ceHandle, TFileBuffer *fb)
+{
+    if(fb->rCount == 0) {                                               // nothing buffered? host position is currentPos already
+        return;
+    }
+
+    if(fb->rStart != fb->rCount) {                                      // not all buffered data used? host is ahead of us
+        fseek_hdif_command(fb->currentPos, ceHandle, SEEK_SET);
+    }
+
+    fb->rCount = 0;
+    fb->rStart = 0;
 }
 
 // call this to fill the read buffer. Note that this destroys all the current data in buffer.

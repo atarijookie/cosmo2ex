@@ -64,40 +64,58 @@ char *strcpy_switch_rn(char * destination, const char * source)
 }
 
 //--------------------------------------------------
-static void putPadded(const char *str, int len, int width, char padChar, int leftAlign)
+// formatted output goes either to console (ce_printf) or to a buffer (ce_snprintf)
+typedef struct {
+    char *buf;          // NULL = console
+    int   size;
+    int   len;
+} TFmtSink;
+
+static void sinkPut(TFmtSink *s, char c)
+{
+    if(!s->buf) {                       // console
+        if(c == '\n') {                 // TOS console needs CR + LF for new line
+            Cconout('\r');
+        }
+        Cconout(c);
+        return;
+    }
+
+    if(s->len < s->size - 1) {          // buffer - keep space for terminator
+        s->buf[s->len] = c;
+    }
+    s->len++;
+}
+
+static void putPadded(TFmtSink *s, const char *str, int len, int width, char padChar, int leftAlign)
 {
     int i;
 
     if(!leftAlign) {
         for(i=len; i<width; i++) {
-            Cconout(padChar);
+            sinkPut(s, padChar);
         }
     }
 
     for(i=0; i<len; i++) {
-        Cconout(str[i]);
+        sinkPut(s, str[i]);
     }
 
     if(leftAlign) {
         for(i=len; i<width; i++) {
-            Cconout(' ');
+            sinkPut(s, ' ');
         }
     }
 }
 
-int ce_printf(const char *format, ...)
+static void ce_vformat(TFmtSink *s, const char *format, va_list args)
 {
     static const char digits[] = "0123456789abcdef0123456789ABCDEF";
-    va_list args;
-    va_start(args, format);
 
     const char *p;
     for(p = format; *p; p++) {
         if(*p != '%') {
-            if(*p == '\n') {            // TOS console needs CR + LF for new line
-                Cconout('\r');
-            }
-            Cconout(*p);
+            sinkPut(s, *p);
             continue;
         }
 
@@ -151,7 +169,7 @@ int ce_printf(const char *format, ...)
 
                 if(negative) {
                     if(padChar == '0') {            // '-' goes before zero padding
-                        Cconout('-');
+                        sinkPut(s, '-');
                         width--;
                     } else {
                         tmp[len++] = '-';
@@ -162,23 +180,23 @@ int ce_printf(const char *format, ...)
                     tmp[len++] = rev[--cnt];
                 }
 
-                putPadded(tmp, len, width, padChar, leftAlign);
+                putPadded(s, tmp, len, width, padChar, leftAlign);
                 break;
             }
 
             case 'c':
                 tmp[0] = (char) va_arg(args, int);
-                putPadded(tmp, 1, width, ' ', leftAlign);
+                putPadded(s, tmp, 1, width, ' ', leftAlign);
                 break;
 
             case 's': {
                 const char *str = va_arg(args, const char *);
-                putPadded(str, strlen(str), width, ' ', leftAlign);
+                putPadded(s, str, strlen(str), width, ' ', leftAlign);
                 break;
             }
 
             case '%':
-                Cconout('%');
+                sinkPut(s, '%');
                 break;
 
             case 0:                         // format string ended after '%'
@@ -186,12 +204,33 @@ int ce_printf(const char *format, ...)
                 break;
 
             default:                        // unsupported, just show it
-                Cconout('%');
-                Cconout(*p);
+                sinkPut(s, '%');
+                sinkPut(s, *p);
                 break;
         }
     }
+}
 
+int ce_printf(const char *format, ...)
+{
+    TFmtSink s = { 0, 0, 0 };
+    va_list args;
+    va_start(args, format);
+    ce_vformat(&s, format, args);
     va_end(args);
     return 0;
+}
+
+int ce_snprintf(char *buf, int size, const char *format, ...)
+{
+    TFmtSink s = { buf, size, 0 };
+    va_list args;
+    va_start(args, format);
+    ce_vformat(&s, format, args);
+    va_end(args);
+
+    if(size > 0) {
+        buf[(s.len < size) ? s.len : (size - 1)] = 0;
+    }
+    return s.len;
 }

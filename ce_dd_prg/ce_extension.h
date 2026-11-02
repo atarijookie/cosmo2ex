@@ -4,6 +4,8 @@
 #define TAG_CE      0x4345
 #define RET_CEDD    0x43454444
 
+#define RET_CELG    0x43454C47      // Fopen("CELG<text>", TAG_CE) - send <text> to host log, returns this
+
 #define TAG_CX      0x4358
 #define RET_CEXT    0x43455854
 

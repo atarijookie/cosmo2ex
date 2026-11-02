@@ -17,6 +17,7 @@ void test02(void);
 void test03(void);
 void test04(void);
 void test05(WORD whichTests);
+void test06(void);
 
 WORD fromDrive = 0;
 
@@ -60,7 +61,7 @@ int test_filesystem_main(void)
             break;
         }
         
-        if(req >= '1' && req <= '5') {          // if it's valid test choice, convert ascii number to bit
+        if(req >= '1' && req <= '6') {          // if it's valid test choice, convert ascii number to bit
             int which = req - '1';
             whichTests = (1 << which);          // just this test
             break;
@@ -89,6 +90,7 @@ int test_filesystem_main(void)
     if(whichTests & 0x04)   test03();
     if(whichTests & 0x08)   test04();
     if(whichTests & 0x10)   test05(which05Tests);
+    if(whichTests & 0x20)   test06();
 
     writeBufferToFile();
     deinitBuffer();
@@ -114,6 +116,7 @@ void showMenu(void)
     (void) Cconws("       \33p[ W ]\33q Fwrite\r\n");
     (void) Cconws("       \33p[ V ]\33q Fwrite - various cases\r\n");
     (void) Cconws("       \33p[ T ]\33q Fseek + WRITE\r\n");
+    (void) Cconws(" \33p[ 6 ]\33q Fread, Fseek, Fwrite - buffer edges, random\r\n");
     (void) Cconws(" \33p[ A ]\33q ALL TESTS\r\n");
     (void) Cconws(" \33p[ Q ]\33q QUIT\r\n");
 }
