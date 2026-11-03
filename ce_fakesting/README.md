@@ -5,7 +5,7 @@ TCP / UDP / ICMP / resolve call goes to the CosmosEx network module (`HOSTMOD_NE
 commands `NET_CMD_*` in `ce_commands.h`). The host side does the real networking with Linux sockets. That's faster than
 real STinG doing TCP on the 68000.
 
-Real STinG with `../ce_sting/CE_ETH.STX` is the other option, and the reference for compatibility. Compare the two
+Real STinG with `../ce_sting_stx_driver/CE_ETH.STX` is the other option, and the reference for compatibility. Compare the two
 with `../test_ce/test_sting` and `../test_ce/sting_server/sting_diff.py` against
 `../test_ce/sting_server/reference/sting126_tt.log`.
 
@@ -48,7 +48,8 @@ with `getWordFromSP()` (zero extends) - gcc relies on the extension done by the 
 
 ## Speed (TT, 2026-11-03)
 
-`../test_ce/test_sting` menu **S** and **D** (FTP download of a 4 MB file without GEM), against the CE host:
+`../test_ce/test_sting` menu **S** and **D** (FTP download of a 4 MB file without GEM), and FTP clients, against the
+CE host (FTP times as the server measured them - without writing the file on the ST afterwards):
 
 | | real STinG + CE_ETH.STX | fake STinG |
 |---|---|---|
@@ -56,7 +57,10 @@ with `getWordFromSP()` (zero extends) - gcc relies on the extension done by the 
 | TCP receive, `CNget_block()` (1.7 MB) | 95-145 kB/s | 890 kB/s |
 | TCP receive, `CNget_NDB()` (1.7 MB) | 116-145 kB/s | 315 kB/s |
 | TCP send (100 kB) | 82 kB/s | 588 kB/s |
-| FTP download 4 MB to C: (menu **D**) | - | 524 kB/s (902 kB/s without the `Fwrite()` time) |
+| FTP download 4 MB to C: (menu **D**) | 97 kB/s | 524 kB/s (~890 kB/s without the `Fwrite()` time) |
+| FTP download 4 MB, **Litchi 1.4** | 117 kB/s | **620 kB/s** |
+| FTP download 4 MB, MG-FTP | - | 18-22 kB/s |
+| FTP download 4 MB, aFTP 1.55 | - | ~6 kB/s |
 
 What it took:
 
@@ -72,6 +76,18 @@ and then wait. On the fake STinG MG-FTP gets 18-22 kB/s (a round each ~180 ms, ~
 1.55 about 6 kB/s (a round each ~560 ms - its history says "evnt_timer depends on cps", the wait gets longer when the
 measured speed is low, so it stays low). The host meanwhile has 40-70 KB waiting in the socket. A client reading in a
 loop without GEM (menu **D**) gets the 524 kB/s above - with 32 KB `Fwrite()`s the disk is then 40% of the time.
+
+### FTP client: use Litchi
+
+**Litchi** (1.4, GEM, needs STiK / STinG - works with this one and with real STinG) is the FTP client to use - not
+MG-FTP or aFTP. It reads all that's waiting without waiting between the reads (~120 `CNget_block()` calls per second,
+mostly 4 KB), and keeps the downloaded file in RAM, writing it after the transfer (to disk while downloading only when
+it doesn't fit). 4 MB took 6.8 s on the fake STinG (620 kB/s), 35.7 s on real STinG with CE_ETH.STX (117 kB/s).
+It also does folder download / upload, passive mode, SSL/TLS (with its LDG library) and 8+3 name conversion.
+
+Using it: there's no download menu entry - drag the files from the remote window into the local window (open it in
+the window menu, go to the target folder first). Without the local window, the files go to the local folder set for
+the server in the URL settings.
 
 ## History
 

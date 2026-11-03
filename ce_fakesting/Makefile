@@ -40,7 +40,7 @@ DEPS = $(CSRC:.c=.d)
 OBJS = $(CSRC:.c=.o) $(SSRC:.s=.o)
 OBJS030 = ../libacsiscsi/cache030.o
 
-# next to ce_dd.prg and ce_eth.stx on the config drive in the source tree, see ../ce_sting/Makefile
+# next to ce_dd.prg and ce_eth.stx on the config drive in the source tree, see ../ce_sting_stx_driver/Makefile
 CONFIGDRIVE_PRG = ../ce_cores/configdrive/drivers/$(TARGET)
 
 all: $(TARGET) $(CONFIGDRIVE_PRG)

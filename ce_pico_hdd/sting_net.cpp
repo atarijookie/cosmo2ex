@@ -8,7 +8,7 @@
 // Network for STinG over raw ethernet frames (W6100 socket 0 in MACRAW mode). STinG gets its own MAC address (derived
 // from ours), the W6100 sockets for host connection keep using our MAC + IP. The pico filters received frames (only IPv4
 // for STinG's MAC goes to ST), answers ARP for STinG's IP and resolves next hop MAC addresses for the IP packets the ST
-// sends - so the ST sees just IP packets. Protocol description: ce_sting/README.md
+// sends - so the ST sees just IP packets. Protocol description: ce_sting_stx_driver/README.md
 
 #define RAWNET_PROTO_VERSION    1
 

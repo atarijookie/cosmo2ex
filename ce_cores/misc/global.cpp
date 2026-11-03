@@ -9,7 +9,6 @@
 // These were global const string constants, but now they depend on .env content, so they are now
 // loaded on app start and used when needed.
 std::string corePath;
-std::string CE_CONF_FDD_IMAGE_PATH_AND_FILENAME;
 std::string FDD_TEST_IMAGE_PATH_AND_FILENAME;
 std::string PATH_CE_DD_BS_L1;
 std::string PATH_CE_DD_BS_L2;
@@ -65,7 +64,6 @@ void preloadGlobalsFromDotEnv(void)
 {
     corePath = Utils::dotEnvValue("BIN_DIR");     // path to where the core service is stored
 
-    CE_CONF_FDD_IMAGE_PATH_AND_FILENAME = Utils::mergeHostPaths3(corePath, CE_CONF_FDD_IMAGE_JUST_FILENAME);
     FDD_TEST_IMAGE_PATH_AND_FILENAME = Utils::mergeHostPaths3(corePath, FDD_TEST_IMAGE_JUST_FILENAME);
 
     // The config drive is used directly from here (no runtime copy anymore) - the Atari can't write to it, see

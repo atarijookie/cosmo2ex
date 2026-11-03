@@ -250,3 +250,5 @@ Measured with `../test_ce/test_sting`, menu **S** (TT, TOS 3.06, SCSI), against 
   be the best of both - not tried.
 - The 12.5 kB/s of MG-FTP on a plain ST (above) isn't the limit of this driver - MG-FTP reads 4 KB per GEM event loop
   round and waits between the rounds (see `../ce_fakesting/README.md`).
+- FTP download of a 4 MB file on the TT: **Litchi 1.4** 117 kB/s, `test_sting` menu **D** 97 kB/s. Use Litchi as the FTP
+  client - MG-FTP and aFTP hold themselves back (`../ce_fakesting/README.md`, "FTP client: use Litchi").

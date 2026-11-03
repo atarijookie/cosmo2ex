@@ -24,7 +24,7 @@ connected to the host (the Atari doesn't see the drive till then).
 
 `sting_net.cpp` answers the HOSTMOD 7 (`HOSTMOD_RAW_NET`) ACSI / SCSI commands of the STinG driver `CE_ETH.STX` itself,
 without the host. It sends / receives raw ethernet frames on W6100 socket 0 (MACRAW), with its own MAC address for STinG,
-and does ARP for it. The other sockets (HDD, IKBD, UDP) keep working as before. Protocol and details: [ce_sting/README.md](../ce_sting/README.md).
+and does ARP for it. The other sockets (HDD, IKBD, UDP) keep working as before. Protocol and details: [ce_sting_stx_driver/README.md](../ce_sting_stx_driver/README.md).
 
 ## Compiling under Linux
 

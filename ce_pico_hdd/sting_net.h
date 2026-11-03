@@ -3,8 +3,8 @@
 
 #include <Arduino.h>
 
-// Network for STinG (ce_sting/CE_ETH.STX) over raw ethernet frames on W6100 socket 0. The ACSI / SCSI commands of
-// HOSTMOD_RAW_NET are answered here on the pico and not forwarded to the host. Protocol: ce_sting/README.md
+// Network for STinG (ce_sting_stx_driver/CE_ETH.STX) over raw ethernet frames on W6100 socket 0. The ACSI / SCSI commands of
+// HOSTMOD_RAW_NET are answered here on the pico and not forwarded to the host. Protocol: ce_sting_stx_driver/README.md
 
 #define HOSTMOD_RAW_NET             7
 

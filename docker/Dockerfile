@@ -206,7 +206,7 @@ COPY LICENSE ./LICENSE
 COPY webserver/static/ ./static/
 
 # ce_cores binary assets (logo, floppy images, config drive)
-COPY ce_cores/ce_logo.bin ce_cores/core/ce_conf.st ce_cores/core/fdd_test.st ce_cores/core/ce_conf.zip ./
+COPY ce_cores/ce_logo.bin ce_cores/core/fdd_test.st ./
 COPY ce_cores/configdrive/ ./configdrive/
 COPY ce_cores/core/configdrive/ ./configdrive/
 

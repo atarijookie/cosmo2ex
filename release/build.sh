@@ -108,7 +108,7 @@ trap 'rm -rf "$STAGE"' EXIT
 echo "Building Atari programs"
 make -C "$ROOT/libacsiscsi"
 make -C "$ROOT/ce_dd_bootsectors" all       # builds also ce_dd_prg
-make -C "$ROOT/ce_sting"                    # ce_eth.stx - port driver for real STinG
+make -C "$ROOT/ce_sting_stx_driver"         # ce_eth.stx - port driver for real STinG
 make -C "$ROOT/ce_fakesting"                # ce_sting.prg - fake STinG
 make -C "$ROOT/test_ce"
 
@@ -120,9 +120,7 @@ mkdir -p "$COMMON"
 cp "$ROOT/.env"                         "$COMMON/.env"
 cp -r "$ROOT/webserver/static"          "$COMMON/static"
 cp "$ROOT/ce_cores/ce_logo.bin"         "$COMMON/"
-cp "$ROOT/ce_cores/core/ce_conf.st"     "$COMMON/"
 cp "$ROOT/ce_cores/core/fdd_test.st"    "$COMMON/"
-cp "$ROOT/ce_cores/core/ce_conf.zip"    "$COMMON/"
 cp "$RELEASE_DIR/files/ce_run.sh"       "$COMMON/"
 echo "$VERSION" >                       "$COMMON/VERSION"
 
@@ -133,7 +131,7 @@ mkdir -p "$COMMON/configdrive/drivers" "$COMMON/configdrive/tests"
 cp "$ROOT/ce_dd_bootsectors/ce_dd.bs"    "$COMMON/configdrive/drivers/"
 cp "$ROOT/ce_dd_bootsectors/ce_dd_l2.bs" "$COMMON/configdrive/drivers/"
 cp "$ROOT/ce_dd_prg/ce_dd.prg"           "$COMMON/configdrive/drivers/"
-cp "$ROOT/ce_sting/ce_eth.stx"           "$COMMON/configdrive/drivers/"
+cp "$ROOT/ce_sting_stx_driver/ce_eth.stx" "$COMMON/configdrive/drivers/"
 cp "$ROOT/ce_fakesting/ce_sting.prg"     "$COMMON/configdrive/drivers/"
 cp "$ROOT/test_ce/ce_tests.tos"          "$COMMON/configdrive/tests/"
 

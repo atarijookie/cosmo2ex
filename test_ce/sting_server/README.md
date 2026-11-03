@@ -70,7 +70,7 @@ anonymous login, passive mode, with `TEST4M.BIN` in its root. Any server will do
 `python3 -m pyftpdlib -p 2122 -d <dir>`. Old GEM clients (MG-FTP) also need `150` instead of `125` and LF line ends in
 listings - not needed for menu **D**.
 
-Speed results (TT, real STinG vs fake STinG) are in `../../ce_fakesting/README.md` and `../../ce_sting/README.md`.
+Speed results (TT, real STinG vs fake STinG) are in `../../ce_fakesting/README.md` and `../../ce_sting_stx_driver/README.md`.
 
 ## Server ports
 

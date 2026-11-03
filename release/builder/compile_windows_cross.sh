@@ -51,7 +51,7 @@ cp "$SRC/release/files/windows-README.txt" "$OUT/README.txt"
 echo "$VERSION" > "$OUT/VERSION"
 
 rsync -a --delete "$SRC/webserver/static/" "$OUT/static/"
-cp "$SRC/ce_cores/core/ce_logo.bin" "$SRC/ce_cores/core/ce_conf.st" "$SRC/ce_cores/core/fdd_test.st" "$SRC/ce_cores/core/ce_conf.zip" "$OUT/"
+cp "$SRC/ce_cores/core/ce_logo.bin" "$SRC/ce_cores/core/fdd_test.st" "$OUT/"
 
 # config drive - same layering as release/build.sh, with the Atari programs built in the checkout (if they are there)
 rm -rf "$OUT/configdrive"
