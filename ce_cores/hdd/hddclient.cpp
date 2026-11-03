@@ -17,6 +17,7 @@
 #include "slm/slmprinter.h"
 #include "../misc/utils.h"
 #include "../misc/statusreport.h"
+#include "network/netadapter.h"
 
 extern DebugVars    dbgVars;
 
@@ -38,6 +39,8 @@ HddClient::HddClient(ChipInterface* chipInterfaceIn, ClientInfo* ci)
     scsi->updateTranslatedBootMedia();   // update CE_DD bootsector with proper SCSI ID
 
     translated = new TranslatedDisk(dataTrans, &hwConfig);
+
+    netAdapter = new NetAdapter(dataTrans);
 
     slm = new SlmPrinter(dataTrans);
     slm->setWaitForCommand([this](uint32_t timeoutMs, uint8_t* cmd) { return slmWaitForCommand(timeoutMs, cmd); });
@@ -78,6 +81,7 @@ HddClient::~HddClient()
     scsi = NULL;
 
     delete translated;
+    delete netAdapter;
     delete slm;
 }
 
@@ -194,6 +198,11 @@ void HddClient::handleAcsiCommand(uint8_t *bufIn)
         case HOSTMOD_TRANSLATED_DISK:                   // translated disk command?
             wasHandled = true;
             translated->processCommand(pCmd);
+            break;
+
+        case HOSTMOD_NETWORK_ADAPTER:                   // fake STinG (ce_fakesting)
+            wasHandled = true;
+            netAdapter->processCommand(pCmd);
             break;
         }
     }

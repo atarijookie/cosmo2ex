@@ -19,6 +19,7 @@ int test_manual_main(void);
 int test_manual2_main(void);
 int test_rw_main(void);
 int test_rw_user_main(void);
+int test_sting_main(void);
 
 typedef struct {
     char        key;
@@ -37,6 +38,7 @@ static const TSubTest subTests[] = {
     {'7', "test_manual2",     "manual HDD tool, large reads",     test_manual2_main},
     {'8', "test_rw",          "ACSI sector / file write+read",    test_rw_main},
     {'9', "test_rw_user",     "destructive ACSI write+read",      test_rw_user_main},
+    {'0', "test_sting",       "STinG API compatibility recorder", test_sting_main},
     {0,   0,                  0,                                  0}
 };
 

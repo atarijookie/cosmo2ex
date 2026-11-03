@@ -39,7 +39,7 @@ AT = $(AT_$(V))
 # <subtest>_main() stays global. Everything else the sub-test defines becomes local, so
 # sub-tests can't clash with each other on names like main(), showMenu() or deviceID.
 # Whatever a sub-test doesn't define itself comes from the shared code (common/ and libacsiscsi).
-SUBTESTS = test_acsi test_filesystem test_floppy test_floppy_read test_ikbd test_manual test_manual2 test_rw test_rw_user
+SUBTESTS = test_acsi test_filesystem test_floppy test_floppy_read test_ikbd test_manual test_manual2 test_rw test_rw_user test_sting
 
 BUILD	= build
 STARTUP	= startup.s

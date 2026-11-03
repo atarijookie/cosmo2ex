@@ -18,6 +18,7 @@ class ChipInterface;
 class TranslatedDisk;
 class Scsi;
 class SlmPrinter;
+class NetAdapter;
 
 class HddClient
 {
@@ -44,6 +45,7 @@ private:
     TranslatedDisk* translated;
     AcsiDataTrans* dataTrans;
     SlmPrinter* slm;                // SLM laser printer emulation - for ACSI IDs set to DEVTYPE_SLM*
+    NetAdapter* netAdapter;         // network module of the fake STinG (ce_fakesting) - HOSTMOD_NETWORK_ADAPTER
 
     //-----------------------------------
     // hard disk stuff

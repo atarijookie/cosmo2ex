@@ -90,6 +90,7 @@ SUBDIR7	= hdd/acsicommand
 SUBDIR8 = fdd
 SUBDIR9 = ikbd
 SUBDIR10 = hdd/slm
+SUBDIR11 = hdd/network
 
 SRCS  = $(wildcard *.cpp)
 SRCS += $(wildcard $(SUBDIR1)/*.cpp)
@@ -102,6 +103,7 @@ SRCS += $(wildcard $(SUBDIR7)/*.cpp)
 SRCS += $(wildcard $(SUBDIR8)/*.cpp)
 SRCS += $(wildcard $(SUBDIR9)/*.cpp)
 SRCS += $(wildcard $(SUBDIR10)/*.cpp)
+SRCS += $(wildcard $(SUBDIR11)/*.cpp)
 
 HDRS  = $(wildcard *.h)
 HDRS += $(wildcard $(SUBDIR1)/*.h)
@@ -114,6 +116,7 @@ HDRS += $(wildcard $(SUBDIR7)/*.h)
 HDRS += $(wildcard $(SUBDIR8)/*.h)
 HDRS += $(wildcard $(SUBDIR9)/*.h)
 HDRS += $(wildcard $(SUBDIR10)/*.h)
+HDRS += $(wildcard $(SUBDIR11)/*.h)
 HDRS += ../libdospath/libdospath.h
 
 OBJS = $(addprefix $(OBJDIR)/, $(patsubst %.cpp,%.o,$(SRCS:.c=.o)))

@@ -1,0 +1,1141 @@
+## STinG compatibility test log, format: <test> <#|=|~> <key> <value>
+## module TRANSPORT_TCPIP
+## author Peter Rottengatter
+## version 01.26
+## server 192.168.123.55 port 40000
+## tos 306 machine 2
+## local 192.168.123.180
+1001 # TCP_close() - handle 10
+1001 = ret -9
+1002 # TCP_send() - handle 10
+1002 = ret -9
+1003 # TCP_wait_state() - handle 10
+1003 = ret -9
+1004 # TCP_ack_wait() - handle 10
+1004 = ret -9
+1005 # TCP_info() - handle 10
+1005 = ret -9
+1011 # UDP_close() - handle 10
+1011 = ret -9
+1012 # UDP_send() - handle 10
+1012 = ret -9
+1021 # CNkick() - handle 10
+1021 = ret -9
+1022 # CNbyte_count() - handle 10
+1022 = ret -9
+1023 # CNget_char() - handle 10
+1023 = ret -9
+1024 # CNget_NDB() - handle 10
+1024 = ptr 0
+1025 # CNget_block() - handle 10
+1025 = ret -9
+1026 # CNgetinfo() - handle 10
+1026 = ptr 0
+1027 # CNgets() - handle 10
+1027 = ret -9
+1041 # TCP_close() - handle -1
+1041 = ret -9
+1042 # TCP_send() - handle -1
+1042 = ret -9
+1043 # TCP_wait_state() - handle -1
+1043 = ret -9
+1044 # TCP_ack_wait() - handle -1
+1044 = ret -9
+1045 # TCP_info() - handle -1
+1045 = ret -9
+1051 # UDP_close() - handle -1
+1051 = ret -9
+1052 # UDP_send() - handle -1
+1052 = ret -9
+1061 # CNkick() - handle -1
+1061 = ret -9
+1062 # CNbyte_count() - handle -1
+1062 = ret -9
+1063 # CNget_char() - handle -1
+1063 = ret -9
+1064 # CNget_NDB() - handle -1
+1064 = ptr 0
+1065 # CNget_block() - handle -1
+1065 = ret -9
+1066 # CNgetinfo() - handle -1
+1066 = ptr 0
+1067 # CNgets() - handle -1
+1067 = ret -9
+1081 # TCP_close() - handle 200
+1081 = ret -9
+1082 # TCP_send() - handle 200
+1082 = ret -9
+1083 # TCP_wait_state() - handle 200
+1083 = ret -9
+1084 # TCP_ack_wait() - handle 200
+1084 = ret -9
+1085 # TCP_info() - handle 200
+1085 = ret -9
+1091 # UDP_close() - handle 200
+1091 = ret -9
+1092 # UDP_send() - handle 200
+1092 = ret -9
+10a1 # CNkick() - handle 200
+10a1 = ret -9
+10a2 # CNbyte_count() - handle 200
+10a2 = ret -9
+10a3 # CNget_char() - handle 200
+10a3 = ret -9
+10a4 # CNget_NDB() - handle 200
+10a4 = ptr 0
+10a5 # CNget_block() - handle 200
+10a5 = ret -9
+10a6 # CNgetinfo() - handle 200
+10a6 = ptr 0
+10a7 # CNgets() - handle 200
+10a7 = ret -9
+10c0 # get_err_text() for 0 .. -33, +5, -100
+10c0 = e0 "No error."
+10c0 = e-1 "Can't send, output buffer is full."
+10c0 = e-2 "No data available."
+10c0 = e-3 "EOF received from a remote host."
+10c0 = e-4 "RESET received from a remote host."
+10c0 = e-5 "Unacceptable packet, sending RESET."
+10c0 = e-6 "No more memory available."
+10c0 = e-7 "Connection refused by remote host."
+10c0 = e-8 "TCP received SYN in window."
+10c0 = e-9 "Bad connection handle used."
+10c0 = e-10 "The connection is in LISTEN state."
+10c0 = e-11 "No free CCBs available."
+10c0 = e-12 "A packet matches no connection."
+10c0 = e-13 "Failure to connect to remote port."
+10c0 = e-14 "Invalid TCP_close() requested."
+10c0 = e-15 "User timeout expired."
+10c0 = e-16 "Connection timed out."
+10c0 = e-17 "DNS query, can't resolve hostname."
+10c0 = e-18 "Bad format in domain name / dotted quad."
+10c0 = e-19 "Modem lost carrier signal."
+10c0 = e-20 "Hostname does not exist."
+10c0 = e-21 "Resolver reached work limit."
+10c0 = e-22 "No nameserver found for query."
+10c0 = e-23 "DNS query, bad format received."
+10c0 = e-24 "Destination host is unreachable."
+10c0 = e-25 "No address records found for hostname."
+10c0 = e-26 "Routine is unavailable."
+10c0 = e-27 "Locked by another application."
+10c0 = e-28 "Error during fragmentation."
+10c0 = e-29 "Time To Live exceeded, discarded."
+10c0 = e-30 "Problem with a parameter."
+10c0 = e-31 "Input buffer is too small for data.Function is not available."
+10c0 = e-32 ""
+10c0 = e-33 ""
+10c0 = e5 ""
+10c0 = e-100 ""
+1100 # TCP_open(bufsize 2000) + send 1000
+1100 = wait 0
+1100 = send 0
+1101 # TCP send 2000 = bufsize
+1101 = send 0
+1102 # TCP send 2001 > bufsize
+1102 = send -1
+1150 # resolve() dotted IP of server
+1150 = ret 1
+1150 = a0 0xc0a87b37
+1150 = realset 1
+1150 = real "192.168.123.55"
+1151 # resolve() dotted IP, real NULL
+1151 = ret 1
+1151 = a0 0xc0a87b37
+1152 # resolve() bad dotted IP 1.2.3.400
+1152 = ret 1
+1152 = a0 0x01020390
+1152 = realset 1
+1152 = real "1.2.3.144"
+1153 # resolve() nonexistent.invalid
+1153 = ret -17
+1153 = realset 1
+1153 ~ real ""
+1154 # resolve() spaces
+1154 = ret -17
+1154 = realset 0
+1155 # resolve() empty string
+1155 = ret -17
+1155 = realset 0
+1156 # resolve() example.com
+1156 = found 1
+1156 ~ ret 2
+1156 ~ a0 "ac4293f3"
+1156 ~ a1 "6814179a"
+1156 = realset 1
+1156 ~ real "example.com"
+1157 # resolve() example.com, real NULL
+1157 = found 1
+1157 ~ ret 2
+1157 ~ a0 "6814179a"
+1157 ~ a1 "ac4293f3"
+1158 # resolve() localhost
+1158 = ret 1
+1158 = a0 0x40be3fde
+1158 = realset 1
+1158 = real "localhost.sting.org"
+2001 # TCP echo 32
+2001 = opened 1
+2001 = wait 0
+2001 = send0 0
+2001 = got0 32
+2001 = data0 1
+2001 = close 0
+2002 # TCP echo 3x 250
+2002 = opened 1
+2002 = wait 0
+2002 = send0 0
+2002 = got0 250
+2002 = data0 1
+2002 = send1 0
+2002 = got1 250
+2002 = data1 1
+2002 = send2 0
+2002 = got2 250
+2002 = data2 1
+2002 = close 0
+2003 # TCP echo 511 512 513
+2003 = opened 1
+2003 = wait 0
+2003 = send0 0
+2003 = got0 511
+2003 = data0 1
+2003 = send1 0
+2003 = got1 512
+2003 = data1 1
+2003 = send2 0
+2003 = got2 513
+2003 = data2 1
+2003 = close 0
+2004 # TCP echo 1000 250 1000
+2004 = opened 1
+2004 = wait 0
+2004 = send0 0
+2004 = got0 1000
+2004 = data0 1
+2004 = send1 0
+2004 = got1 250
+2004 = data1 1
+2004 = send2 0
+2004 = got2 1000
+2004 = data2 1
+2004 = close 0
+2005 # TCP echo 500 .. 2000
+2005 = opened 1
+2005 = wait 0
+2005 = send0 0
+2005 = got0 500
+2005 = data0 1
+2005 = send1 0
+2005 = got1 1000
+2005 = data1 1
+2005 = send2 0
+2005 = got2 1500
+2005 = data2 1
+2005 = send3 0
+2005 = got3 2000
+2005 = data3 1
+2005 = close 0
+2006 # TCP echo 5000 10000 16000
+2006 = opened 1
+2006 = wait 0
+2006 = send0 0
+2006 = got0 5000
+2006 = data0 1
+2006 = send1 0
+2006 = got1 10000
+2006 = data1 1
+2006 = send2 0
+2006 = got2 16000
+2006 = data2 1
+2006 = close 0
+2007 # TCP echo 511 512 513, NDB
+2007 = opened 1
+2007 = wait 0
+2007 = send0 0
+2007 = got0 511
+2007 = data0 1
+2007 ~ ndbs0 1
+2007 = send1 0
+2007 = got1 512
+2007 = data1 1
+2007 ~ ndbs1 1
+2007 = send2 0
+2007 = got2 513
+2007 = data2 1
+2007 ~ ndbs2 1
+2007 = close 0
+2008 # TCP echo 5000 .. 16000, NDB
+2008 = opened 1
+2008 = wait 0
+2008 = send0 0
+2008 = got0 5000
+2008 = data0 1
+2008 ~ ndbs0 4
+2008 = send1 0
+2008 = got1 10000
+2008 = data1 1
+2008 ~ ndbs1 7
+2008 = send2 0
+2008 = got2 16000
+2008 = data2 1
+2008 ~ ndbs2 13
+2008 = close 0
+2011 # UDP echo 32
+2011 = opened 1
+2011 = send0 0
+2011 = got0 32
+2011 = data0 1
+2011 = close 0
+2012 # UDP echo 3x 250
+2012 = opened 1
+2012 = send0 0
+2012 = got0 250
+2012 = data0 1
+2012 = send1 0
+2012 = got1 250
+2012 = data1 1
+2012 = send2 0
+2012 = got2 250
+2012 = data2 1
+2012 = close 0
+2013 # UDP echo 511 512 513
+2013 = opened 1
+2013 = send0 0
+2013 = got0 511
+2013 = data0 1
+2013 = send1 0
+2013 = got1 512
+2013 = data1 1
+2013 = send2 0
+2013 = got2 513
+2013 = data2 1
+2013 = close 0
+2014 # UDP echo 1000 250 1000
+2014 = opened 1
+2014 = send0 0
+2014 = got0 1000
+2014 = data0 1
+2014 = send1 0
+2014 = got1 250
+2014 = data1 1
+2014 = send2 0
+2014 = got2 1000
+2014 = data2 1
+2014 = close 0
+2015 # UDP echo 1400 1472
+2015 = opened 1
+2015 = send0 0
+2015 = got0 1400
+2015 = data0 1
+2015 = send1 0
+2015 = got1 1472
+2015 = data1 1
+2015 = close 0
+2017 # UDP echo 511 512 513, NDB
+2017 = opened 1
+2017 = send0 0
+2017 = got0 511
+2017 = data0 1
+2017 = ndbs0 1
+2017 = send1 0
+2017 = got1 512
+2017 = data1 1
+2017 = ndbs1 1
+2017 = send2 0
+2017 = got2 513
+2017 = data2 1
+2017 = ndbs2 1
+2017 = close 0
+2030 # UDP 3x100: 3x CNget_block(100)
+2030 = opened 1
+2030 = count 300
+2030 = a 100
+2030 = b 100
+2030 = c 100
+2030 = after 0
+2031 # UDP 1x300: CNget_block(100), count
+2031 = opened 1
+2031 = count 300
+2031 = get 100
+2031 = after 200
+2031 = get2 200
+2031 = data 1
+2032 # UDP 3x100: 1x CNget_block(300)
+2032 = opened 1
+2032 = count 300
+2032 = get 300
+2032 = after 0
+2033 # UDP 3x100: CNget_block(150) x2
+2033 = opened 1
+2033 = count 300
+2033 = get1 150
+2033 = after1 150
+2033 = get2 150
+2033 = after2 0
+2034 # UDP 3x100: 4x CNget_NDB
+2034 = opened 1
+2034 = count 300
+2034 = len0 100
+2034 = len1 100
+2034 = len2 100
+2034 = len3 -1
+2035 # UDP 3x100: 301x CNget_char
+2035 = opened 1
+2035 = count 300
+2035 = bad 0
+2035 = last -2
+2020 # TCP CNbyte_count + CNget_char
+2020 = opened 1
+2020 = wait 0
+2020 = send 0
+2020 = got 1000
+2020 = mismatch 0
+2020 = countbad 0
+2020 = empty -2
+2020 = emptycount 0
+2021 # UDP CNbyte_count + CNget_char
+2021 = opened 1
+2021 = send 0
+2021 = got 1000
+2021 = mismatch 0
+2021 = countbad 0
+2021 = empty -2
+2021 = emptycount 0
+2022 # TCP CNgets
+2022 = wait 0
+2022 = opened 1
+2022 = empty -2
+2022 = send 0
+2022 = waited 1
+2022 = small -31
+2022 = line0 "0098Bacon ipsum dolor amet strip steak turducken meatball short loin rump ham ribeye ham hock.."
+2022 = len0 101
+2022 = lines 32
+2022 = good 32
+2022 = eofcount -3
+2022 = eofgets -3
+2023 # UDP CNgets
+2023 = opened 1
+2023 = empty -2
+2023 = send 0
+2023 = waited 1
+2023 = small -31
+2023 = line0 "0098Bacon ipsum dolor amet strip steak turducken meatball short loin rump ham ribeye ham hock.."
+2023 = len0 101
+2023 = lines 12
+2023 = good 12
+2023 = restcount 0
+2024 # TCP CNgetinfo + remote close
+2024 = wait 0
+2024 = opened 1
+2024 = cib 1
+2024 = protocol 6
+2024 = rport 1
+2024 = rhost 1
+2024 = lhost 1
+2024 ~ lport 1037
+2024 = status 0
+2024 = send 0
+2024 = waitclose 0
+2024 ~ ms 1015
+2024 = state 7
+2024 = count -3
+2024 = char -3
+2024 = status2 0
+2024 = close 0
+2024 = cibafter 1
+2025 # UDP CNgetinfo
+2025 = opened 1
+2025 = cib 1
+2025 = protocol 17
+2025 = rport 1
+2025 = rhost 1
+2025 = lhost 1
+2025 ~ lport 1043
+2025 = status 0
+2025 = send 0
+2025 = close 0
+2025 = cibafter 0
+200a # TCP only CNget_char, 5000 B
+200a = opened 1
+200a = wait 0
+200a = got 5000
+200a = mismatch 0
+200a = err 0
+2040 # CNget_block canaries 511, offset 0
+2040 = send 0
+2040 = waited 1
+2040 = get 511
+2040 = data 1
+2040 = before 1
+2040 = after 1
+2041 # CNget_block canaries 511, offset 1
+2041 = send 0
+2041 = waited 1
+2041 = get 511
+2041 = data 1
+2041 = before 1
+2041 = after 1
+2042 # CNget_block canaries 512, offset 0
+2042 = send 0
+2042 = waited 1
+2042 = get 512
+2042 = data 1
+2042 = before 1
+2042 = after 1
+2043 # CNget_block canaries 512, offset 1
+2043 = send 0
+2043 = waited 1
+2043 = get 512
+2043 = data 1
+2043 = before 1
+2043 = after 1
+2044 # CNget_block canaries 513, offset 0
+2044 = send 0
+2044 = waited 1
+2044 = get 513
+2044 = data 1
+2044 = before 1
+2044 = after 1
+2045 # CNget_block canaries 513, offset 1
+2045 = send 0
+2045 = waited 1
+2045 = get 513
+2045 = data 1
+2045 = before 1
+2045 = after 1
+2046 # CNget_block canaries 1023, offset 0
+2046 = send 0
+2046 = waited 1
+2046 = get 1023
+2046 = data 1
+2046 = before 1
+2046 = after 1
+2047 # CNget_block canaries 1023, offset 1
+2047 = send 0
+2047 = waited 1
+2047 = get 1023
+2047 = data 1
+2047 = before 1
+2047 = after 1
+2048 # CNget_block canaries 1024, offset 0
+2048 = send 0
+2048 = waited 1
+2048 = get 1024
+2048 = data 1
+2048 = before 1
+2048 = after 1
+2049 # CNget_block canaries 1024, offset 1
+2049 = send 0
+2049 = waited 1
+2049 = get 1024
+2049 = data 1
+2049 = before 1
+2049 = after 1
+204a # CNget_block canaries 1025, offset 0
+204a = send 0
+204a = waited 1
+204a = get 1025
+204a = data 1
+204a = before 1
+204a = after 1
+204b # CNget_block canaries 1025, offset 1
+204b = send 0
+204b = waited 1
+204b = get 1025
+204b = data 1
+204b = before 1
+204b = after 1
+204c # CNget_block canaries 1535, offset 0
+204c = send 0
+204c = waited 1
+204c = get 1535
+204c = data 1
+204c = before 1
+204c = after 1
+204d # CNget_block canaries 1535, offset 1
+204d = send 0
+204d = waited 1
+204d = get 1535
+204d = data 1
+204d = before 1
+204d = after 1
+204e # CNget_block canaries 1536, offset 0
+204e = send 0
+204e = waited 1
+204e = get 1536
+204e = data 1
+204e = before 1
+204e = after 1
+204f # CNget_block canaries 1536, offset 1
+204f = send 0
+204f = waited 1
+204f = get 1536
+204f = data 1
+204f = before 1
+204f = after 1
+2050 # CNget_block canaries 1537, offset 0
+2050 = send 0
+2050 = waited 1
+2050 = get 1537
+2050 = data 1
+2050 = before 1
+2050 = after 1
+2051 # CNget_block canaries 1537, offset 1
+2051 = send 0
+2051 = waited 1
+2051 = get 1537
+2051 = data 1
+2051 = before 1
+2051 = after 1
+3010 # TCP_open(IP, port)
+3010 = opened 1
+3010 = wait 0
+3010 = cib 1
+3010 = protocol 6
+3010 = lhost 1
+3010 = lportdyn 1
+3010 ~ lport 1040
+3010 = rhost 1
+3010 = rport 1
+3010 = send 0
+3010 = got 1000
+3010 = data 1
+3010 = close 0
+3011 # TCP_open(CAB, TCP_ACTIVE), lport 30011
+3011 = opened 1
+3011 = wait 0
+3011 = cib 1
+3011 = protocol 6
+3011 = lhost 1
+3011 = lport 1
+3011 = rhost 1
+3011 = rport 1
+3011 = send 0
+3011 = got 1000
+3011 = data 1
+3011 = close 0
+3012 # TCP_open(CAB, TCP_ACTIVE), lport 0
+3012 = opened 1
+3012 = wait 0
+3012 = cib 1
+3012 = protocol 6
+3012 = lhost 1
+3012 = lportdyn 1
+3012 ~ lport 1041
+3012 = rhost 1
+3012 = rport 1
+3012 = send 0
+3012 = got 1000
+3012 = data 1
+3012 = close 0
+3013 # TCP_open(NULL, TCP_ACTIVE) - listens
+3013 = opened 1
+3013 = cib 1
+3013 = protocol 6
+3013 = lhost 0
+3013 = lportdyn 1
+3013 ~ lport 1042
+3013 = rhost 1
+3013 = rport 1
+3013 = listencount -10
+3013 = state 1
+3013 = ask 0
+3013 = wait 0
+3013 = state2 4
+3013 = rhost2 1
+3013 = lhost2 1
+3013 = send 0
+3013 = got 1000
+3013 = data 1
+3013 = close 0
+3014 # TCP_open(CAB, TCP_PASSIVE), lport 30014
+3014 = opened 1
+3014 = cib 1
+3014 = protocol 6
+3014 = lhost 0
+3014 = lport 1
+3014 = rhost 1
+3014 = rport 1
+3014 = listencount -10
+3014 = state 1
+3014 = ask 0
+3014 = wait 0
+3014 = state2 4
+3014 = rhost2 1
+3014 = lhost2 1
+3014 = send 0
+3014 = got 1000
+3014 = data 1
+3014 = close 0
+3015 # TCP_open(CAB, TCP_PASSIVE), lport 0
+3015 = opened 1
+3015 = cib 1
+3015 = protocol 6
+3015 = lhost 0
+3015 = lportdyn 1
+3015 ~ lport 1045
+3015 = rhost 1
+3015 = rport 1
+3015 = listencount -10
+3015 = state 1
+3015 = ask 0
+3015 = wait 0
+3015 = state2 4
+3015 = rhost2 1
+3015 = lhost2 1
+3015 = send 0
+3015 = got 1000
+3015 = data 1
+3015 = close 0
+3016 # TCP_open(NULL, TCP_PASSIVE)
+3016 = opened 1
+3016 = cib 1
+3016 = protocol 6
+3016 = lhost 0
+3016 = lportdyn 1
+3016 ~ lport 1047
+3016 = rhost 1
+3016 = rport 1
+3016 = listencount -10
+3016 = state 1
+3016 = ask 0
+3016 = wait 0
+3016 = state2 4
+3016 = rhost2 1
+3016 = lhost2 1
+3016 = send 0
+3016 = got 1000
+3016 = data 1
+3016 = close 0
+3020 # UDP_open(IP, port)
+3020 = opened 1
+3020 = cib 1
+3020 = protocol 17
+3020 = lhost 1
+3020 = lportdyn 1
+3020 ~ lport 1044
+3020 = rhost 1
+3020 = rport 1
+3020 = send 0
+3020 = got 1000
+3020 = data 1
+3020 = close 0
+3021 # UDP_open(CAB, UDP_EXTEND), lport 30021
+3021 = opened 1
+3021 = cib 1
+3021 = protocol 17
+3021 = lhost 1
+3021 = lport 1
+3021 = rhost 1
+3021 = rport 1
+3021 = send 0
+3021 = got 1000
+3021 = data 1
+3021 = close 0
+3022 # UDP_open(CAB, UDP_EXTEND), lport 0
+3022 = opened 1
+3022 = cib 1
+3022 = protocol 17
+3022 = lhost 1
+3022 = lportdyn 1
+3022 ~ lport 1045
+3022 = rhost 1
+3022 = rport 1
+3022 = send 0
+3022 = got 1000
+3022 = data 1
+3022 = close 0
+3023 # UDP_open twice on lport 30023
+3023 = opened 1
+3023 = opened2 1
+3030 # PASSIVE wait using TCP_wait_state
+3030 = opened 1
+3030 = waitshort -16
+3030 = ask 0
+3030 = wait 0
+3030 = close 0
+3031 # PASSIVE wait using CNbyte_count
+3031 = opened 1
+3031 = listen -10
+3031 = ask 0
+3031 = count 0
+3031 = close 0
+3032 # PASSIVE wait watching CNgetinfo()->rhost
+3032 = opened 1
+3032 = cib 1
+3032 = ask 0
+3032 = changed 1
+3032 = rhost 1
+3032 = close 0
+3033 # LISTEN socket: send, get, ack_wait, info
+3033 = opened 1
+3033 = send -10
+3033 = char -10
+3033 = block -10
+3033 = gets -10
+3033 = ndb 0
+3033 = ackwait 0
+3033 = state 1
+3034 # TCP_PASSIVE twice on the same port
+3034 = opened2 1
+3034 = close 0
+4001 # connect to closed port (RST on SYN)
+4001 = opened 1
+4001 = wait -7
+4001 = state 0
+4001 = count -3
+4001 = send -3
+4001 = char -3
+4001 = close -4
+4001 = close2 -9
+4002 # connect to unanswered IP, wait 3 s
+4002 = opened 1
+4002 = wait -16
+4002 ~ ms 3015
+4002 = state 2
+4002 = count 0
+4002 = send 0
+4002 = close 0
+4003 # UDP to unanswered IP
+4003 = opened 1
+4003 = send 0
+4003 = count 0
+4003 = close 0
+4010 # peer resets right after connect
+4010 = opened 1
+4010 = wait 0
+4010 = scen 0
+4010 = err -4
+4010 = count -3
+4010 = state 0
+4010 = char -3
+4010 = block -3
+4010 = send -3
+4010 = waitstate -16
+4010 = cib 1
+4010 = status 0
+4010 = close -4
+4011 # peer sends 2000 B then resets
+4011 = opened 1
+4011 = wait 0
+4011 = scen 0
+4011 = count -4
+4011 = state 0
+4011 = got 2000
+4011 = data 1
+4011 = after -3
+4011 = char -3
+4011 = close -4
+4020 # peer sends 3000 B then FIN, read later
+4020 = opened 1
+4020 = wait 0
+4020 = scen 0
+4020 = count 3000
+4020 = state 7
+4020 = block -2
+4020 = count2 3000
+4020 = got 3000
+4020 = data 1
+4020 = eofcount -3
+4020 = eofchar -3
+4020 = eofblock -3
+4020 = eofgets -3
+4020 = eofndb 0
+4020 = send 0
+4020 = close -4
+4021 # peer sends 100 B then FIN, read with CNgets
+4021 = opened 1
+4021 = wait 0
+4021 = scen 0
+4021 = count 100
+4021 = gets1 10
+4021 = gets2 -2
+4021 = count2 89
+4021 = close 0
+4030 # peer half-closes, we keep sending
+4030 = opened 1
+4030 = wait 0
+4030 = scen 0
+4030 = waitcw 0
+4030 = state 7
+4030 = count -3
+4030 = send 0
+4030 = sent 5
+4030 = close 0
+4030 = result 1234
+4030 = report 5000
+4031 # 5000 B sent, TCP_close(timeout 0)
+4031 = opened 1
+4031 = wait 0
+4031 = scen 0
+4031 = send 0
+4031 = close 0
+4031 ~ ms 25
+4031 ~ result 1234
+4031 = report 5000
+4031 = closeagain -14
+4032 # 5000 B sent, TCP_close(timeout 5)
+4032 = opened 1
+4032 = wait 0
+4032 = scen 0
+4032 = send 0
+4032 = close 0
+4032 ~ ms 55
+4032 = result 1234
+4032 = report 5000
+4032 = closeagain -14
+4040 # peer stops reading for 3 s
+4040 = opened 1
+4040 = wait 0
+4040 = scen 0
+4040 = res -1
+4040 ~ sentbeforefull 4000
+4040 = res2 0
+4040 = more 20000
+4040 = close 0
+4040 = result 1234
+4040 = reportok 1
+4040 ~ report 24000
+4050 # CNget_block more than available
+4050 = opened 1
+4050 = wait 0
+4050 = emptychar -2
+4050 = emptyblock -2
+4050 = emptycount 0
+4050 = emptyndb 0
+4050 = emptygets -2
+4050 = waited 100
+4050 = block200 -2
+4050 = count 100
+4050 = block0 0
+4050 = count2 100
+4050 = block100 100
+4050 = data 1
+4051 # CNgets without delimiter, then with it
+4051 = waited 3
+4051 = gets -2
+4051 = count 3
+4051 = waited2 8
+4051 = gets2 7
+4051 = str "abcdef\x0d"
+4051 = count2 0
+4052 # CNgets buffer size vs line length
+4052 = waited 11
+4052 = gets5 4
+4052 = str "1234"
+4052 = gets5b -31
+4052 = count 6
+4052 = gets6 5
+4052 = str2 "12345"
+4052 = count2 0
+4053 # CNgets with delimiter '\r'
+4053 = waited 5
+4053 = gets 2
+4053 = str "xy"
+4053 = count 2
+4053 = gets2 1
+4053 = str2 "z"
+4054 # CNkick, TCP_ack_wait on idle connection
+4054 = kick 0
+4054 = ackwait 0
+4054 = state 4
+4055 # UDP functions on TCP handle
+4055 = udpsend -9
+4055 = udpclose -9
+4055 = state 4
+4055 = close 0
+4056 # TCP functions on UDP handle
+4056 = opened 1
+4056 = tcpsend -9
+4056 = waitstate -9
+4056 = ackwait -9
+4056 = info -9
+4056 = tcpclose -9
+4056 = udpclose 0
+4060 # TCP states through the connection life
+4060 = opened 1
+4060 ~ state0 4
+4060 ~ count0 0
+4060 = wait 0
+4060 = state1 4
+4060 = waitcw 0
+4060 = state2 7
+4060 = close 0
+4060 = result 1234
+4060 = state3 -9
+4060 = count3 -9
+4060 = cib3 0
+4061 # we close first, then wait states
+4061 = opened 1
+4061 = wait 0
+4061 = close 0
+4061 ~ result 1234
+4061 = state 10
+4061 = send -3
+4061 = count -3
+4061 = state2 10
+4061 = closeagain -14
+4070 # open UDP handles until it fails
+4070 = failed 0
+4070 ~ count 80
+4070 ~ h0 78
+4070 ~ h1 79
+4070 ~ h2 80
+4071 # handles reused after close
+4071 = opened 1
+4071 = same 0
+4071 = reuse 0
+5001 # ICMP_handler(NULL, SET / FORCE / QUERY / REMOVE)
+5001 = set 1
+5001 = force 0
+5001 = query 1
+5001 = remove 1
+5001 = query2 0
+5001 = remove2 0
+5002 # ICMP_handler(real) not registered
+5002 = remove 0
+5002 = query 0
+5003 # ICMP_handler(real) SET, SET again, FORCE, QUERY
+5003 = set 1
+5003 = set2 0
+5003 = force 0
+5003 = query 1
+5004 # ICMP_handler bad flag 7
+5004 = ret 0
+5010 # 5 pings to server
+5010 = send 0
+5010 = replies 5
+5010 = bad 0
+5010 = lastseq 5
+5010 = other 0
+5011 # 3 pings to unanswered IP
+5011 = send 0
+5011 = replies 0
+5011 = bad 0
+5012 # ping with 0 / 1000 bytes data
+5012 = send0 0
+5012 = send1000 0
+5012 = bad 0
+5012 ~ other 1
+5013 # 2nd handler that doesn't take the reply
+5013 = set 1
+5013 = send 0
+5013 = replies 3
+5013 = bad 0
+5013 = lastseq 3
+5013 = peek 3
+5013 = remove 1
+5014 # ICMP_handler REMOVE, then ping
+5014 = remove 1
+5014 = query 0
+5014 = send 0
+5014 = replies 0
+5014 = bad 0
+5020 # UDP to closed port, handler sees unreachable?
+5020 = set 1
+5020 = opened 1
+5020 = send 0
+5020 = other 1
+5020 = type 3
+5020 = code 3
+5020 = count 0
+5020 = send2 0
+5020 = remove 1
+6001 # carrier_detect()
+6001 = ret 1
+6002 # query_port() of port names
+6002 = q_CosmosEx 1
+6002 = q_Internal 1
+6002 = q_Modem_1 0
+6002 = q_Modem_2 0
+6002 = q_Ser.2 0
+6002 = q_EtherNet 0
+6002 = q_NoSuchPort 0
+6002 = q_empty 0
+6003 # on_port() of not existing port
+6003 = ret 0
+6003 = query 0
+6010 # getvstr() of unknown variable
+6010 = value "0"
+6010 = lower "your_username"
+6011 # getvstr() of common variables
+6011 = USERNAME 1
+6011 ~ v_USERNAME "your_username"
+6011 = HOSTNAME 1
+6011 ~ v_HOSTNAME "your_hostname"
+6011 = FULLNAME 1
+6011 ~ v_FULLNAME "your_fullname"
+6011 = EMAIL 1
+6011 ~ v_EMAIL "your_mail_address"
+6011 = DOMAIN 1
+6011 ~ v_DOMAIN "sting.org"
+6011 = SMTP_HOST 1
+6011 ~ v_SMTP_HOST "your_mail_server"
+6011 = POP_HOST 1
+6011 ~ v_POP_HOST "your_mail_server"
+6011 = POP_USERNAME 1
+6011 ~ v_POP_USERNAME "your_mail_username"
+6011 = POP_PASSWORD 1
+6011 ~ v_POP_PASSWORD "your_mail_password"
+6011 = MAILER 1
+6011 ~ v_MAILER "your_mail_server"
+6011 = NAMESERVER 1
+6011 ~ v_NAMESERVER "192.168.123.1"
+6011 = TIME_ZONE 1
+6011 ~ v_TIME_ZONE "+60"
+6011 = TIME_SUMMER 1
+6011 ~ v_TIME_SUMMER "03.26.10.29"
+6011 = TIME_SERVER 1
+6011 ~ v_TIME_SERVER "time.demon.co.uk"
+6011 = DNS_CACHE 1
+6011 ~ v_DNS_CACHE "64"
+6011 = ALLOCMEM 1
+6011 ~ v_ALLOCMEM "100000"
+6011 = ACTIVATE 1
+6011 ~ v_ACTIVATE "TRUE"
+6011 = MSS 1
+6011 ~ v_MSS "1460"
+6011 = RCV_WND 1
+6011 ~ v_RCV_WND "10000"
+6011 = DEF_TTL 1
+6011 ~ v_DEF_TTL "64"
+6011 = DEF_RTT 1
+6011 ~ v_DEF_RTT "1500"
+6011 = TCP_PORT 1
+6011 ~ v_TCP_PORT "1024"
+6011 = UDP_PORT 1
+6011 ~ v_UDP_PORT "1024"
+6012 # setvstr() new variable, then getvstr()
+6012 = set 1
+6012 = get "abc"
+6012 = set2 1
+6012 = get2 "defgh"
+6012 = setempty 1
+6012 = get3 ""
+6020 # get_dftab()
+6020 = transport 1
+6020 = unknown 0
+6020 = cfg 1
+6030 # KRmalloc / KRrealloc / KRfree / KRgetfree
+6030 ~ free 98416
+6030 ~ largest 97624
+6030 = malloc 1
+6030 = realloc 1
+6030 = kept 1
+6030 = freeafter 1
+6030 = huge 0
+6030 = zero 1
+7001 # TCP_send 0 bytes
+7001 = opened 1
+7001 = wait 0
+7001 = send 0
+7001 = close 0
+7002 # UDP_send 0 bytes
+7002 = opened 1
+7002 = send 0
+7002 = count 0
+7002 = close 0
+7003 # KRfree(NULL)
+7003 = survived 1
+## end
