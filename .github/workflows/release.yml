@@ -8,7 +8,11 @@
 #   - the docker image for all platforms, pushed to ghcr.io/<owner>/cosmo2ex as :1.2.3 and :latest
 #   - the Pico firmwares (firmware/build.sh), in the ghcr.io/<owner>/ce-pico-builder image - that one is
 #     tagged with the hash of firmware/Dockerfile, and built + pushed only when that file changed
-# and finally creates the GitHub release with the tarballs and firmwares attached.
+# and finally creates the GitHub release with the tarballs and firmwares attached. If the release already exists
+# (made on the GitHub page, which also creates the tag), the files are uploaded to it instead.
+#
+# The macOS zip is optional: when the macOS job fails or gets no runner, the release is made without it (re-run that
+# job later - the github-release job then adds the zip to the existing release).
 #
 # A tag with a suffix (v1.2.3-rc1) makes a pre-release, and doesn't move the :latest image tag.
 # The image package on ghcr.io is private after the first push - make it public once, in the
@@ -85,6 +89,8 @@ jobs:
 
   tarballs:
     needs: [ci, windows, macos]
+    # also when macOS failed / was cancelled - then without the macOS zip
+    if: ${{ !cancelled() && needs.ci.result == 'success' && needs.windows.result == 'success' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -95,6 +101,7 @@ jobs:
           path: windows-bin
 
       - uses: actions/download-artifact@v8
+        if: ${{ needs.macos.result == 'success' }}
         with:
           name: macos-bin
           path: macos-bin
@@ -105,9 +112,17 @@ jobs:
           sudo apt-get install -y --no-install-recommends cross-mint-essential
 
       - name: Build release tarballs + Windows and macOS zips
+        env:
+          MACOS_RESULT: ${{ needs.macos.result }}
         run: |
+          targets="amd64 arm64 armhf i386 windows"
+          if [ "$MACOS_RESULT" = "success" ]; then
+            targets="$targets macos"
+          else
+            echo "::warning::macOS build $MACOS_RESULT - the release is made without the macOS zip"
+          fi
           VERSION="${GITHUB_REF_NAME#v}" WINDOWS_BIN="$PWD/windows-bin" MACOS_BIN="$PWD/macos-bin" \
-            release/build.sh amd64 arm64 armhf i386 windows macos
+            release/build.sh $targets
 
       - uses: actions/upload-artifact@v7
         with:
@@ -240,6 +255,8 @@ jobs:
 
   github-release:
     needs: [tarballs, images, firmware]
+    # tarballs may have run without the macOS zip (see there), the rest must be fine
+    if: ${{ !cancelled() && needs.tarballs.result == 'success' && needs.images.result == 'success' && needs.firmware.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -263,10 +280,17 @@ jobs:
           prerelease=""
           case "$version" in *-*) prerelease="--prerelease" ;; esac
           (cd out && sha256sum ce-*.tar.gz ce-*.zip install.sh *.uf2 > SHA256SUMS)
-          gh release create "$GITHUB_REF_NAME" out/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "$GITHUB_REF_NAME" \
-            --verify-tag \
-            --generate-notes \
-            --notes "Docker image: \`docker pull $IMAGE:$version\`" \
-            $prerelease
+
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            # made on the GitHub page (or by an earlier run) - keep its title and notes, add / replace the files
+            echo "Release $GITHUB_REF_NAME exists, uploading the files to it"
+            gh release upload "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" out/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" \
+              --verify-tag \
+              --generate-notes \
+              --notes "Docker image: \`docker pull $IMAGE:$version\`" \
+              $prerelease
+          fi
