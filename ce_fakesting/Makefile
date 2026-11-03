@@ -40,6 +40,18 @@ DEPS = $(CSRC:.c=.d)
 OBJS = $(CSRC:.c=.o) $(SSRC:.s=.o)
 OBJS030 = ../libacsiscsi/cache030.o
 
+# next to ce_dd.prg and ce_eth.stx on the config drive in the source tree, see ../ce_sting/Makefile
+CONFIGDRIVE_PRG = ../ce_cores/configdrive/drivers/$(TARGET)
+
+all: $(TARGET) $(CONFIGDRIVE_PRG)
+
+$(CONFIGDRIVE_PRG): $(TARGET)
+	$(AT)mkdir -p $(dir $@)
+	$(AT)cp $< $@.tmp && mv -f $@.tmp $@
+	@echo "[Copied to config drive] $@"
+
+.PHONY: all
+
 $(TARGET): $(STARTUP) $(OBJS) $(OBJS030) ../libacsiscsi/libacsiscsi.a
 	$(CC_LINK) $(CFLAGS) $(LDFLAGS) -o $@ $(STARTUP) $(OBJS) $(OBJS030) $(LDLIBS)
 	$(AT)$(STRIP) -s $@

@@ -218,6 +218,7 @@ static void showMenu(void)
     ce_printf("\33p[ 7 ]\33q odd calls: 0 byte sends, KRfree(NULL)\n");
     ce_printf("\33p[ X ]\33q known STinG 1.26 crashes: TCP_send -1, fragmented UDP\n");
     ce_printf("\33p[ S ]\33q speed (fuzzy only)\n");
+    ce_printf("\33p[ D ]\33q FTP download TEST4M.BIN to C:\\ (port 2122)\n");
     ce_printf("\33p[ Q ]\33q quit\n");
 }
 
@@ -284,6 +285,7 @@ int test_sting_main(void)
             if(key >= '1' && key <= '7') which = 1 << (key - '1');
             if(key == 'S')               which = 0x80;
             if(key == 'X')               which = 0x100;
+            if(key == 'D')               which = 0x200;
             if(!which) {
                 continue;
             }
@@ -337,6 +339,7 @@ int test_sting_main(void)
             if(which & 0x40) testRisky(0);
             if(which & 0x100) testRisky(1);
             if(which & 0x80) testSpeed();
+            if(which & 0x200) testFtp();
 
             rec_comment("end");
             rec_done();

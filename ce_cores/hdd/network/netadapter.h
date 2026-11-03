@@ -71,6 +71,11 @@ public:
 
     static uint32_t findLocalIp(void);          // the IP the fake STinG reports as its own
 
+    // Can this platform see that the remote closed (FIN) while unread data still wait in the socket? Linux (POLLRDHUP,
+    // TCP_INFO) and macOS (TCP_CONNECTION_INFO) can - real STinG reports TCLOSE_WAIT then. Elsewhere (Cygwin) the
+    // connection gets TCLOSE_WAIT / E_EOF only after the data were read - nothing is lost, the state just comes later.
+    static bool seesRemoteCloseWithData(void);
+
 private:
     uint8_t         *cmd;
     AcsiDataTrans   *dataTrans;

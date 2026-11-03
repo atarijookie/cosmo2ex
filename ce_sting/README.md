@@ -229,6 +229,24 @@ The pico counts frames, ARP and drops (GET_STATS) - read them when debugging, th
 - Static IP only. The pico could get a DHCP lease for STinG's MAC later (IDENTIFY has reserved space for that).
 - Subnet broadcasts (e.g. 192.168.1.255) as next hop get no ARP reply, so they're dropped; 255.255.255.255 works.
 - `CTL_ETHER_GET_STAT` / `GET_ARP` are not done (GET_STATS could serve them).
-- Speed: suspects for the 12.5 kB/s are the W6100's 8 KB receive buffer of socket 0 (smaller than STinG's 10 KB TCP window,
-  so a burst may overflow it while the pico serves an ACSI command), `FLOCK` from disk writes, and slow ACKs.
+- Speed: see below. Left as it is - the fast way to network is the fake STinG (`../ce_fakesting`).
 - The pico side has host tests (`make -C ce_pico_tests test-hdd`).
+
+## Speed (TT, 2026-11-03)
+
+Measured with `../test_ce/test_sting`, menu **S** (TT, TOS 3.06, SCSI), against `../test_ce/sting_server` on the CE host:
+
+| | `RCV_WND = 10000` | `RCV_WND = 4000` |
+|---|---|---|
+| TCP receive, `CNgets()` (1000 lines) | 71 kB/s | 70 kB/s |
+| TCP receive, `CNget_block()` (1.7 MB) | 95 kB/s | 116 kB/s |
+| TCP receive, `CNget_NDB()` (1.7 MB) | 145 kB/s | 116 kB/s |
+| TCP send (100 kB) | 82 kB/s | 82 kB/s |
+
+- With STinG's default `RCV_WND = 10000` the sender's bursts don't fit into the 8 KB MACRAW receive buffer of the W6100
+  (socket 0, `W6100_RX_SIZES_KB` in `../third_party/Ethernet/Ethernet.h`) when the pico is busy with an ACSI command -
+  frames are dropped, the CE host saw 2-3 TCP retransmission timeouts per second in the `CNget_block()` test. With
+  `RCV_WND = 4000` no drops, but the window caps the speed. Something around 7000 (4 full segments fit into 8 KB) should
+  be the best of both - not tried.
+- The 12.5 kB/s of MG-FTP on a plain ST (above) isn't the limit of this driver - MG-FTP reads 4 KB per GEM event loop
+  round and waits between the rounds (see `../ce_fakesting/README.md`).

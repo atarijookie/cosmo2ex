@@ -5,6 +5,7 @@
     .globl  _fromVbl
     .globl  _vblEnabled
     .globl  _vblInstalled
+    .globl  _vblTicks
     
 |-------------------------------------------------
 
@@ -29,6 +30,8 @@ _update_con_info_vbl:
     #move    #0x2700,sr              | protect this from interrupts, making it almost atomic
 
     movem.l D0-A6,-(SP)             | back up registers
+
+    addq.l  #1, _vblTicks           | every VBL - update_con_info() rate limit without Supexec()
 
     tst.w   _vblEnabled             | read this enabled flag
     beq     dontUpdateConInfo       | if vblEnabled is 0, then skip our vbl routine
@@ -73,3 +76,5 @@ __oldVbl:               .ds.l   1
 _fromVbl:               .ds.w   1
 _vblEnabled:            .ds.w   1
 _vblInstalled:			.ds.w	1
+    .even
+_vblTicks:              .ds.l   1

@@ -240,11 +240,21 @@ TEST_CASE("netadapter: TCP connect, send, receive, CNget_block / CNgets, remote 
 
     // remote closes: TCLOSE_WAIT with the data still readable, sending still works (as STinG)
     shutdown(sfd, SHUT_WR);
-    inf = h.waitFor(handle, [](NetHarness::Info i) { return i.status == TCLOSE_WAIT; });
-    CHECK(inf.status == TCLOSE_WAIT);
-    CHECK(inf.bytes == 7);
-    CHECK(h.getBlock(handle, 7) == E_NORMAL);
-    CHECK(h.replyStr(7) == "partial");
+
+    if(NetAdapter::seesRemoteCloseWithData()) {
+        inf = h.waitFor(handle, [](NetHarness::Info i) { return i.status == TCLOSE_WAIT; });
+        CHECK(inf.status == TCLOSE_WAIT);
+        CHECK(inf.bytes == 7);
+        CHECK(h.getBlock(handle, 7) == E_NORMAL);
+        CHECK(h.replyStr(7) == "partial");
+    } else {                                                // e.g. Cygwin: TCLOSE_WAIT comes when the data are read
+        MESSAGE("this platform sees the remote close only after the data were read");
+        usleep(100000);
+        CHECK(h.getBlock(handle, 7) == E_NORMAL);
+        CHECK(h.replyStr(7) == "partial");
+        inf = h.waitFor(handle, [](NetHarness::Info i) { return i.status == TCLOSE_WAIT; });
+        CHECK(inf.status == TCLOSE_WAIT);
+    }
     CHECK(h.send(true, handle, "after") == E_NORMAL);
     CHECK(recvAll(sfd, 5) == "after");
 

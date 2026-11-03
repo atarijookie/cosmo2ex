@@ -15,6 +15,9 @@
 #ifdef __linux__
 #include <linux/sockios.h>
 #endif
+#ifdef __APPLE__
+#include <netinet/tcp_fsm.h>
+#endif
 
 #include "../../misc/debug.h"
 #include "../../misc/utils.h"
@@ -836,6 +839,56 @@ void NetAdapter::updateCons_active(int i)
     checkTcpSocket(nc);
 }
 
+// TCP state from the kernel - also when unread data are waiting, where poll() / MSG_PEEK can't tell (macOS has no
+// POLLRDHUP, and no POLLERR after a RST while data wait)
+#define KSTATE_UNKNOWN          0
+#define KSTATE_OPEN             1
+#define KSTATE_REMOTE_CLOSED    2       // FIN from remote (CLOSE_WAIT, LAST_ACK)
+#define KSTATE_CLOSED           3       // reset, timed out
+
+static int kernelTcpState(int fd)
+{
+#if defined(__linux__) && defined(TCP_INFO)
+    struct tcp_info ti;
+    socklen_t len = sizeof(ti);
+    memset(&ti, 0, sizeof(ti));
+
+    if(getsockopt(fd, IPPROTO_TCP, TCP_INFO, &ti, &len) == 0) {
+        switch(ti.tcpi_state) {
+            case TCP_CLOSE_WAIT:
+            case TCP_LAST_ACK:      return KSTATE_REMOTE_CLOSED;
+            case TCP_CLOSE:         return KSTATE_CLOSED;
+            default:                return KSTATE_OPEN;
+        }
+    }
+#elif defined(__APPLE__) && defined(TCP_CONNECTION_INFO)
+    struct tcp_connection_info ci;
+    socklen_t len = sizeof(ci);
+    memset(&ci, 0, sizeof(ci));
+
+    if(getsockopt(fd, IPPROTO_TCP, TCP_CONNECTION_INFO, &ci, &len) == 0) {
+        switch(ci.tcpi_state) {
+            case TCPS_CLOSE_WAIT:
+            case TCPS_LAST_ACK:     return KSTATE_REMOTE_CLOSED;
+            case TCPS_CLOSED:       return KSTATE_CLOSED;
+            default:                return KSTATE_OPEN;
+        }
+    }
+#else
+    (void) fd;
+#endif
+    return KSTATE_UNKNOWN;
+}
+
+bool NetAdapter::seesRemoteCloseWithData(void)
+{
+#if defined(POLLRDHUP) || (defined(__linux__) && defined(TCP_INFO)) || (defined(__APPLE__) && defined(TCP_CONNECTION_INFO))
+    return true;
+#else
+    return false;
+#endif
+}
+
 // established / closing TCP connection: data count, remote closed (TCLOSE_WAIT), reset (TCLOSED + E_RRESET once).
 // Data that came before the FIN / RST can still be read - the socket is closed only when they're used up.
 void NetAdapter::checkTcpSocket(TNetConnection *nc)
@@ -848,6 +901,12 @@ void NetAdapter::checkTcpSocket(TNetConnection *nc)
     nc->bytesInSocket = nc->readWrapper.getCount();
 
     if(nc->status == TESTABLISH || nc->status == TCLOSE_WAIT) {
+        int err = 0;                                // a pending error (reset) - poll() doesn't always say POLLERR
+        socklen_t errLen = sizeof(err);
+        getsockopt(nc->fd, SOL_SOCKET, SO_ERROR, &err, &errLen);
+
+        int kstate = kernelTcpState(nc->fd);
+
         short events = POLLIN;
 #ifdef POLLRDHUP
         events |= POLLRDHUP;                        // Linux: remote closed, even with data still waiting
@@ -855,21 +914,18 @@ void NetAdapter::checkTcpSocket(TNetConnection *nc)
         struct pollfd pfd = { nc->fd, events, 0 };
         poll(&pfd, 1, 0);
 
-        if(pfd.revents & POLLERR) {                 // RST
-            int err = 0;
-            socklen_t len = sizeof(err);
-            getsockopt(nc->fd, SOL_SOCKET, SO_ERROR, &err, &len);
-
-            logHdd(LOG_DEBUG, "NetAdapter::checkTcpSocket - handle %d reset: %s", network_slotToHandle(nc - cons), strerror(err));
+        if(err != 0 || (pfd.revents & POLLERR) || kstate == KSTATE_CLOSED) {      // RST (or timed out)
+            logHdd(LOG_DEBUG, "NetAdapter::checkTcpSocket - handle %d reset: %s", network_slotToHandle(nc - cons),
+                   err ? strerror(err) : "closed");
             nc->status   = TCLOSED;
             nc->netError = E_RRESET;
             nc->wasReset = true;
         } else if(nc->status == TESTABLISH) {
-            bool remoteClosed = false;
+            bool remoteClosed = (kstate == KSTATE_REMOTE_CLOSED);
 #ifdef POLLRDHUP
-            remoteClosed = (pfd.revents & POLLRDHUP) != 0;
+            remoteClosed = remoteClosed || (pfd.revents & POLLRDHUP) != 0;
 #endif
-            if(!remoteClosed && nc->bytesInSocket == 0) {   // elsewhere: EOF when nothing more to read
+            if(!remoteClosed && kstate == KSTATE_UNKNOWN && nc->bytesInSocket == 0) {  // elsewhere: EOF when nothing more to read
                 uint8_t b;
                 ssize_t res = recv(nc->fd, &b, 1, MSG_PEEK | MSG_DONTWAIT);
                 if(res == 0) {

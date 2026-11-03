@@ -69,5 +69,6 @@ void testIcmp(void);        // 0x5xxx - ICMP handlers, ping, ICMP errors seen by
 void testOnline(void);      // 0x6xxx - carrier_detect, query_port, getvstr / setvstr, get_dftab, KRmalloc
 void testRisky(uint8_t crashers); // 0x7xxx - odd calls (0 byte sends, KRfree(NULL)); crashers = also the 2 that crash STinG 1.26
 void testSpeed(void);       // 0x8xxx - throughput, fuzzy only
+void testFtp(void);         // 0x81xx - FTP download of a 4 MB file without GEM (FTP server port 2122 on SERVER_ADDR)
 
 #endif

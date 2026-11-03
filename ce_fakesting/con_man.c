@@ -70,6 +70,11 @@ static int32_t availBytes(TConInfo *ci)             // the host count still has 
     return (ci->bytesToRead > ci->charsUsed) ? (int32_t) (ci->bytesToRead - ci->charsUsed) : 0;
 }
 
+static void hostRemoved(TConInfo *ci, uint32_t n)  // the host took n bytes out of the socket - lower our copy of its count,
+{                                                   // so no CN_UPDATE_INFO is needed for the next CNbyte_count()
+    ci->bytesToRead = (ci->bytesToRead > n) ? ci->bytesToRead - n : 0;
+}
+
 static int16 takeError(TConInfo *ci)                // an error from the host (reset, refused) is returned once
 {
     int16 err = ci->netError;
@@ -124,11 +129,11 @@ static uint8_t fillLocal(int slot, uint8_t handle, uint16_t max)
     commandLong[ 9] = (uint8_t) (max >> 8);
     commandLong[10] = (uint8_t) (max     );
 
+    hostRemoved(ci, ci->charsUsed);                 // the host removes the used bytes now
     ci->charsUsed = 0;
     ci->charsGot  = 0;
 
     ceCmd(ACSI_READ, commandLong, CMD_LENGTH_LONG, pDmaBuffer, (2 + max + 511) >> 9);
-    forceNextUpdateConInfo = TRUE;                  // the host removed the used bytes - CNbyte_count() must see it
 
     if(!hdIf.success || hdIf.statusByte != E_NORMAL) {
         return FALSE;
@@ -156,6 +161,7 @@ static uint8_t usedForCommand(int slot, uint8_t handle)
         used = 0;
     } else {
         used = (uint8_t) ci->charsUsed;
+        hostRemoved(ci, used);                      // the host removes them with the command
     }
 
     ci->charsUsed = 0;
@@ -248,11 +254,11 @@ int16 CNget_char(int16 handle)
         return E_EOF;
     }
 
-    // nothing local? get the next bytes - into the line cache if this connection has it, else into chars[]
+    // nothing local? get the next bytes into the line cache - one command for up to 4000 chars
     if(ci->charsUsed >= ci->charsGot) {
-        uint16_t max = (lineCacheOwner == slot) ? CN_PEEK_MAX : 250;
+        takeCache(slot);
 
-        if(!fillLocal(slot, handle, max)) {
+        if(!fillLocal(slot, handle, CN_PEEK_MAX)) {
             return E_NODATA;
         }
     }
@@ -260,8 +266,6 @@ int16 CNget_char(int16 handle)
     if(ci->charsUsed >= ci->charsGot) {         // still no data? fail
         return E_NODATA;
     }
-
-    forceNextUpdateConInfo = TRUE;              // force update_con_info() if asked to do it next time.
 
     int value = localBuf(slot)[ci->charsUsed];  // get the char
     ci->charsUsed++;                            // update used count
@@ -349,7 +353,7 @@ NDB *CNget_NDB(int16 handle)
         return (NDB *) NULL;
     }
 
-    forceNextUpdateConInfo = TRUE;          // force update_con_info() if asked to do it next time.
+    hostRemoved(ci, readCount);             // the host took the NDB out of the socket
     return pNdb;                            // return the pointer to NDB structure
 }
 
@@ -436,7 +440,6 @@ int16 CNget_block(int16 handle, void *buffer, int16 length)
     if(ci->charsGot - ci->charsUsed >= length) {    // all of it is here already (after CNgets() / CNget_char())
         memcpy(buffer, localBuf(slot) + ci->charsUsed, length);
         ci->charsUsed += length;
-        forceNextUpdateConInfo = TRUE;
         return length;
     }
 
@@ -472,7 +475,7 @@ int16 CNget_block(int16 handle, void *buffer, int16 length)
     }
     //----------------------------------------
 
-    forceNextUpdateConInfo = TRUE;              // force update_con_info() if asked to do it next time.
+    hostRemoved(ci, length);                    // the host took the block out of the socket
     return length;
 }
 
@@ -528,7 +531,6 @@ int16 CNgets(int16 handle, char *buffer, int16 length, char delimiter)
             memcpy(buffer, b + ci->charsUsed, len);
             buffer[len]     = 0;
             ci->charsUsed   = i + 1;        // the line and the delimiter
-            forceNextUpdateConInfo = TRUE;
             return len;
         }
 
@@ -577,7 +579,7 @@ int16 CNgets(int16 handle, char *buffer, int16 length, char delimiter)
         }
         memcpy(buffer, pDmaBuffer + 2, len);
         buffer[len] = 0;
-        forceNextUpdateConInfo = TRUE;      // force update_con_info() if asked to do it next time.
+        hostRemoved(ci, len + 1);           // the host took the line and the delimiter
         return len;
     }
 
@@ -607,15 +609,19 @@ int handle_valid(int16 handle)
 void update_con_info(uint8_t forceUpdate)
 {
     static uint32_t lastUpdate = 0;
-    uint32_t now = ceTicks();
+
+    // rate limit: at most every ~100 ms. Once the VBL is installed it counts in vblTicks - no Supexec() for the 200 Hz
+    // timer on every API call (CNget_char() per byte). VBL is 50 / 60 / 71 Hz, 5 VBLs are 70 .. 100 ms.
+    uint32_t now   = vblInstalled ? vblTicks : ceTicks();
+    uint32_t limit = vblInstalled ? 5        : 20;
 
     if(!forceUpdate) {                                                      // if shouldn't force update, check last update time, and possibly ignore update
-        if((now - lastUpdate) < 20) {                                        // if the last update was less than 100 ms ago, don't update
+        if((now - lastUpdate) < limit) {
             return;
         }
     }
 
-    lastUpdate = now;                                                        // mark that we've just updated the ceDrives
+    lastUpdate = now;                                                        // mark that we've just updated
 
     //---------------
     if(fromVbl) {

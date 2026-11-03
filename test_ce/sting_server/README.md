@@ -57,12 +57,20 @@ length -1 (no check for negative length in `proto/tcp/tcp.c`), and 7005 a fragme
 | 5xxx | ICMP: `ICMP_handler` set / force / query / remove (also NULL), pings to the server and to an unanswered IP, a 2nd handler that doesn't take the reply, no calls after remove, does a handler see 'port unreachable' for our UDP |
 | 6xxx | what apps check before connecting: `carrier_detect`, `query_port` of common port names, `on_port`, `getvstr` of mail / news config variables (only 'set or not' is exact), `setvstr`, `get_dftab`, `KRmalloc` / `KRrealloc` / `KRfree` / `KRgetfree` |
 | 8xxx | speed (menu **S**, fuzzy only) |
+| 81xx | FTP download of `TEST4M.BIN` to `C:\TEST4M.BIN` (menu **D**, fuzzy only) - a minimal FTP client without GEM: login, `LIST`, `SIZE`, `RETR` through `PASV`, `CNget_block()` in a loop, `Fwrite()` per 32 KB, speed shown once a second |
 
 Not tested: raw IP (`RAW_*`), port and layer control (`cntrl_port`, port parameters), `set_flag` / `clear_flag`. Only
 network tools use those.
 
 The 6xxx results depend on the setup. Real STinG with CE_ETH.STX has a port called `CosmosEx`, but old fake STinG
 called its port `Internal`. Decide per difference whether the clone should copy it.
+
+Menu **D** needs an FTP server on the same IP as `sting_server`, port 2122 (`FTP_PORT` in `../test_sting/t_ftp.c`),
+anonymous login, passive mode, with `TEST4M.BIN` in its root. Any server will do, e.g. `pyftpdlib`:
+`python3 -m pyftpdlib -p 2122 -d <dir>`. Old GEM clients (MG-FTP) also need `150` instead of `125` and LF line ends in
+listings - not needed for menu **D**.
+
+Speed results (TT, real STinG vs fake STinG) are in `../../ce_fakesting/README.md` and `../../ce_sting/README.md`.
 
 ## Server ports
 
