@@ -132,6 +132,7 @@ struct js_event {
 #define KEY_KP3                 81
 #define KEY_KP0                 82
 #define KEY_KPDOT               83
+#define KEY_102ND               86
 #define KEY_F11                 87
 #define KEY_F12                 88
 #define KEY_KPENTER             96

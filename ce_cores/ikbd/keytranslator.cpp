@@ -57,6 +57,7 @@ void KeyTranslator::fillKeyTranslationTable(void)
     addToTable(KEY_GRAVE,       0x2b, "#");
     addToTable(KEY_LEFTSHIFT,   0x2a, "LSHIFT");
     addToTable(KEY_BACKSLASH,   0x60, "\\");    // "ISO KEY" on Atari
+    addToTable(KEY_102ND,       0x29, "ISO2");  // Atari key left of BACKSPACE (DE: # ^, US: ` ~) - had no PC key mapped
     addToTable(KEY_Z,           0x2c, "Z");
     addToTable(KEY_X,           0x2d, "X");
     addToTable(KEY_C,           0x2e, "C");

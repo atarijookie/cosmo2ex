@@ -922,7 +922,359 @@
         #account-buttons #settings-button {
             position: static;
         }
+        /* special characters bar at the bottom of the window */
+        body {
+            padding-bottom: 70px;       /* the footer stays visible above the bar */
+        }
+        #charbar {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 1500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: rgba(40, 40, 40, 0.95);
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+        }
+        #charbar-layout, #charbar-mode {
+            flex: none;
+            width: auto;
+            margin: 0;
+            font-size: 13px;
+        }
+        #charbar-chars {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            justify-content: center;
+            flex: 1;
+        }
+        #charbar-chars button {
+            min-width: 30px;
+            height: 30px;
+            padding: 0 6px;
+            font-family: monospace;
+            font-size: 16px;
+            font-weight: bold;
+            color: #222;
+            background: #f4f4f4;
+            border: 1px solid #999;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #charbar-chars button:hover {
+            background: #fff;
+        }
+        #charbar-chars button.sent {
+            background: #1e6fd9;
+            border-color: #1858ad;
+            color: #fff;
+        }
     </style>
+    <script>
+        // ST keyboard layout tables, used by
+        //  - the special characters bar: each character is sent as the key (+ SHIFT / ALT) giving it in the selected ST layout
+        //  - the 'by character' key mode: the character the PC keyboard typed is sent the same way, instead of the key position
+        // Keys are sent as linux key codes (see ce_cores/ikbd/keytranslator.cpp), ST scancodes reached:
+        // 26 -> 0x1a, 39 -> 0x27, 40 -> 0x28, 41 -> 0x2b, 43 -> 0x60 (ISO key), 86 -> 0x29
+        (function() {
+            var KEY_SHIFT = 42, KEY_ALT = 56;
+            // generated from the EmuTOS keyboard tables (bios/keyb_*.h), which follow the original TOS ones:
+            // char -> [linux key code, modifiers], the first of plain key, SHIFT, ALT, ALT+SHIFT which gives the char
+            var layouts = {
+                us: {
+                    " ": [57, ""], "!": [2, "s"], "\"": [40, "s"], "#": [4, "s"], "$": [5, "s"], "%": [6, "s"], "&": [8, "s"], "'": [40, ""],
+                    "(": [10, "s"], ")": [11, "s"], "*": [9, "s"], "+": [13, "s"], ",": [51, ""], "-": [12, ""], ".": [52, ""], "/": [53, ""],
+                    "0": [11, ""], "1": [2, ""], "2": [3, ""], "3": [4, ""], "4": [5, ""], "5": [6, ""], "6": [7, ""], "7": [8, ""],
+                    "8": [9, ""], "9": [10, ""], ":": [39, "s"], ";": [39, ""], "<": [51, "s"], "=": [13, ""], ">": [52, "s"], "?": [53, "s"],
+                    "@": [3, "s"], "A": [30, "s"], "B": [48, "s"], "C": [46, "s"], "D": [32, "s"], "E": [18, "s"], "F": [33, "s"], "G": [34, "s"],
+                    "H": [35, "s"], "I": [23, "s"], "J": [36, "s"], "K": [37, "s"], "L": [38, "s"], "M": [50, "s"], "N": [49, "s"], "O": [24, "s"],
+                    "P": [25, "s"], "Q": [16, "s"], "R": [19, "s"], "S": [31, "s"], "T": [20, "s"], "U": [22, "s"], "V": [47, "s"], "W": [17, "s"],
+                    "X": [45, "s"], "Y": [21, "s"], "Z": [44, "s"], "[": [26, ""], "\\": [41, ""], "]": [27, ""], "^": [7, "s"], "_": [12, "s"],
+                    "`": [86, ""], "a": [30, ""], "b": [48, ""], "c": [46, ""], "d": [32, ""], "e": [18, ""], "f": [33, ""], "g": [34, ""],
+                    "h": [35, ""], "i": [23, ""], "j": [36, ""], "k": [37, ""], "l": [38, ""], "m": [50, ""], "n": [49, ""], "o": [24, ""],
+                    "p": [25, ""], "q": [16, ""], "r": [19, ""], "s": [31, ""], "t": [20, ""], "u": [22, ""], "v": [47, ""], "w": [17, ""],
+                    "x": [45, ""], "y": [21, ""], "z": [44, ""], "{": [26, "s"], "|": [41, "s"], "}": [27, "s"], "~": [86, "s"]
+                },
+                de: {
+                    " ": [57, ""], "!": [2, "s"], "\"": [3, "s"], "#": [86, ""], "$": [5, "s"], "%": [6, "s"], "&": [7, "s"], "'": [13, ""],
+                    "(": [9, "s"], ")": [10, "s"], "*": [27, "s"], "+": [27, ""], ",": [51, ""], "-": [53, ""], ".": [52, ""], "/": [8, "s"],
+                    "0": [11, ""], "1": [2, ""], "2": [3, ""], "3": [4, ""], "4": [5, ""], "5": [6, ""], "6": [7, ""], "7": [8, ""],
+                    "8": [9, ""], "9": [10, ""], ":": [52, "s"], ";": [51, "s"], "<": [43, ""], "=": [11, "s"], ">": [43, "s"], "?": [12, "s"],
+                    "@": [26, "a"], "A": [30, "s"], "B": [48, "s"], "C": [46, "s"], "D": [32, "s"], "E": [18, "s"], "F": [33, "s"], "G": [34, "s"],
+                    "H": [35, "s"], "I": [23, "s"], "J": [36, "s"], "K": [37, "s"], "L": [38, "s"], "M": [50, "s"], "N": [49, "s"], "O": [24, "s"],
+                    "P": [25, "s"], "Q": [16, "s"], "R": [19, "s"], "S": [31, "s"], "T": [20, "s"], "U": [22, "s"], "V": [47, "s"], "W": [17, "s"],
+                    "X": [45, "s"], "Y": [44, "s"], "Z": [21, "s"], "[": [39, "a"], "\\": [26, "as"], "]": [40, "a"], "^": [86, "s"], "_": [53, "s"],
+                    "`": [13, "s"], "a": [30, ""], "b": [48, ""], "c": [46, ""], "d": [32, ""], "e": [18, ""], "f": [33, ""], "g": [34, ""],
+                    "h": [35, ""], "i": [23, ""], "j": [36, ""], "k": [37, ""], "l": [38, ""], "m": [50, ""], "n": [49, ""], "o": [24, ""],
+                    "p": [25, ""], "q": [16, ""], "r": [19, ""], "s": [31, ""], "t": [20, ""], "u": [22, ""], "v": [47, ""], "w": [17, ""],
+                    "x": [45, ""], "y": [44, ""], "z": [21, ""], "{": [39, "as"], "|": [41, "s"], "}": [40, "as"], "~": [41, ""], "ü": [26, ""],
+                    "ä": [40, ""], "Ä": [40, "s"], "ö": [39, ""], "Ö": [39, "s"], "Ü": [26, "s"], "ß": [12, ""], "§": [4, "s"]
+                },
+                // '^' is a dead key in EmuTOS (waits for the next key), a plain key in the original TOS
+                fr: {
+                    " ": [57, ""], "!": [9, ""], "\"": [4, ""], "#": [41, ""], "$": [27, ""], "%": [40, "s"], "&": [2, ""], "'": [5, ""],
+                    "(": [6, ""], ")": [12, ""], "*": [27, "s"], "+": [53, "s"], ",": [50, ""], "-": [13, ""], ".": [51, "s"], "/": [52, "s"],
+                    "0": [11, "s"], "1": [2, "s"], "2": [3, "s"], "3": [4, "s"], "4": [5, "s"], "5": [6, "s"], "6": [7, "s"], "7": [8, "s"],
+                    "8": [9, "s"], "9": [10, "s"], ":": [52, ""], ";": [51, ""], "<": [43, ""], "=": [53, ""], ">": [43, "s"], "?": [50, "s"],
+                    "@": [41, "a"], "A": [16, "s"], "B": [48, "s"], "C": [46, "s"], "D": [32, "s"], "E": [18, "s"], "F": [33, "s"], "G": [34, "s"],
+                    "H": [35, "s"], "I": [23, "s"], "J": [36, "s"], "K": [37, "s"], "L": [38, "s"], "M": [39, "s"], "N": [49, "s"], "O": [24, "s"],
+                    "P": [25, "s"], "Q": [30, "s"], "R": [19, "s"], "S": [31, "s"], "T": [20, "s"], "U": [22, "s"], "V": [47, "s"], "W": [44, "s"],
+                    "X": [45, "s"], "Y": [21, "s"], "Z": [17, "s"], "[": [26, "a"], "\\": [40, "a"], "]": [27, "a"], "_": [13, "s"], "`": [86, ""],
+                    "a": [16, ""], "b": [48, ""], "c": [46, ""], "d": [32, ""], "e": [18, ""], "f": [33, ""], "g": [34, ""], "h": [35, ""],
+                    "i": [23, ""], "j": [36, ""], "k": [37, ""], "l": [38, ""], "m": [39, ""], "n": [49, ""], "o": [24, ""], "p": [25, ""],
+                    "q": [30, ""], "r": [19, ""], "s": [31, ""], "t": [20, ""], "u": [22, ""], "v": [47, ""], "w": [44, ""], "x": [45, ""],
+                    "y": [21, ""], "z": [17, ""], "{": [26, "as"], "|": [41, "s"], "}": [27, "as"], "~": [41, "as"], "é": [3, ""], "à": [11, ""],
+                    "ç": [10, ""], "è": [8, ""], "ù": [40, ""], "£": [86, "s"], "§": [7, ""], "°": [12, "s"], "^": [26, ""]
+                },
+                // Dutch TOS uses the same layout
+                uk: {
+                    " ": [57, ""], "!": [2, "s"], "\"": [3, "s"], "#": [41, ""], "$": [5, "s"], "%": [6, "s"], "&": [8, "s"], "'": [40, ""],
+                    "(": [10, "s"], ")": [11, "s"], "*": [9, "s"], "+": [13, "s"], ",": [51, ""], "-": [12, ""], ".": [52, ""], "/": [53, ""],
+                    "0": [11, ""], "1": [2, ""], "2": [3, ""], "3": [4, ""], "4": [5, ""], "5": [6, ""], "6": [7, ""], "7": [8, ""],
+                    "8": [9, ""], "9": [10, ""], ":": [39, "s"], ";": [39, ""], "<": [51, "s"], "=": [13, ""], ">": [52, "s"], "?": [53, "s"],
+                    "@": [40, "s"], "A": [30, "s"], "B": [48, "s"], "C": [46, "s"], "D": [32, "s"], "E": [18, "s"], "F": [33, "s"], "G": [34, "s"],
+                    "H": [35, "s"], "I": [23, "s"], "J": [36, "s"], "K": [37, "s"], "L": [38, "s"], "M": [50, "s"], "N": [49, "s"], "O": [24, "s"],
+                    "P": [25, "s"], "Q": [16, "s"], "R": [19, "s"], "S": [31, "s"], "T": [20, "s"], "U": [22, "s"], "V": [47, "s"], "W": [17, "s"],
+                    "X": [45, "s"], "Y": [21, "s"], "Z": [44, "s"], "[": [26, ""], "\\": [43, ""], "]": [27, ""], "^": [7, "s"], "_": [12, "s"],
+                    "`": [86, ""], "a": [30, ""], "b": [48, ""], "c": [46, ""], "d": [32, ""], "e": [18, ""], "f": [33, ""], "g": [34, ""],
+                    "h": [35, ""], "i": [23, ""], "j": [36, ""], "k": [37, ""], "l": [38, ""], "m": [50, ""], "n": [49, ""], "o": [24, ""],
+                    "p": [25, ""], "q": [16, ""], "r": [19, ""], "s": [31, ""], "t": [20, ""], "u": [22, ""], "v": [47, ""], "w": [17, ""],
+                    "x": [45, ""], "y": [21, ""], "z": [44, ""], "{": [26, "s"], "|": [43, "s"], "}": [27, "s"], "~": [41, "s"], "£": [4, "s"]
+                },
+                es: {
+                    " ": [57, ""], "!": [52, "s"], "\"": [26, "s"], "#": [41, "a"], "$": [5, "s"], "%": [6, "s"], "&": [8, "s"], "'": [26, ""],
+                    "(": [10, "s"], ")": [11, "s"], "*": [9, "s"], "+": [13, "s"], ",": [51, ""], "-": [12, ""], ".": [52, ""], "/": [7, "s"],
+                    "0": [11, ""], "1": [2, ""], "2": [3, ""], "3": [4, ""], "4": [5, ""], "5": [6, ""], "6": [7, ""], "7": [8, ""],
+                    "8": [9, ""], "9": [10, ""], ":": [40, "s"], ";": [40, ""], "<": [43, ""], "=": [13, ""], ">": [43, "s"], "?": [51, "s"],
+                    "@": [41, "as"], "A": [30, "s"], "B": [48, "s"], "C": [46, "s"], "D": [32, "s"], "E": [18, "s"], "F": [33, "s"], "G": [34, "s"],
+                    "H": [35, "s"], "I": [23, "s"], "J": [36, "s"], "K": [37, "s"], "L": [38, "s"], "M": [50, "s"], "N": [49, "s"], "O": [24, "s"],
+                    "P": [25, "s"], "Q": [16, "s"], "R": [19, "s"], "S": [31, "s"], "T": [20, "s"], "U": [22, "s"], "V": [47, "s"], "W": [17, "s"],
+                    "X": [45, "s"], "Y": [21, "s"], "Z": [44, "s"], "[": [26, "a"], "\\": [41, ""], "]": [27, "a"], "^": [27, "s"], "_": [12, "s"],
+                    "`": [27, ""], "a": [30, ""], "b": [48, ""], "c": [46, ""], "d": [32, ""], "e": [18, ""], "f": [33, ""], "g": [34, ""],
+                    "h": [35, ""], "i": [23, ""], "j": [36, ""], "k": [37, ""], "l": [38, ""], "m": [50, ""], "n": [49, ""], "o": [24, ""],
+                    "p": [25, ""], "q": [16, ""], "r": [19, ""], "s": [31, ""], "t": [20, ""], "u": [22, ""], "v": [47, ""], "w": [17, ""],
+                    "x": [45, ""], "y": [21, ""], "z": [44, ""], "{": [26, "as"], "|": [41, "s"], "}": [27, "as"], "~": [86, "s"], "ü": [40, "a"],
+                    "ç": [86, ""], "£": [4, "s"], "ñ": [39, ""], "Ñ": [39, "s"], "¿": [3, "s"], "¡": [2, "s"], "§": [53, "s"], "°": [53, ""]
+                }
+            };
+            var chars = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~';
+
+            // key position (KeyboardEvent.code) -> linux key code, same as in script.js - for the keys which are not characters
+            var codelinux = {
+                Escape:1, Backspace:14, Tab:15, Enter:28, ControlLeft:29, ShiftLeft:42, ShiftRight:54, AltLeft:56, CapsLock:58,
+                F1:59, F2:60, F3:61, F4:62, F5:63, F6:64, F7:65, F8:66, F9:67, F10:68, F11:87, F12:88,
+                Digit1:2, Digit2:3, Digit3:4, Digit4:5, Digit5:6, Digit6:7, Digit7:8, Digit8:9, Digit9:10, Digit0:11,
+                Minus:12, Equal:13, KeyQ:16, KeyW:17, KeyE:18, KeyR:19, KeyT:20, KeyY:21, KeyU:22, KeyI:23, KeyO:24, KeyP:25,
+                BracketLeft:26, BracketRight:27, KeyA:30, KeyS:31, KeyD:32, KeyF:33, KeyG:34, KeyH:35, KeyJ:36, KeyK:37, KeyL:38,
+                Semicolon:39, Quote:40, Backquote:41, Backslash:43, KeyZ:44, KeyX:45, KeyC:46, KeyV:47, KeyB:48, KeyN:49, KeyM:50,
+                Comma:51, Period:52, Slash:53, Space:57, IntlBackslash:86,
+                NumpadMultiply:55, NumLock:69, ScrollLock:70, Numpad7:71, Numpad8:72, Numpad9:73, NumpadSubtract:74,
+                Numpad4:75, Numpad5:76, Numpad6:77, NumpadAdd:78, Numpad1:79, Numpad2:80, Numpad3:81, Numpad0:82, NumpadDecimal:83,
+                NumpadEnter:96, ControlRight:97, NumpadDivide:98, AltRight:100,
+                Home:102, ArrowUp:103, PageUp:104, ArrowLeft:105, ArrowRight:106, End:107, ArrowDown:108, PageDown:109,
+                Insert:110, Delete:111, NumpadEqual:117, Pause:119
+            };
+            var modifierCodes = { 29: 1, 42: 1, 54: 1, 56: 1, 97: 1, 100: 1 };
+
+            var layout = 'us';
+            var keyMode = 'position';           // 'position' - script.js sends the key positions, 'char' - this code sends the characters
+
+            var queue = Promise.resolve();      // keys go one after another - parallel requests could arrive out of order
+            function sendKey(code, state) {
+                queue = queue.then(function() {
+                    return fetch('/hid/keyboard', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type: 'pc', code: code, state: state })
+                    }).catch(function() {});
+                }).then(function() {
+                    return new Promise(function(resolve) { setTimeout(resolve, 20); });
+                });
+            }
+
+            // modifiers held on the PC, which are held on the ST too: linux code -> true
+            var heldMods = {};
+            // other keys sent by position and not released yet: KeyboardEvent.code -> linux code
+            var heldKeys = {};
+
+            // type the character - the held modifiers are released for it and then pressed again
+            function typeChar(ch) {
+                var k = layouts[layout][ch];
+                if (!k) {
+                    return false;
+                }
+                var needShift = k[1].indexOf('s') >= 0, needAlt = k[1].indexOf('a') >= 0;
+                var hasShift = heldMods[42] || heldMods[54], hasAlt = heldMods[56] || heldMods[100], hasCtrl = heldMods[29] || heldMods[97];
+                if (!hasCtrl && !!hasShift === needShift && !!hasAlt === needAlt) {    // the held modifiers are just right - only the key
+                    sendKey(k[0], 'down');
+                    sendKey(k[0], 'up');
+                    return true;
+                }
+                var held = Object.keys(heldMods).map(Number);
+                held.forEach(function(m) { sendKey(m, 'up'); });
+                var mods = [];
+                if (needAlt) { mods.push(KEY_ALT); }
+                if (needShift) { mods.push(KEY_SHIFT); }
+                mods.forEach(function(m) { sendKey(m, 'down'); });
+                sendKey(k[0], 'down');
+                sendKey(k[0], 'up');
+                mods.slice().reverse().forEach(function(m) { sendKey(m, 'up'); });
+                held.forEach(function(m) { sendKey(m, 'down'); });
+                return true;
+            }
+
+            function releaseAll() {
+                Object.keys(heldKeys).forEach(function(c) { sendKey(heldKeys[c], 'up'); });
+                Object.keys(heldMods).forEach(function(m) { sendKey(Number(m), 'up'); });
+                heldKeys = {};
+                heldMods = {};
+            }
+
+            function isOurControl(el) {         // typing into the layout / mode selects is not for the ST
+                return el && el.closest && el.closest('#charbar');
+            }
+
+            // 'by character' mode - runs in the capture phase, before the script.js handlers on window, and stops them
+            function onKeyDown(e) {
+                if (keyMode !== 'char' || isOurControl(e.target)) {
+                    return;
+                }
+                e.stopPropagation();
+                var code = codelinux[e.code];
+                var altGr = e.getModifierState && e.getModifierState('AltGraph');
+                var shortcut = (e.ctrlKey || e.altKey) && !altGr;      // CTRL+C, ALT+X - the key with the held modifiers
+
+                if (code !== undefined && modifierCodes[code]) {
+                    e.preventDefault();
+                    if (!heldMods[code]) {
+                        heldMods[code] = true;
+                        sendKey(code, 'down');
+                    }
+                    return;
+                }
+                if (e.code === 'CapsLock') {    // the PC applies its CAPS LOCK to the characters already, the ST one would flip them again
+                    e.preventDefault();
+                    return;
+                }
+                if (e.key && e.key.length === 1 && e.code.indexOf('Numpad') !== 0) {     // a character (keypad keys stay keypad keys)
+                    e.preventDefault();
+                    if (shortcut) {
+                        var k = layouts[layout][e.key.toLowerCase()] || layouts[layout][e.key];
+                        if (k) {
+                            sendKey(k[0], 'down');
+                            sendKey(k[0], 'up');
+                        }
+                    } else {
+                        typeChar(e.key);        // also on auto repeat - the key is released right away, the ST would not repeat it
+                    }
+                    return;
+                }
+                if (e.key === 'Dead' || e.key === 'Unidentified' || e.key === 'Process') {
+                    return;                     // the character comes later (keydown with the composed char / input event)
+                }
+                if (code !== undefined) {       // ENTER, cursor keys, F keys, ... - by position
+                    e.preventDefault();
+                    if (!heldKeys[e.code]) {    // the ST does its own auto repeat
+                        heldKeys[e.code] = code;
+                        sendKey(code, 'down');
+                    }
+                }
+            }
+
+            function onKeyUp(e) {
+                if (keyMode !== 'char' || isOurControl(e.target)) {
+                    return;
+                }
+                e.stopPropagation();
+                e.preventDefault();
+                var code = codelinux[e.code];
+                if (code !== undefined && heldMods[code]) {
+                    delete heldMods[code];
+                    sendKey(code, 'up');
+                } else if (heldKeys[e.code] !== undefined) {
+                    sendKey(heldKeys[e.code], 'up');
+                    delete heldKeys[e.code];
+                }
+            }
+
+            // touch device keyboards (Android) often don't tell the key in keydown, only the typed text afterwards
+            function onTriggerInput(e) {
+                if (keyMode !== 'char') {
+                    return;
+                }
+                var el = e.target;
+                var text = (e.data !== undefined && e.data !== null) ? e.data : el.value;
+                text.split('').forEach(function(ch) { typeChar(ch); });
+                el.value = '';
+            }
+
+            window.addEventListener('keydown', onKeyDown, true);
+            window.addEventListener('keyup', onKeyUp, true);
+            window.addEventListener('blur', function() {       // the key ups go to another window, don't leave the keys stuck on the ST
+                if (keyMode === 'char') {
+                    releaseAll();
+                }
+            });
+
+            $(document).ready(function() {
+                var $bar = $('#charbar'), $chars = $('#charbar-chars'), $layout = $('#charbar-layout'), $mode = $('#charbar-mode');
+                try {
+                    var saved = localStorage.getItem('remote_st_layout');
+                    if (saved && layouts[saved]) { layout = saved; }
+                    if (localStorage.getItem('remote_key_mode') === 'char') { keyMode = 'char'; }
+                } catch (e) {}
+                $layout.val(layout);
+                $mode.val(keyMode);
+
+                var trigger = document.getElementById('keyboardtrigger');
+                if (trigger) {
+                    trigger.addEventListener('input', onTriggerInput);
+                }
+
+                function render() {
+                    $chars.empty();
+                    chars.split('').forEach(function(ch) {
+                        if (layouts[layout][ch]) {
+                            $('<button type="button"></button>').text(ch).attr('data-char', ch).appendTo($chars);
+                        }
+                    });
+                }
+                render();
+
+                $layout.on('change', function() {
+                    layout = $layout.val();
+                    try { localStorage.setItem('remote_st_layout', layout); } catch (e) {}
+                    render();
+                    this.blur();
+                });
+                $mode.on('change', function() {
+                    releaseAll();
+                    keyMode = $mode.val();
+                    try { localStorage.setItem('remote_key_mode', keyMode); } catch (e) {}
+                    this.blur();        // so the PC keyboard types to the ST again, not to the select
+                });
+
+                // keep mouse / touch / keys on the bar away from the remote control handlers, which would click / type on the ST
+                $bar.on('touchstart touchend touchmove mousedown mouseup keydown keyup', function(e) {
+                    e.stopPropagation();
+                });
+                $chars.on('click', 'button', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var $b = $(this);
+                    typeChar($b.attr('data-char'));
+                    $b.addClass('sent');
+                    setTimeout(function() { $b.removeClass('sent'); }, 150);
+                    this.blur();        // so the PC keyboard types to the ST again, not to the button
+                    return false;
+                });
+            });
+        })();
+    </script>
     <script>
         // Logout function
         function logout() {
@@ -1044,6 +1396,7 @@
             <li>click "Grab mouse" (if available in your browser) to attach your mouse to the browser, so you won't leave its boundaries. Press ESC to leave this mode. While grabbed, the mouse wheel sends cursor up / down to the ST.</li>
             <li>use your PCs keyboard to type</li>
             <li>for Special Keys you can click "Toggle ST keyboard" to show a ST Keyboard. Just click the Key you want to enter</li>
+            <li>the bar at the bottom sends special characters like @ { } \ as they are - select your ST's (TOS) keyboard layout there. "Keys: by position" sends your keys like a real ST keyboard would (the ST's layout applies), "Keys: by character" sends the character your PC typed, translated for the ST layout</li>
             <li>recieve a screencast from ST (you must have CE_DD.PRG running on the ST) by clicking "Start Screencast", or a single screenshot by clicking "Take Screenshot"</li>
             </ul>
             <p>
@@ -1107,6 +1460,21 @@
             <a href="https://joo.kie.sk/?page_id=384" target="_blank">homepage</a><span>|</span><a href="https://joo.kie.sk/?page_id=415" target="_blank">manual</a><span>|</span><a href="credits.html">credits</a>
         </div>
     </div>
+    </div>
+    <!-- special characters - sent as the ST needs them for its keyboard layout, not as the PC key position -->
+    <div id="charbar">
+        <select id="charbar-layout" title="Keyboard layout of the ST (TOS) - needed to know which keys produce the character">
+            <option value="us">ST layout: US</option>
+            <option value="de">ST layout: DE</option>
+            <option value="fr">ST layout: FR</option>
+            <option value="uk">ST layout: UK / NL</option>
+            <option value="es">ST layout: ES</option>
+        </select>
+        <div id="charbar-chars"></div>
+        <select id="charbar-mode" title="By key position: the ST applies its own layout to the PC keys (like a real keyboard). By character: the character typed on the PC is sent, translated for the ST layout.">
+            <option value="position">Keys: by position</option>
+            <option value="char">Keys: by character</option>
+        </select>
     </div>
     <script src="/js/server_check.js"></script>
 </body>
