@@ -19,6 +19,7 @@ class TranslatedDisk;
 class Scsi;
 class SlmPrinter;
 class NetAdapter;
+class BrowserModule;
 
 class HddClient
 {
@@ -46,6 +47,7 @@ private:
     AcsiDataTrans* dataTrans;
     SlmPrinter* slm;                // SLM laser printer emulation - for ACSI IDs set to DEVTYPE_SLM*
     NetAdapter* netAdapter;         // network module of the fake STinG (ce_fakesting) - HOSTMOD_NETWORK_ADAPTER
+    BrowserModule* browser;         // web browser (CE_BROWS.PRG) - HOSTMOD_BROWSER
 
     //-----------------------------------
     // hard disk stuff

@@ -7,7 +7,7 @@
 default:
 	@echo "usage :  make <test|atari|firmware|docker|release|clean>"
 	@echo "  test     - libdospath + ce_cores + Pico firmware (host) unit tests, webserver vet + tests"
-	@echo "  atari    - drivers (ce_dd, ce_eth.stx, ce_sting.prg), boot sectors and ce_tests.tos (needs m68k-atari-mint-gcc)"
+	@echo "  atari    - drivers (ce_dd, ce_eth.stx, ce_sting.prg, ce_brows.prg), boot sectors and ce_tests.tos (needs m68k-atari-mint-gcc)"
 	@echo "  firmware - Pico firmwares (.uf2) into firmware/out/, see firmware/build.sh (needs docker)"
 	@echo "  docker   - docker images for all platforms, see docker/build_all.sh"
 	@echo "  release  - release tarballs, see release/build.sh"
@@ -40,5 +40,6 @@ clean:
 	$(MAKE) -C ce_dd_bootsectors clean
 	$(MAKE) -C ce_sting_stx_driver clean
 	$(MAKE) -C ce_fakesting clean
+	$(MAKE) -C ce_browser_prg clean
 	$(MAKE) -C test_ce clean
 	rm -rf firmware/out

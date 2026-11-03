@@ -18,6 +18,7 @@
 #include "../misc/utils.h"
 #include "../misc/statusreport.h"
 #include "network/netadapter.h"
+#include "browser/browsermodule.h"
 
 extern DebugVars    dbgVars;
 
@@ -41,6 +42,8 @@ HddClient::HddClient(ChipInterface* chipInterfaceIn, ClientInfo* ci)
     translated = new TranslatedDisk(dataTrans, &hwConfig);
 
     netAdapter = new NetAdapter(dataTrans);
+
+    browser = new BrowserModule(dataTrans);
 
     slm = new SlmPrinter(dataTrans);
     slm->setWaitForCommand([this](uint32_t timeoutMs, uint8_t* cmd) { return slmWaitForCommand(timeoutMs, cmd); });
@@ -70,6 +73,8 @@ void HddClient::onClientConnected(void)
     translated->resetClientState();         // close files, drop find storages, reset current drive & paths
 
     slm->reset();                           // new device - printer as after power on
+
+    browser->reset();                       // new device - its ce_browser starts when CE_BROWS.PRG asks
 }
 
 HddClient::~HddClient()
@@ -82,6 +87,7 @@ HddClient::~HddClient()
 
     delete translated;
     delete netAdapter;
+    delete browser;
     delete slm;
 }
 
@@ -203,6 +209,11 @@ void HddClient::handleAcsiCommand(uint8_t *bufIn)
         case HOSTMOD_NETWORK_ADAPTER:                   // fake STinG (ce_fakesting)
             wasHandled = true;
             netAdapter->processCommand(pCmd);
+            break;
+
+        case HOSTMOD_BROWSER:                           // web browser (CE_BROWS.PRG)
+            wasHandled = true;
+            browser->processCommand(pCmd);
             break;
         }
     }

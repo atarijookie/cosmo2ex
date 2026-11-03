@@ -110,6 +110,7 @@ make -C "$ROOT/libacsiscsi"
 make -C "$ROOT/ce_dd_bootsectors" all       # builds also ce_dd_prg
 make -C "$ROOT/ce_sting_stx_driver"         # ce_eth.stx - port driver for real STinG
 make -C "$ROOT/ce_fakesting"                # ce_sting.prg - fake STinG
+make -C "$ROOT/ce_browser_prg"              # ce_brows.prg - web browser
 make -C "$ROOT/test_ce"
 
 #-------------
@@ -133,6 +134,7 @@ cp "$ROOT/ce_dd_bootsectors/ce_dd_l2.bs" "$COMMON/configdrive/drivers/"
 cp "$ROOT/ce_dd_prg/ce_dd.prg"           "$COMMON/configdrive/drivers/"
 cp "$ROOT/ce_sting_stx_driver/ce_eth.stx" "$COMMON/configdrive/drivers/"
 cp "$ROOT/ce_fakesting/ce_sting.prg"     "$COMMON/configdrive/drivers/"
+cp "$ROOT/ce_browser_prg/ce_brows.prg"   "$COMMON/configdrive/"
 cp "$ROOT/test_ce/ce_tests.tos"          "$COMMON/configdrive/tests/"
 
 chmod 755 "$COMMON/ce_run.sh"

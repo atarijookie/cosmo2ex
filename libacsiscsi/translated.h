@@ -3,6 +3,8 @@
 #define HOSTMOD_LINUX_TERMINAL		2
 #define HOSTMOD_TRANSLATED_DISK		3
 #define HOSTMOD_NETWORK_ADAPTER		4
+// 7 = HOSTMOD_RAW_NET - answered on the Pico (ce_pico_hdd/sting_net.h)
+#define HOSTMOD_BROWSER				8		// web browser - CE_BROWS.PRG
 
 // commands for HOSTMOD_TRANSLATED_DISK
 #define TRAN_CMD_IDENTIFY           0

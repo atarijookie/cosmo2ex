@@ -26,6 +26,18 @@ infos.
 This drive contains the following tools:
 
 
+CE_BROWS.PRG (in the root of this drive)
+------------
+Web browser. The pages are drawn by the
+host (ce_browser, set BROWSER_BIN in
+.env) and sent as pictures, so any site
+works, even on a 1 MB ST. Runs in ST
+low, mid and high, and TT low, mid and
+high - F2 switches between the modes
+your monitor can show. F1 lists the
+keys.
+
+
 Folder DRIVERS\
 ---------------
 (only needed for advanced Cosmo2ex 
@@ -73,6 +85,7 @@ ce_sting.prg - Highly experimental STiNG
                working. Not needed for
                mounting networked drives
                (see CE_DD.PRG for that).
+
 
 
 Folder TESTS\ 

@@ -1,0 +1,197 @@
+https://en.wikipedia.org/wiki/Atari_ST
+  st-low
+    loaded in 450 ms
+    0 fonts raised to 11 px, page 58726 px tall, captured 600 px, 3 layers in 409 ms
+    15 colours, 320 x 600 Atari px captured (3.0 screens), conversion 30 ms
+  st-low-z2
+    loaded in 310 ms
+    0 fonts raised to 6 px, page 161298 px tall, captured 300 px, 3 layers in 431 ms
+    14 colours, 320 x 600 Atari px captured (3.0 screens), conversion 29 ms
+  st-mid
+    loaded in 257 ms
+    1184 fonts raised to 16 px, page 30084 px tall, captured 1200 px, 3 layers in 727 ms
+    3 colours, 640 x 600 Atari px captured (3.0 screens), conversion 54 ms
+  st-mid-z2
+    loaded in 252 ms
+    0 fonts raised to 8 px, page 58725 px tall, captured 600 px, 3 layers in 470 ms
+    3 colours, 640 x 600 Atari px captured (3.0 screens), conversion 55 ms
+  st-high
+    loaded in 243 ms
+    17 fonts raised to 12 px, page 30084 px tall, captured 1200 px, 3 layers in 676 ms
+    2 colours, 640 x 1200 Atari px captured (3.0 screens), conversion 52 ms
+  st-high-z2
+    loaded in 250 ms
+    0 fonts raised to 6 px, page 58725 px tall, captured 600 px, 3 layers in 467 ms
+    2 colours, 640 x 1200 Atari px captured (3.0 screens), conversion 48 ms
+  tt-low
+    loaded in 253 ms
+    485 fonts raised to 14 px, page 30084 px tall, captured 1440 px, 3 layers in 702 ms
+    252 colours, 320 x 1440 Atari px captured (3.0 screens), conversion 83 ms
+  tt-low-z2
+    loaded in 252 ms
+    0 fonts raised to 7 px, page 58725 px tall, captured 720 px, 3 layers in 502 ms
+    177 colours, 320 x 1440 Atari px captured (3.0 screens), conversion 70 ms
+  tt-mid
+    loaded in 244 ms
+    17 fonts raised to 12 px, page 30084 px tall, captured 1440 px, 3 layers in 734 ms
+    15 colours, 640 x 1440 Atari px captured (3.0 screens), conversion 110 ms
+  tt-mid-z2
+    loaded in 253 ms
+    0 fonts raised to 6 px, page 58725 px tall, captured 720 px, 3 layers in 478 ms
+    15 colours, 640 x 1440 Atari px captured (3.0 screens), conversion 109 ms
+  tt-high
+    loaded in 248 ms
+    17 fonts raised to 12 px, page 24875 px tall, captured 2880 px, 3 layers in 1083 ms
+    2 colours, 1280 x 2880 Atari px captured (3.0 screens), conversion 219 ms
+  tt-high-z2
+    loaded in 253 ms
+    0 fonts raised to 6 px, page 30084 px tall, captured 1440 px, 3 layers in 934 ms
+    2 colours, 1280 x 2880 Atari px captured (3.0 screens), conversion 216 ms
+https://news.ycombinator.com/
+  st-low
+    loaded in 883 ms
+    30 fonts raised to 11 px, page 2299 px tall, captured 600 px, 3 layers in 237 ms
+    14 colours, 320 x 600 Atari px captured (3.0 screens), conversion 32 ms
+  st-low-z2
+    loaded in 227 ms
+    0 fonts raised to 6 px, page 1179 px tall, captured 300 px, 3 layers in 240 ms
+    14 colours, 320 x 600 Atari px captured (3.0 screens), conversion 39 ms
+  st-mid
+    loaded in 240 ms
+    156 fonts raised to 16 px, page 1415 px tall, captured 1200 px, 3 layers in 274 ms
+    4 colours, 640 x 600 Atari px captured (3.0 screens), conversion 51 ms
+  st-mid-z2
+    loaded in 227 ms
+    0 fonts raised to 8 px, page 2299 px tall, captured 600 px, 3 layers in 245 ms
+    3 colours, 640 x 600 Atari px captured (3.0 screens), conversion 51 ms
+  st-high
+    loaded in 236 ms
+    30 fonts raised to 12 px, page 1415 px tall, captured 1200 px, 3 layers in 312 ms
+    2 colours, 640 x 1200 Atari px captured (3.0 screens), conversion 48 ms
+  st-high-z2
+    loaded in 235 ms
+    0 fonts raised to 6 px, page 2299 px tall, captured 600 px, 3 layers in 242 ms
+    2 colours, 640 x 1200 Atari px captured (3.0 screens), conversion 53 ms
+  tt-low
+    loaded in 227 ms
+    94 fonts raised to 14 px, page 1415 px tall, captured 1415 px, 3 layers in 311 ms
+    28 colours, 320 x 1415 Atari px captured (2.9 screens), conversion 60 ms
+  tt-low-z2
+    loaded in 227 ms
+    0 fonts raised to 7 px, page 2299 px tall, captured 720 px, 3 layers in 283 ms
+    35 colours, 320 x 1440 Atari px captured (3.0 screens), conversion 62 ms
+  tt-mid
+    loaded in 231 ms
+    30 fonts raised to 12 px, page 1415 px tall, captured 1415 px, 3 layers in 280 ms
+    14 colours, 640 x 1415 Atari px captured (2.9 screens), conversion 111 ms
+  tt-mid-z2
+    loaded in 225 ms
+    0 fonts raised to 6 px, page 2299 px tall, captured 720 px, 3 layers in 303 ms
+    14 colours, 640 x 1440 Atari px captured (3.0 screens), conversion 105 ms
+  tt-high
+    loaded in 226 ms
+    90 fonts raised to 12 px, page 1179 px tall, captured 1179 px, 3 layers in 364 ms
+    2 colours, 1280 x 1179 Atari px captured (1.2 screens), conversion 95 ms
+  tt-high-z2
+    loaded in 228 ms
+    0 fonts raised to 6 px, page 1415 px tall, captured 1415 px, 3 layers in 500 ms
+    2 colours, 1280 x 2830 Atari px captured (2.9 screens), conversion 221 ms
+https://www.bbc.com/news
+  st-low
+    loaded in 1260 ms
+    0 fonts raised to 11 px, page 12492 px tall, captured 600 px, 3 layers in 213 ms
+    15 colours, 320 x 600 Atari px captured (3.0 screens), conversion 40 ms
+  st-low-z2
+    loaded in 1043 ms
+    0 fonts raised to 6 px, page 17098 px tall, captured 300 px, 3 layers in 262 ms
+    15 colours, 320 x 600 Atari px captured (3.0 screens), conversion 47 ms
+  st-mid
+    loaded in 897 ms
+    190 fonts raised to 16 px, page 12949 px tall, captured 1200 px, 3 layers in 453 ms
+    4 colours, 640 x 600 Atari px captured (3.0 screens), conversion 92 ms
+  st-mid-z2
+    loaded in 824 ms
+    0 fonts raised to 8 px, page 12492 px tall, captured 600 px, 3 layers in 377 ms
+    4 colours, 640 x 600 Atari px captured (3.0 screens), conversion 79 ms
+  st-high
+    loaded in 338 ms
+    0 fonts raised to 12 px, page 12949 px tall, captured 1200 px, 3 layers in 453 ms
+    2 colours, 640 x 1200 Atari px captured (3.0 screens), conversion 55 ms
+  st-high-z2
+    loaded in 826 ms
+    0 fonts raised to 6 px, page 12492 px tall, captured 600 px, 3 layers in 384 ms
+    2 colours, 640 x 1200 Atari px captured (3.0 screens), conversion 56 ms
+  tt-low
+    loaded in 834 ms
+    120 fonts raised to 14 px, page 12949 px tall, captured 1440 px, 3 layers in 469 ms
+    251 colours, 320 x 1440 Atari px captured (3.0 screens), conversion 271 ms
+  tt-low-z2
+    loaded in 832 ms
+    0 fonts raised to 7 px, page 12492 px tall, captured 720 px, 3 layers in 359 ms
+    254 colours, 320 x 1440 Atari px captured (3.0 screens), conversion 156 ms
+  tt-mid
+    loaded in 862 ms
+    0 fonts raised to 12 px, page 12949 px tall, captured 1440 px, 3 layers in 467 ms
+    15 colours, 640 x 1440 Atari px captured (3.0 screens), conversion 190 ms
+  tt-mid-z2
+    loaded in 865 ms
+    0 fonts raised to 6 px, page 12492 px tall, captured 720 px, 3 layers in 343 ms
+    15 colours, 640 x 1440 Atari px captured (3.0 screens), conversion 134 ms
+  tt-high
+    loaded in 922 ms
+    0 fonts raised to 12 px, page 8012 px tall, captured 2880 px, 3 layers in 943 ms
+    2 colours, 1280 x 2880 Atari px captured (3.0 screens), conversion 238 ms
+  tt-high-z2
+    loaded in 881 ms
+    0 fonts raised to 6 px, page 12949 px tall, captured 1440 px, 3 layers in 979 ms
+    2 colours, 1280 x 2880 Atari px captured (3.0 screens), conversion 218 ms
+https://github.com/torvalds/linux
+  st-low
+    loaded in 1552 ms
+    4 fonts raised to 11 px, page 7269 px tall, captured 600 px, 3 layers in 901 ms
+    14 colours, 320 x 600 Atari px captured (3.0 screens), conversion 25 ms
+  st-low-z2
+    loaded in 946 ms
+    4 fonts raised to 6 px, page 13529 px tall, captured 300 px, 3 layers in 1079 ms
+    13 colours, 320 x 600 Atari px captured (3.0 screens), conversion 31 ms
+  st-mid
+    loaded in 865 ms
+    303 fonts raised to 16 px, page 4939 px tall, captured 1200 px, 3 layers in 1033 ms
+    4 colours, 640 x 600 Atari px captured (3.0 screens), conversion 51 ms
+  st-mid-z2
+    loaded in 719 ms
+    4 fonts raised to 8 px, page 7269 px tall, captured 600 px, 3 layers in 960 ms
+    3 colours, 640 x 600 Atari px captured (3.0 screens), conversion 52 ms
+  st-high
+    loaded in 829 ms
+    5 fonts raised to 12 px, page 4939 px tall, captured 1200 px, 3 layers in 1046 ms
+    2 colours, 640 x 1200 Atari px captured (3.0 screens), conversion 48 ms
+  st-high-z2
+    loaded in 795 ms
+    4 fonts raised to 6 px, page 7269 px tall, captured 600 px, 3 layers in 1003 ms
+    2 colours, 640 x 1200 Atari px captured (3.0 screens), conversion 50 ms
+  tt-low
+    loaded in 830 ms
+    50 fonts raised to 14 px, page 4939 px tall, captured 1440 px, 3 layers in 1056 ms
+    116 colours, 320 x 1440 Atari px captured (3.0 screens), conversion 58 ms
+  tt-low-z2
+    loaded in 732 ms
+    4 fonts raised to 7 px, page 7269 px tall, captured 720 px, 3 layers in 924 ms
+    151 colours, 320 x 1440 Atari px captured (3.0 screens), conversion 58 ms
+  tt-mid
+    loaded in 798 ms
+    5 fonts raised to 12 px, page 4939 px tall, captured 1440 px, 3 layers in 1036 ms
+    13 colours, 640 x 1440 Atari px captured (3.0 screens), conversion 105 ms
+  tt-mid-z2
+    loaded in 850 ms
+    4 fonts raised to 6 px, page 7269 px tall, captured 720 px, 3 layers in 1020 ms
+    14 colours, 640 x 1440 Atari px captured (3.0 screens), conversion 108 ms
+  tt-high
+    loaded in 738 ms
+    5 fonts raised to 12 px, page 5433 px tall, captured 2880 px, 3 layers in 1175 ms
+    2 colours, 1280 x 2880 Atari px captured (3.0 screens), conversion 223 ms
+  tt-high-z2
+    loaded in 1016 ms
+    4 fonts raised to 6 px, page 4939 px tall, captured 1440 px, 3 layers in 1194 ms
+    2 colours, 1280 x 2880 Atari px captured (3.0 screens), conversion 229 ms
+done: preview_out/index.html
