@@ -120,6 +120,7 @@ void NetAdapter::processCommand(uint8_t *command)
         case NET_CMD_ICMP_GET_DGRAMS:       icmpGetDgrams();    break;
 
         case NET_CMD_CNGET_CHAR:            conGetCharBuffer(); break;
+        case NET_CMD_CN_PEEK:               conPeek();          break;
         case NET_CMD_CNGET_NDB:             conGetNdb();        break;
         case NET_CMD_CNGET_BLOCK:           conGetBlock();      break;
         case NET_CMD_CNGETS:                conGetString();     break;
@@ -919,6 +920,34 @@ void NetAdapter::conGetCharBuffer(void)
     dataTrans->setStatus(E_NORMAL);
 }
 
+// The fake STinG keeps up to CN_PEEK_MAX bytes of the stream locally and finds CNgets() lines there, without a command
+// for each line. Like CNGET_CHAR: the bytes stay in the socket until the ST says it used them (next PEEK / other call).
+void NetAdapter::conPeek(void)
+{
+    int used = Utils::getWord(cmd + 6);
+    int max  = Utils::getWord(cmd + 8);
+
+    TNetConnection *nc = connFromHandle(cmd[5], "conPeek");
+    if(!nc) {
+        return;
+    }
+
+    removeUsedChars(nc, used);
+
+    if(max > CN_PEEK_MAX) {
+        max = CN_PEEK_MAX;
+    }
+
+    int gotBytes = (max > 0) ? nc->readWrapper.peekBlock(dataBuffer, max) : 0;
+    if(gotBytes < 0) {
+        gotBytes = 0;
+    }
+
+    dataTrans->addDataWord(gotBytes);
+    dataTrans->addDataBfr(dataBuffer, gotBytes, true);
+    dataTrans->setStatus(E_NORMAL);
+}
+
 void NetAdapter::conGetNdb(void)
 {
     TNetConnection *nc = connFromHandle(cmd[5], "conGetNdb");
@@ -1150,6 +1179,7 @@ const char *NetAdapter::cmdName(uint8_t c)
         case NET_CMD_CNGETINFO:             return "CNGETINFO";
         case NET_CMD_CNGETS:                return "CNGETS";
         case NET_CMD_CN_UPDATE_INFO:        return "CN_UPDATE_INFO";
+        case NET_CMD_CN_PEEK:               return "CN_PEEK";
         case NET_CMD_RESOLVE:               return "RESOLVE";
         case NET_CMD_ON_PORT:               return "ON_PORT";
         case NET_CMD_OFF_PORT:              return "OFF_PORT";

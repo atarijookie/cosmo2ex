@@ -46,6 +46,9 @@
 #define NET_CMD_CNGETINFO               0x45        // not used on host - comes from CN_UPDATE_INFO
 #define NET_CMD_CNGETS                  0x46        // [5] handle, [6..7] max length, [8] delimiter, [9] charsUsed; reply: length (W) + line + 0
 #define NET_CMD_CN_UPDATE_INFO          0x47        // reply: see NetAdapter::conUpdateInfo()
+#define NET_CMD_CN_PEEK                 0x48        // [5] handle, [6..7] used (W), [8..9] max (W, <= CN_PEEK_MAX);
+                                                    // removes 'used' bytes, reply: count (W) + up to max bytes, left in the socket
+#define CN_PEEK_MAX                     4000        // fake STinG line cache - 2 + 4000 bytes fit its 8 sector DMA buffer
 
 // misc
 #define NET_CMD_RESOLVE                 0x50        // data: name (C string); status: resolver slot

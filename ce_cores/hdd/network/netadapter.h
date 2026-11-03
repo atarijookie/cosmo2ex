@@ -88,7 +88,8 @@ private:
     void conClose(void);                // TCP_close() and UDP_close()
     void conSend(void);                 // TCP_send() and UDP_send()
 
-    void conGetCharBuffer(void);        // CNget_char()
+    void conGetCharBuffer(void);        // CNget_char() - old one, 250 bytes, used count as a byte
+    void conPeek(void);                 // CNget_char() / CNgets() line cache - bigger, used count as a word
     void conGetNdb(void);               // CNget_NDB()
     void conGetBlock(void);             // CNget_block()
     void conGetString(void);            // CNgets()

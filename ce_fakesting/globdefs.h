@@ -551,8 +551,10 @@ typedef struct {
     uint8_t    hostInUse;                      // the host still has this handle (open, or lingering after TCP_close())
     uint8_t    closing;                        // TCP_close() was called, the host keeps the handle for a while
 
-    uint8_t charsUsed;                         // how many chars from this buffer was used by CNget_char()
-    uint8_t charsGot;                          // how many chars we have
+    // Stream data kept locally - in chars[], or in the shared line cache while this connection owns it (CNgets()).
+    // The host keeps them in the socket until it gets charsUsed with the next command (CN_PEEK / CNGET_* / CNGETS).
+    uint16_t charsUsed;                        // how many of the local bytes were used by CNget_char() / CNgets() / CNget_block()
+    uint16_t charsGot;                         // how many bytes we have locally
     uint8_t chars[READ_BUFFER_SIZE];
 } TConInfo;
 

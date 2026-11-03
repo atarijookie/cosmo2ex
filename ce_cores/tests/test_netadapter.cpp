@@ -254,6 +254,46 @@ TEST_CASE("netadapter: TCP connect, send, receive, CNget_block / CNgets, remote 
     close(lfd);
 }
 
+TEST_CASE("netadapter: CN_PEEK - line cache of the fake STinG, used count above 255")
+{
+    NetHarness h;
+    uint16_t port;
+    int lfd = tcpListener(&port);
+
+    uint8_t handle = h.open(true, LOOPBACK, port);
+    REQUIRE(isHandle(handle));
+    int sfd = acceptWithTimeout(lfd);
+    h.waitFor(handle, [](NetHarness::Info i) { return i.status == TESTABLISH; });
+
+    std::string lines;
+    for(int i=0; i<10; i++) {
+        lines += std::string(99, 'a' + i) + "\n";          // 10 lines x 100 bytes
+    }
+    REQUIRE(::send(sfd, lines.data(), lines.size(), 0) == (ssize_t) lines.size());
+    h.waitFor(handle, [](NetHarness::Info i) { return i.bytes == 1000; });
+
+    auto peek = [&](uint16_t used, uint16_t max) {
+        return h.command(NET_CMD_CN_PEEK, {handle, (uint8_t) (used >> 8), (uint8_t) used, (uint8_t) (max >> 8), (uint8_t) max});
+    };
+
+    REQUIRE(peek(0, CN_PEEK_MAX) == E_NORMAL);              // all of it, still in the socket
+    CHECK(Utils::getWord(h.dt.reply.data()) == 1000);
+    CHECK(std::string((const char *) h.dt.reply.data() + 2, 1000) == lines);
+    CHECK(h.info(handle).bytes == 1000);
+
+    REQUIRE(peek(300, 150) == E_NORMAL);                    // 3 lines used (> 255), then the next 150 bytes
+    CHECK(Utils::getWord(h.dt.reply.data()) == 150);
+    CHECK(std::string((const char *) h.dt.reply.data() + 2, 150) == lines.substr(300, 150));
+    CHECK(h.info(handle).bytes == 700);
+
+    REQUIRE(peek(700, 0) == E_NORMAL);                      // just remove
+    CHECK(Utils::getWord(h.dt.reply.data()) == 0);
+    CHECK(h.info(handle).bytes == 0);
+
+    close(sfd);
+    close(lfd);
+}
+
 TEST_CASE("netadapter: TCP connect refused - E_REFUSE once, E_EOF on send, E_RRESET on close")
 {
     NetHarness h;

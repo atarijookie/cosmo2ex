@@ -78,6 +78,93 @@ static int16 takeError(TConInfo *ci)                // an error from the host (r
 }
 
 //--------------------------------------
+// Local stream data. Each connection has a small buffer (chars[], filled by CNget_char()), CNgets() uses the shared
+// line cache instead: one fetch gets many lines, and they're found here without a command per line. Only one connection
+// owns the cache at a time - another one taking it just drops the cached data (they're still on the host).
+
+static uint8_t lineCache[CN_PEEK_MAX];
+static int     lineCacheOwner = -1;                 // slot
+
+static uint8_t *localBuf(int slot)
+{
+    return (lineCacheOwner == slot) ? lineCache : conInfo[slot].chars;
+}
+
+static void dropCache(int slot)                     // the slot loses the cache - its bytes still unused stay on the host
+{
+    if(lineCacheOwner == slot) {
+        conInfo[slot].charsGot = conInfo[slot].charsUsed;  // nothing more local, the used count is still to be reported
+        lineCacheOwner = -1;
+    }
+}
+
+static void takeCache(int slot)
+{
+    if(lineCacheOwner == slot) {
+        return;
+    }
+
+    if(lineCacheOwner >= 0) {
+        dropCache(lineCacheOwner);
+    }
+
+    conInfo[slot].charsGot = conInfo[slot].charsUsed;      // what's in chars[] gets fetched again into the cache
+    lineCacheOwner = slot;
+}
+
+// tell the host how many bytes were used and get up to 'max' next ones into the local buffer (cache or chars[])
+static uint8_t fillLocal(int slot, uint8_t handle, uint16_t max)
+{
+    TConInfo *ci = &conInfo[slot];
+
+    commandLong[ 5] = NET_CMD_CN_PEEK;
+    commandLong[ 6] = handle;
+    commandLong[ 7] = (uint8_t) (ci->charsUsed >> 8);
+    commandLong[ 8] = (uint8_t) (ci->charsUsed     );
+    commandLong[ 9] = (uint8_t) (max >> 8);
+    commandLong[10] = (uint8_t) (max     );
+
+    ci->charsUsed = 0;
+    ci->charsGot  = 0;
+
+    ceCmd(ACSI_READ, commandLong, CMD_LENGTH_LONG, pDmaBuffer, (2 + max + 511) >> 9);
+    forceNextUpdateConInfo = TRUE;                  // the host removed the used bytes - CNbyte_count() must see it
+
+    if(!hdIf.success || hdIf.statusByte != E_NORMAL) {
+        return FALSE;
+    }
+
+    uint16_t got = getWord(pDmaBuffer);
+    if(got > max) {
+        got = max;
+    }
+
+    memcpy(localBuf(slot), pDmaBuffer + 2, got);
+    ci->charsGot = got;
+    return TRUE;
+}
+
+// the used count for the commands which take it as a byte - above 255 it goes first by CN_PEEK. The local data are
+// gone after such command (the host removes the used bytes and continues from there).
+static uint8_t usedForCommand(int slot, uint8_t handle)
+{
+    TConInfo *ci = &conInfo[slot];
+    uint8_t used;
+
+    if(ci->charsUsed > 255) {
+        fillLocal(slot, handle, 0);                 // just report them
+        used = 0;
+    } else {
+        used = (uint8_t) ci->charsUsed;
+    }
+
+    ci->charsUsed = 0;
+    ci->charsGot  = 0;
+    dropCache(slot);
+    return used;
+}
+
+//--------------------------------------
 // connection info function
 
 int16 CNkick(int16 handle)
@@ -161,23 +248,11 @@ int16 CNget_char(int16 handle)
         return E_EOF;
     }
 
-    // if no data buffered, read the data
-    if(ci->charsGot == 0 || ci->charsUsed >= ci->charsGot) {
-        commandLong[ 5] = NET_CMD_CNGET_CHAR;   // store function number
-        commandLong[ 6] = handle;                // store file handle
-        commandLong[10] = ci->charsUsed;        // how many chars were used
+    // nothing local? get the next bytes - into the line cache if this connection has it, else into chars[]
+    if(ci->charsUsed >= ci->charsGot) {
+        uint16_t max = (lineCacheOwner == slot) ? CN_PEEK_MAX : 250;
 
-        // no more used chars and got chars
-        ci->charsUsed   = 0;
-        ci->charsGot    = 0;
-
-        ceCmd(ACSI_READ, commandLong, CMD_LENGTH_LONG, pDmaBuffer, 1);
-        forceNextUpdateConInfo = TRUE;                          // the host removed the used chars - CNbyte_count() must see it
-
-        if(hdIf.success && hdIf.statusByte == E_NORMAL) {       // success?
-            ci->charsGot = pDmaBuffer[0];                       // store the new count of chars we got
-            memcpy(ci->chars, pDmaBuffer + 1, ci->charsGot);    // copy those bytes
-        } else {                                                // fail?
+        if(!fillLocal(slot, handle, max)) {
             return E_NODATA;
         }
     }
@@ -188,7 +263,7 @@ int16 CNget_char(int16 handle)
 
     forceNextUpdateConInfo = TRUE;              // force update_con_info() if asked to do it next time.
 
-    int value = ci->chars[ci->charsUsed];       // get the char
+    int value = localBuf(slot)[ci->charsUsed];  // get the char
     ci->charsUsed++;                            // update used count
     return value;                               // return that char
 }
@@ -209,14 +284,12 @@ NDB *CNget_NDB(int16 handle)
 
     //-----------------
     // first find out how big is the next NDB
-      commandLong[ 5] = NET_CMD_CNGET_NDB;    // store function number
+    uint8_t used = usedForCommand(slot, handle);    // first - above 255 it sends its own command
+
+    commandLong[ 5] = NET_CMD_CNGET_NDB;    // store function number
     commandLong[ 6] = handle;                // store file handle
     commandLong[ 7] = 0;                    // get next NDB size
-    commandLong[10] = ci->charsUsed;        // how many chars were used
-
-    // no more used chars and got chars
-    ci->charsUsed   = 0;
-    ci->charsGot    = 0;
+    commandLong[10] = used;                 // how many chars were used
 
     ceCmd(ACSI_READ, commandLong, CMD_LENGTH_LONG, pDmaBuffer, 1);
 
@@ -284,10 +357,7 @@ NDB *CNget_NDB(int16 handle)
 
 static uint8_t getBlockSingle(TConInfo *ci, uint8_t handle, uint8_t *buffer, uint16_t byteCount, uint16_t sectorCount)
 {
-    // no more used chars and got chars
-    int charsUsed   = ci->charsUsed;
-    ci->charsUsed   = 0;
-    ci->charsGot    = 0;
+    int charsUsed = usedForCommand(ci - conInfo, handle);
 
     //----------------------------------------
     commandLong[ 5] = NET_CMD_CNGET_BLOCK;  // store function number
@@ -363,6 +433,13 @@ int16 CNget_block(int16 handle, void *buffer, int16 length)
         return 0;
     }
 
+    if(ci->charsGot - ci->charsUsed >= length) {    // all of it is here already (after CNgets() / CNget_char())
+        memcpy(buffer, localBuf(slot) + ci->charsUsed, length);
+        ci->charsUsed += length;
+        forceNextUpdateConInfo = TRUE;
+        return length;
+    }
+
     //----------------------------------------
     // how many sectors and bytes we need for long transfer
     int lenLongSectors  = length         >> 9;
@@ -428,22 +505,64 @@ int16 CNgets(int16 handle, char *buffer, int16 length, char delimiter)
         return E_BIGBUF;
     }
 
+    takeCache(slot);
+
+    int fetched = 0;
+    while(1) {
+        uint8_t *b = lineCache;
+        int i;
+
+        for(i = ci->charsUsed; i < ci->charsGot; i++) {     // a complete line here?
+            if(b[i] == (uint8_t) delimiter) {
+                break;
+            }
+        }
+
+        if(i < ci->charsGot) {
+            int len = i - ci->charsUsed;
+
+            if(len >= length) {             // the line + terminator doesn't fit - it stays, as in STinG
+                return E_BIGBUF;
+            }
+
+            memcpy(buffer, b + ci->charsUsed, len);
+            buffer[len]     = 0;
+            ci->charsUsed   = i + 1;        // the line and the delimiter
+            forceNextUpdateConInfo = TRUE;
+            return len;
+        }
+
+        if(fetched) {                       // fresh data, still no complete line
+            if(ci->charsGot < CN_PEEK_MAX) {
+                return E_NODATA;            // the rest of the line didn't come yet
+            }
+            break;                          // longer than the cache - let the host look for it
+        }
+
+        if(!fillLocal(slot, handle, CN_PEEK_MAX)) {    // the used part goes away, the rest comes again with more
+            return E_NODATA;
+        }
+        fetched = 1;
+    }
+
+    if(length <= CN_PEEK_MAX) {             // the line is longer than the cache, so longer than the buffer too
+        return E_BIGBUF;
+    }
+
     //-----------------------
     // limit the length - the reply is length (W) + line + terminator
     length              = (length < DMA_BUFFER_SIZE - 2) ? length : DMA_BUFFER_SIZE - 2;
     int sectorLength    = (length + 2 + 511) >> 9;
     //-----------------------
     // issue the command
-      commandLong[ 5] = NET_CMD_CNGETS;       // store function number
+    uint8_t used = usedForCommand(slot, handle);    // first - above 255 it sends its own command
+
+    commandLong[ 5] = NET_CMD_CNGETS;       // store function number
     commandLong[ 6] = handle;                // store file handle
     commandLong[ 7] = (uint8_t) (length >> 8); // store max length
     commandLong[ 8] = (uint8_t) (length     );
     commandLong[ 9] = delimiter;            // store delimiter
-    commandLong[10] = ci->charsUsed;        // how many chars were used
-
-    // no chars used and got no chars
-    ci->charsUsed   = 0;
-    ci->charsGot    = 0;
+    commandLong[10] = used;                 // how many chars were used
 
     ceCmd(ACSI_READ, commandLong, CMD_LENGTH_LONG, pDmaBuffer, sectorLength);
 
@@ -919,6 +1038,9 @@ static void initConInfoStruct(int i)
     ci->charsUsed            = 0;
     ci->charsGot             = 0;
     ci->netError             = 0;
+    if(lineCacheOwner == i) {
+        lineCacheOwner = -1;
+    }
     ci->hostInUse            = 0;
     ci->closing              = 0;
     setCIB((uint8_t *) &ci->cib, 0, 0, 0, 0, 0, 0);    // clear the CIB structure
