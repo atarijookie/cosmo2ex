@@ -66,33 +66,37 @@ typedef struct __attribute__ ((__packed__))
 } TPrgHead;
 
 void freeTheBasePage(TBasePage *basePage);
-
-static uint8_t *pLastBasePage = 0;
+static uint8_t hasGoAndFree(void);
+static uint32_t getLongFromBytes(const uint8_t *p);
 
 extern uint16_t pexec_postProc;
 extern uint16_t pexec_callOrig;
 
-int32_t custom_pexec2(void *res);
+#define PRG_MAGIC       0x601a
+#define PRG_HEAD_SIZE   28
 
-// the following global variables are used in both custom_pexec and custom_pexec2
-static char *fname, *cmdline, *envstr;
-static uint8_t *pPrgStart;
-static uint16_t mode;
 
 // ------------------------------------------------------------------
 // LONG Pexec( mode, fname, cmdline, envstr )
+//
+// PE_LOADGO and PE_LOAD of a PRG on our drive: the PRG is loaded here (Pexec(PE_BASEPAGE), Fread, relocate, clear BSS),
+// the same way as SidecarT GEMDRIVE does it. For PE_LOADGO the asm part then turns the caller's Pexec() into
+// Pexec(PE_GOTHENFREE, 0, basepage, 0) and jumps to TOS - the child then owns its memory and TOS frees it when the child
+// ends (or keeps it on Ptermres()), so we don't need to hook Pterm() at all. TOS 1.00 / 1.02 don't have PE_GOTHENFREE,
+// there the child is run from here with PE_GO and its memory is freed after it returns.
 int32_t custom_pexec( void *sp )
 {
 	uint8_t *params = (uint8_t *) sp;
 
 	// retrieve params from stack
-	mode    = *((uint16_t *) params);
+	uint16_t mode    = *((uint16_t *) params);
 	params += 2;
-	fname	= (char *)	*((uint32_t *) params);
+	char *fname      = (char *) *((uint32_t *) params);
 	params += 4;
-	cmdline	= (char *)	*((uint32_t *) params);
+	char *cmdline    = (char *) *((uint32_t *) params);
 	params += 4;
-	envstr	= (char *)	*((uint32_t *) params);
+	char *envstr     = (char *) *((uint32_t *) params);
+
 
 	// for any other than these modes don't do anything special, just call the original
 	if(mode != PE_LOADGO && mode != PE_LOAD) {                              // not one of 2 supported modes? Call original Pexec()
@@ -103,60 +107,65 @@ int32_t custom_pexec( void *sp )
 	// if we got here, the mode is PE_LOADGO || PE_LOAD
 	uint16_t drive = getDriveFromPath((char *) fname);
 
+
 	if(!isOurDrive(drive, 0)) {												// not our drive? Call original Pexec()
         pexec_callOrig = 1;                                                 // will call the original Pexec() handler from asm when this finishes
         return 0;
 	}
 
-    // Do PE_LOAD, and if this was PE_LOADGO, then the GO part will be done in gemdos_asm.s
-
 	// if we got here, then it's a PRG on our drive...
+	uint32_t prgStartBuf[(PRG_HEAD_SIZE + 3) / 4];                          // uint32_t array - aligned to 4 (TT DMA)
+	TPrgHead *prgHead = (TPrgHead *) prgStartBuf;
 
-	uint8_t prgStart[32];
-
-	pPrgStart = &prgStart[4];
-	pPrgStart = (uint8_t *) (((uint32_t) pPrgStart) & 0xfffffffc);				// make temp buffer pointer to be at multiple of 4
-
-	// create base page
-    uint8_t *pBasePage = (uint8_t *) Pexec(PE_BASEPAGE, 0, cmdline, envstr);
-
-	if((int) pBasePage < 1000) {											// Pexec seems to failed -- insufficient memory
-		return ENSMEM;
-	}
-
-	TBasePage *sBasePage = (TBasePage *) pBasePage;							// this is now the pointer to the basePage structure
-
-	// load the file to memory
+	// open the file and check the header before creating the base page, so a bad file doesn't cost Pexec(PE_BASEPAGE)
 	int32_t file = Fopen(fname, 0);											// try to open the file
 	if(file < 0) {															// if the handle is negative, fail -- file not found
-		freeTheBasePage(sBasePage);											// free the base page
-		return EFILNF;
+		return file;
 	}
 
-	uint32_t diskProgSize = Fseek(0, file, 2);									// seek to end, returns file size (bytes before end)
+	int32_t diskProgSize = Fseek(0, file, 2);								// seek to end, returns file size
 	Fseek(0, file, 0);														// seek to the start
 
-	if(diskProgSize < 28) {													// if the program is too small, this wouldn't work
-		Fclose(file);														// close the file
-		freeTheBasePage(sBasePage);											// free the base page
-		return EPLFMT;														// be Invalid program load format
+	if(diskProgSize < PRG_HEAD_SIZE || Fread(file, PRG_HEAD_SIZE, prgHead) != PRG_HEAD_SIZE || prgHead->magic != PRG_MAGIC) {
+		Fclose(file);
+		return extendByteToDword(EPLFMT);														// Invalid program load format
 	}
 
-	Fread(file, 28, pPrgStart);												// read first 28 bytes to this buffer
-	TPrgHead *prgHead = (TPrgHead  *) pPrgStart;
+	uint32_t loadSize = diskProgSize - PRG_HEAD_SIZE;                       // text + data + symbols + fixups
+	uint32_t imageSize = prgHead->tsize + prgHead->dsize + prgHead->ssize;  // where the fixups start
 
-	// get file size, see if it will fit in the free memory
-	uint32_t memProgSize		= prgHead->tsize + prgHead->dsize + prgHead->bsize + prgHead->ssize;	// calculate the program size in RAM as size of text + data + bss + symbols
-	uint32_t memoryAvailable	= sBasePage->hitpa - sBasePage->lowtpa;									// calculate how much memory we have for the program
-
-	if(memoryAvailable < memProgSize || memoryAvailable < diskProgSize) {	// if the program (in RAM or on disk) is bigger than the available free memory
-		Fclose(file);														// close the file
-		freeTheBasePage(sBasePage);											// free the base page
-		return ENSMEM;														// error: insufficient memory
+	if(loadSize < imageSize) {                                              // file shorter than its header says?
+		Fclose(file);
+		return extendByteToDword(EPLFMT);
 	}
 
-	Fread(file, diskProgSize - 28, pBasePage + 0x100);						// now read the rest of the file
+	// create base page
+	TBasePage *sBasePage = (TBasePage *) Pexec(PE_BASEPAGE, 0, cmdline, envstr);
+
+	if((int32_t) sBasePage < 0 || (uint32_t) sBasePage < 1000) {			// Pexec seems to failed -- insufficient memory
+		Fclose(file);
+		return extendByteToDword(ENSMEM);
+	}
+
+	uint8_t *pBasePage = (uint8_t *) sBasePage;
+
+	// see if it will fit in the free memory - text + data + bss, and the whole file (symbols, fixups) while loading
+	uint32_t memProgSize     = prgHead->tsize + prgHead->dsize + prgHead->bsize;
+	uint32_t memoryAvailable = sBasePage->hitpa - sBasePage->lowtpa - 0x100;	// without the base page itself
+
+	if(memoryAvailable < memProgSize || memoryAvailable < loadSize) {		// if the program (in RAM or on disk) is bigger than the available free memory
+		Fclose(file);
+		freeTheBasePage(sBasePage);
+		return extendByteToDword(ENSMEM);														// error: insufficient memory
+	}
+
+	int32_t got = Fread(file, loadSize, pBasePage + 0x100);					// now read the rest of the file
 	Fclose(file);
+
+	if(got != (int32_t) loadSize) {                                         // read failed or got less than expected
+		freeTheBasePage(sBasePage);
+		return (got < 0) ? got : extendByteToDword(EREADF);
+	}
 
 	// fill the base page
 	sBasePage->tbase	= sBasePage->lowtpa + 0x100;
@@ -166,85 +175,87 @@ int32_t custom_pexec( void *sp )
 	sBasePage->bbase	= sBasePage->dbase + sBasePage->dlen;
 	sBasePage->blen		= prgHead->bsize;
 
-	// do the addresses fixup if needed
-	uint8_t *fixups		= (uint8_t *) (sBasePage->tbase + prgHead->tsize + prgHead->dsize + prgHead->ssize);
-	uint32_t fixupOffset	= *((uint32_t *) fixups);
+	// do the addresses fixup if needed (fixups may be missing completely, or be just a zero long)
+	if(prgHead->absFlag == 0 && loadSize >= imageSize + 4) {
+		uint8_t *fixups      = (uint8_t *) (sBasePage->tbase + imageSize);
+		uint8_t *fixupsEnd   = pBasePage + 0x100 + loadSize;
+		uint32_t fixupOffset = getLongFromBytes(fixups);					// byte access - no address error if odd
+		fixups += 4;
 
-    uint8_t fixup = 0;
+		if(fixupOffset != 0) {						                    // if fixup needed?
+			uint8_t *pWhereToFix = (uint8_t *) (sBasePage->tbase + fixupOffset);	// the first uint32_t position that needs to be fixed
+			uint8_t *pFixEnd     = (uint8_t *) sBasePage->bbase - 4;   // last valid long in text + data
 
-	if(fixupOffset != 0) {						                    // if fixup needed?
-		uint8_t *pWhereToFix;
+			while(1) {
+				if(pWhereToFix > pFixEnd || ((uint32_t) pWhereToFix & 1)) {	// broken fixups would write outside the program or cause address error
+					freeTheBasePage(sBasePage);
+					return extendByteToDword(EPLFMT);
+				}
 
-		pWhereToFix	= (uint8_t *) (sBasePage->tbase + fixupOffset);	// calculate the first uint32_t position that needs to be fixed
-		fixups += 4;												// move to the fixups array
+				*((uint32_t *) pWhereToFix) += sBasePage->tbase;
 
-		while(1) {
-			uint32_t oldVal = *((uint32_t *)pWhereToFix);
-			uint32_t newVal = oldVal + sBasePage->tbase;
+				uint8_t fixup;
+				do {
+					if(fixups >= fixupsEnd) {                          // no terminating zero? take it as end
+						fixup = 0;
+						break;
+					}
 
-            if(fixup != 1) {                                        // fix the value only if the fixup isn't ONE
-                *((uint32_t *)pWhereToFix) = newVal;
-            }
+					fixup = *fixups++;
 
-			fixup = *fixups;
-			fixups++;
+					if(fixup == 1) {                                    // just move forward by 0xfe, no fix
+						pWhereToFix += 0xfe;
+					}
+				} while(fixup == 1);
 
-			if(fixup == 0) {                                        // terminate fixup
-				break;
+				if(fixup == 0) {                                        // terminate fixup
+					break;
+				}
+
+				pWhereToFix += fixup;                                   // move forward and fixup
 			}
-
-			if(fixup == 1) {                                        // just move forward by 0xfe
-				pWhereToFix += 0xfe;
-			} else {                                                // move forward and fixup
-                pWhereToFix += (uint32_t) fixup;
-            }
 		}
 	}
 
 	memset((uint8_t *) sBasePage->bbase, 0, sBasePage->blen);			// clear BSS section
 
-    if(mode == PE_LOADGO) {                                         // if we're doing PE_LOADGO, then we're going to freeTheBasePage()
-        pLastBasePage = pBasePage;
-		pexec_postProc = 1;											// mark that after this function ends, the asm handler should do PE_GO part...
-    }
+	if(mode == PE_LOAD) {                                               // just load? the caller gets the base page and runs it himself
+		return (uint32_t) pBasePage;
+	}
 
-    // Return the pointer to basepage.
-    // for PE_LOAD this will be used as return value.
-    // for PE_LOADGO this will be used to call Pexec(PE_GO) in gemdos_asm.s after this custom function.
-	return (uint32_t) pBasePage;										// the PE_LOAD was successful
-}
+	// PE_LOADGO
+	if(hasGoAndFree()) {
+		pexec_postProc = 1;											    // asm handler does Pexec(PE_GOTHENFREE, 0, basepage, 0) after this function ends
+		return (uint32_t) pBasePage;
+	}
 
-int32_t custom_pterm( void *sp )
-{
-	uint32_t res = 0;
-	uint16_t result		= *((uint16_t *) sp);
-
-    if(pLastBasePage != 0) {                                        // did we allocate this?
-        freeTheBasePage((TBasePage *) pLastBasePage);               // free the base page
-        pLastBasePage = 0;
-    }
-
-    CALL_OLD_GD_VOIDRET(Pterm, result);
-
+	// TOS 1.00 / 1.02 - no PE_GOTHENFREE: run it from here, then free its memory
+	int32_t res = Pexec(PE_GO, 0, (char *) pBasePage, 0);
+	freeTheBasePage(sBasePage);
 	return res;
 }
 
-int32_t custom_pterm0( void *sp )
+// PE_GOTHENFREE (6) is in GEMDOS 0.15 and later (TOS 1.04+), same check as in SidecarT
+static uint8_t hasGoAndFree(void)
 {
-	uint32_t res = 0;
+	static int8_t has = -1;
 
-    if(pLastBasePage != 0) {                                        // did we allocate this?
-        freeTheBasePage((TBasePage *) pLastBasePage);               // free the base page
-        pLastBasePage = 0;
-    }
+	if(has < 0) {
+		uint16_t v   = (uint16_t) Sversion();                           // low byte major, high byte minor
+		uint16_t ver = (uint16_t) ((v << 8) | (v >> 8));                // 0xMMmm
+		has = (ver >= 0x0015) ? 1 : 0;
+	}
 
-    CALL_OLD_GD_VOIDRET(Pterm0);
+	return (uint8_t) has;
+}
 
-	return res;
+static uint32_t getLongFromBytes(const uint8_t *p)
+{
+	return (((uint32_t) p[0]) << 24) | (((uint32_t) p[1]) << 16) | (((uint32_t) p[2]) << 8) | ((uint32_t) p[3]);
 }
 
 void freeTheBasePage(TBasePage *basePage)
 {
-	Mfree(basePage->env);											// free the environment
+	Mfree((void *) basePage->env);										// free the environment
 	Mfree(basePage);												// free the base page
 }

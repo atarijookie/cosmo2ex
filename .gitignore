@@ -9,6 +9,7 @@
 ce_dd_bootsectors/convertor
 *.d
 test_sting/test_server
+test_ce/sting_server/sting_server
 *.crf
 *.__i
 *.map

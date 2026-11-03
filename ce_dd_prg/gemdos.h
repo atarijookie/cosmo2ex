@@ -117,8 +117,6 @@ uint8_t isOurDrive(uint16_t drive, uint8_t withCurrentDrive);
 int32_t custom_fread ( void *sp );
 int32_t custom_fwrite( void *sp );
 int32_t custom_pexec( void *sp );
-int32_t custom_pterm( void *sp );
-int32_t custom_pterm0( void *sp );
 
 uint8_t commitChanges(uint16_t ceHandle);
 void initFileBuffer(uint16_t ceHandle);

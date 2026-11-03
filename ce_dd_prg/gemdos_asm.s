@@ -129,11 +129,13 @@ handleThisPexec:
 	beq.b   callOriginalHandler             | if we don't have custom (Pexec) handler, call original handler
     
 	movea.l (a0),a0
+	move.l  d0,pexecParams                  | remember where the caller's params are (user or supervisor stack)
+	movem.l d1/d2/a1/a2,-(sp)				| save registers (required by TOS versions earlier than 2) - on the stack, the
+											| C part does nested GEMDOS calls, which use saveregs
 	move.l  d0,-(sp)                        | param #1: stack pointer with function params
-	movem.l d1/d2/a1/a2,saveregs			| save registers (required by TOS versions earlier than 2)
 	jsr     (a0)                            | call the custom handler
-	movem.l saveregs,d1/d2/a1/a2			| restore registers (required by TOS versions earlier than 2)
     addq.l  #4,sp
+	movem.l (sp)+,d1/d2/a1/a2				| restore registers (required by TOS versions earlier than 2)
 
 afterCustomPexecCall:
     
@@ -147,20 +149,22 @@ afterCustomPexecCall:
     
 callPexecGo:    
 | The original call was Pexec(PE_LOADGO), the Pexec(PE_LOAD) part was done in C code.
-| Now this asm part will call Pexec(PE_GO), the basepage parameter is in d0 already.
+| Now this asm part will call Pexec(PE_GOTHENFREE) - the child owns its memory and TOS frees it when it ends (as SidecarT).
+| The C code sets pexec_postProc only when TOS has PE_GOTHENFREE (TOS 1.04+), otherwise it runs the child itself.
 |
 | Transform from: int32_t Pexec (0, int8_t *name, int8_t *cmdline, int8_t *env);
-|             to: int32_t Pexec (4, 0L, PD *basepage, 0L);
-	
+|             to: int32_t Pexec (6, 0L, PD *basepage, 0L);
+| The params are rewritten where the caller put them - on the user stack when called from user mode (desktop, most
+| programs), not in our exception frame.
+
 	clr.w   _pexec_postProc                 | clear the pexec_postProc flag
 
-	add.w	_trap_extra_offset,sp           | adjust stack if 68030 (see comments above)
-    move.w  #4, 8(sp)                       | set mode to PE_GO
-    move.l  #0, 10(sp)                      | fname = 0
-    move.l  d0, 14(sp)                      | cmdline = pointer to base page
-    move.l  #0, 18(sp)                      | envstr
-	sub.w	_trap_extra_offset,sp           | bring stack back to normal if 68030
-    bra     callOriginalHandler             | ...and jump to old handler
+	move.l  pexecParams,a0                  | a0 = pointer to the caller's params (mode is the first one)
+	move.w  #6,(a0)                         | set mode to PE_GOTHENFREE
+	clr.l   2(a0)                           | fname = 0
+	move.l  d0,6(a0)                        | cmdline = pointer to base page
+	clr.l   10(a0)                          | envstr = 0
+	bra     callOriginalHandler             | ...and jump to old handler, it will take the params from the same place
     
 |------------------
 callOriginalPexec:    
@@ -172,6 +176,8 @@ callOriginalPexec:
 	.data
 _pexec_postProc:    dc.w    0       | 1 = post-process PE_LOADGO
 _pexec_callOrig:    dc.w    0       | 1 = after custom handler call original Pexec (no post processing)
+	.even
+pexecParams:        dc.l    0       | pointer to the params of the Pexec() being handled
 
 	.bss
 saveregs:			ds.l	4		| d1/d2/a1/a2 temp space

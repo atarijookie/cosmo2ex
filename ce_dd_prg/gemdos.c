@@ -956,10 +956,10 @@ void initFunctionTable(void)
     // program execution functions
 
 #ifdef MANUAL_PEXEC
-    // manually handling Pexec() and Pterm*() functions
+    // loading PRG manually in Pexec(), running it with Pexec(PE_GOTHENFREE) - TOS frees the memory, no Pterm*() hooks
 	gemdos_table[GEMDOS_pexec]      = custom_pexec;
-	gemdos_table[GEMDOS_pterm]      = custom_pterm;
-	gemdos_table[GEMDOS_pterm0]     = custom_pterm0;
+	gemdos_table[GEMDOS_pterm]      = 0;
+	gemdos_table[GEMDOS_pterm0]     = 0;
 #else
     // letting TOS handle Pexec() and Pterm*() function by faking native drive
 	gemdos_table[GEMDOS_pexec]      = custom_pexec_lowlevel;

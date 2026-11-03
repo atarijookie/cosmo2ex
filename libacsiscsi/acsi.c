@@ -5,6 +5,9 @@
 #include "hdd_if.h"
 #include "stdlib.h"
 
+void clearCache030(void);
+static uint8_t acsiNeedsCacheFlush(void);
+
 // --------------------------------------
 void acsi_cmd(uint8_t ReadNotWrite, uint8_t *cmd, uint8_t cmdLength, uint8_t *buffer, uint16_t sectorCount)
 {
@@ -90,6 +93,45 @@ void acsi_cmd(uint8_t ReadNotWrite, uint8_t *cmd, uint8_t cmdLength, uint8_t *bu
 
     endcmd(wr2 | NO_DMA | HDC | A0);            // wait for DMA completion
 	hdone();                                    // restore DMA device to normal
+
+    if(ReadNotWrite && acsiNeedsCacheFlush()) { // DMA wrote to RAM behind the back of 68030 data cache (ACSI on TT)?
+        clearCache030();                        // drop the stale cached data, so CPU reads what came from the device
+    }
+}
+
+//**************************************************************************
+// ACSI on TT: the 68030 data cache doesn't see DMA writes to RAM, so after a DMA read the CPU could read old cached data
+// instead of what the device sent (e.g. CE_DD got a wrong drive map from Drvmap - 'drive C does not exist').
+// Flush only on 68020 / 68030 (_CPU cookie 20 / 30) - clearCache030() uses movec, illegal on 68000, and the CACR bits
+// differ on 68040 / 68060.
+static uint8_t acsiNeedsCacheFlush(void)
+{
+    static int8_t needsFlush = -1;              // -1 = not checked yet
+
+    if(needsFlush < 0) {
+        needsFlush = 0;
+
+        uint32_t *cookieJar = (uint32_t *) *((uint32_t *) 0x05A0);    // runs in supervisor, can read the jar pointer
+
+        if(cookieJar) {
+            int i;
+            for(i=0; i<64; i++) {
+                uint32_t key   = *cookieJar++;
+                uint32_t value = *cookieJar++;
+
+                if(key == 0) {                  // end of jar
+                    break;
+                }
+
+                if(key == 0x5f435055) {         // '_CPU'
+                    needsFlush = (value == 20 || value == 30) ? 1 : 0;
+                    break;
+                }
+            }
+        }
+    }
+
+    return (uint8_t) needsFlush;
 }
 
 //**************************************************************************

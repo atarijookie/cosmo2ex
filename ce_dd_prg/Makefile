@@ -1,6 +1,6 @@
 TARGET  = ce_dd.prg
 SLIM    = yes
-USE_LOWLEVEL_PEXEC = yes
+USE_LOWLEVEL_PEXEC = no
 
 # control verbosity. use make V=1 to show commands
 V = 0
