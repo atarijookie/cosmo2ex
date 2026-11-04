@@ -38,6 +38,24 @@ your monitor can show. F1 lists the
 keys.
 
 
+CE_VIDEO.TTP, CE_AUDIO.TTP (in the root)
+--------------------------
+Video and audio players. Give them a
+file on a translated drive (drag it on
+the program, or type its path) - the
+host decodes it with ffmpeg (ce_media,
+see MEDIA_* in .env), the ST only shows
+and plays. ST / STE: ST low (or ST high
+on a mono monitor), TT: half size in the
+middle of the screen. Sound: DMA sound
+on STE / TT / Falcon, YM chip on ST.
+Options: -l<ms> buffer (default 1000),
+-f<fps> max frame rate, -s<sec> start,
+-n no sound. Keys: Esc quit, Space
+pause, Left / Right 10 s, Up / Down
+1 min.
+
+
 Folder DRIVERS\
 ---------------
 (only needed for advanced Cosmo2ex 

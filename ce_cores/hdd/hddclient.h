@@ -20,6 +20,7 @@ class Scsi;
 class SlmPrinter;
 class NetAdapter;
 class BrowserModule;
+class MediaModule;
 
 class HddClient
 {
@@ -48,6 +49,7 @@ private:
     SlmPrinter* slm;                // SLM laser printer emulation - for ACSI IDs set to DEVTYPE_SLM*
     NetAdapter* netAdapter;         // network module of the fake STinG (ce_fakesting) - HOSTMOD_NETWORK_ADAPTER
     BrowserModule* browser;         // web browser (CE_BROWS.PRG) - HOSTMOD_BROWSER
+    MediaModule* media;             // video / audio player (CE_VIDEO.TTP, CE_AUDIO.TTP) - HOSTMOD_MEDIA_STREAMING
 
     //-----------------------------------
     // hard disk stuff

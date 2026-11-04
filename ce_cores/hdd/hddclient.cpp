@@ -19,6 +19,7 @@
 #include "../misc/statusreport.h"
 #include "network/netadapter.h"
 #include "browser/browsermodule.h"
+#include "media/mediamodule.h"
 
 extern DebugVars    dbgVars;
 
@@ -44,6 +45,8 @@ HddClient::HddClient(ChipInterface* chipInterfaceIn, ClientInfo* ci)
     netAdapter = new NetAdapter(dataTrans);
 
     browser = new BrowserModule(dataTrans);
+
+    media = new MediaModule(dataTrans, translated);
 
     slm = new SlmPrinter(dataTrans);
     slm->setWaitForCommand([this](uint32_t timeoutMs, uint8_t* cmd) { return slmWaitForCommand(timeoutMs, cmd); });
@@ -75,6 +78,8 @@ void HddClient::onClientConnected(void)
     slm->reset();                           // new device - printer as after power on
 
     browser->reset();                       // new device - its ce_browser starts when CE_BROWS.PRG asks
+
+    media->reset();                         // new device - no stream, ce_media starts when CE_VIDEO / CE_AUDIO asks
 }
 
 HddClient::~HddClient()
@@ -88,6 +93,7 @@ HddClient::~HddClient()
     delete translated;
     delete netAdapter;
     delete browser;
+    delete media;
     delete slm;
 }
 
@@ -214,6 +220,11 @@ void HddClient::handleAcsiCommand(uint8_t *bufIn)
         case HOSTMOD_BROWSER:                           // web browser (CE_BROWS.PRG)
             wasHandled = true;
             browser->processCommand(pCmd);
+            break;
+
+        case HOSTMOD_MEDIA_STREAMING:                   // video / audio player (CE_VIDEO.TTP, CE_AUDIO.TTP)
+            wasHandled = true;
+            media->processCommand(pCmd);
             break;
         }
     }

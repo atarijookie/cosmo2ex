@@ -36,7 +36,7 @@
 #define HOSTMOD_TRANSLATED_DISK     3
 #define HOSTMOD_NETWORK_ADAPTER     4
 #define HOSTMOD_FDD_SETUP           5
-#define HOSTMOD_MEDIA_STREAMING     6
+#define HOSTMOD_MEDIA_STREAMING     6       // video / audio player - CE_VIDEO.TTP, CE_AUDIO.TTP, see hdd/media/
 // 7 = HOSTMOD_RAW_NET - answered on the Pico itself (ce_pico_hdd/sting_net.h, for ce_eth.stx), never comes here
 #define HOSTMOD_BROWSER             8       // web browser - CE_BROWS.PRG, see hdd/browser/
 
