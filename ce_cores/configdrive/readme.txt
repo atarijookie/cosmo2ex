@@ -45,10 +45,11 @@ file on a translated drive (drag it on
 the program, or type its path) - the
 host decodes it with ffmpeg (ce_media,
 see MEDIA_* in .env), the ST only shows
-and plays. ST / STE: ST low (or ST high
-on a mono monitor), TT: half size in the
-middle of the screen. Sound: DMA sound
-on STE / TT / Falcon, YM chip on ST.
+and plays. Full screen in ST low (or ST
+high on a mono monitor), on the TT too
+(a TT high monitor: half size in the
+middle). Sound: DMA sound on STE / TT /
+Falcon, YM chip on ST.
 Options: -l<ms> buffer (default 1000),
 -f<fps> max frame rate, -s<sec> start,
 -n no sound. Keys: Esc quit, Space

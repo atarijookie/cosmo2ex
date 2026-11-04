@@ -109,7 +109,7 @@ static void appendTime(char *out, uint32_t ms)
 // s cut to fit from col to the right edge
 static void printFit(int16_t col, const char *s)
 {
-    char buf[84];
+    char buf[168];
     int16_t max = cols - col - 1;
     if(max > (int16_t) sizeof(buf) - 1) {
         max = sizeof(buf) - 1;
@@ -151,7 +151,7 @@ void uiStart(const char *path)
 {
     const char *name = path;
     const char *p;
-    char line[84];
+    char line[168];                                                 // up to 160 columns (TT high)
     uint8_t afmt = playerAudioFormat();
 
     lineaInit();

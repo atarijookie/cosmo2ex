@@ -6,6 +6,7 @@
 //             -f<fps>  most frames per second (video)
 //             -s<sec>  start at this second
 //             -n       no sound
+//             -d       debug log to X:\CE_MEDIA.LOG (X = drive of the file)
 //             -p<n>    VBLs between a new screen address and its palette (default 1)
 //   keys:     Esc / Q quit, Space pause, Left / Right -+10 s, Down / Up -+60 s
 //
@@ -22,8 +23,10 @@
 #include "player.h"
 #include "app.h"
 #include "ui.h"
+#include "dbg.h"
 
 extern BASEPAGE *_base;
+extern const char buildStamp[];
 
 #define KEY_ESC     0x01
 #define KEY_Q       0x10
@@ -126,9 +129,10 @@ int appMain(uint8_t wantVideo)
     PlayerOpts  o;
     char        args[128], path[256];
     const char *p;
-    uint8_t     noSound = FALSE, quit = FALSE, video;
+    uint8_t     noSound = FALSE, quit = FALSE, video, debug = FALSE;
     int         len, i;
-    uint32_t    lastStatus = 0;
+    uint32_t    lastStatus = 0, dbgLast = 0;
+    int         dbgCount = 0;
 
     memset(&o, 0, sizeof(o));
     o.latencyMs = 1000;
@@ -159,6 +163,7 @@ int appMain(uint8_t wantVideo)
             case 's':   o.startMs   = parseNum(&p) * 1000;      break;
             case 'p':   o.palDelay  = (uint8_t) parseNum(&p);   break;
             case 'n':   noSound     = TRUE;                     break;
+            case 'd':   debug       = TRUE;                     break;
         }
         while(*p && *p != ' ') {
             p++;
@@ -169,9 +174,12 @@ int appMain(uint8_t wantVideo)
     if(i == 0) {
         print("\r\nusage: ");
         print(wantVideo ? "CE_VIDEO" : "CE_AUDIO");
-        print(" [-l<ms>] [-f<fps>] [-s<sec>] [-n] file\r\n");
+        print(" [-l<ms>] [-f<fps>] [-s<sec>] [-n] [-d] file\r\n");
         print("The file must be on a CosmosEx translated drive.\r\n");
         print("Keys: Esc quit, Space pause, arrows seek.\r\n");
+        print("Build ");
+        print(buildStamp);
+        print("\r\n");
         waitKey();
         return 1;
     }
@@ -181,6 +189,10 @@ int appMain(uint8_t wantVideo)
     print(path);
     print("\r\n");
 
+    dbgStart(debug ? path[0] : 0);
+    dbgLog(wantVideo ? "CE_VIDEO build" : "CE_AUDIO build");
+    dbgLog(buildStamp);
+    dbgLog(path);
     if(!playerDetect(&o, wantVideo, noSound)) {
         return fail(playerError);
     }
@@ -203,14 +215,22 @@ int appMain(uint8_t wantVideo)
         playerStop();                                       // gives back what it took, closes the stream on the host
         return fail(playerError);
     }
+    dbgLog("started, mouse off");
     mouseReports(FALSE);                                    // mouse moves interrupt the ST - not needed while playing
     if(!video) {
         uiStart(path);
+        dbgLog("screen drawn");
     }
 
     while(!quit) {
         if(!playerPoll()) {
             break;
+        }
+
+        if(debug && dbgCount < 10 && getTicksAsUser() - dbgLast >= 100) {     // the first 5 s: is it going on?
+            dbgLast = getTicksAsUser();
+            dbgCount++;
+            dbgLogNum("position ms", playerPositionMs());
         }
 
         while(Bconstat(2)) {
@@ -235,11 +255,13 @@ int appMain(uint8_t wantVideo)
     }
 
     playerStop();
+    dbgLog("player stopped, mouse on");
     mouseReports(TRUE);
     if(!video) {
         uiEnd();
     }
 
+    dbgLog("printing the stats");
     print("\r\n");
     if(playerError[0]) {
         return fail(playerError);
@@ -256,5 +278,6 @@ int appMain(uint8_t wantVideo)
     print("x, chunk buffers ");
     printNum(playerStats.chunkBuffers, 1);
     print("\r\n");
+    dbgLog("end");
     return 0;
 }

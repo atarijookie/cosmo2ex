@@ -9,6 +9,7 @@
 #include "../libacsiscsi/hdd_if.h"
 #include "med.h"
 #include "player.h"
+#include "dbg.h"
 
 // Screen address and palette: the VBL routine writes the video base registers, which the shifter takes at the start
 // of the NEXT frame, while palette registers act at once. So the palette of a new frame is written 'palDelay' VBLs
@@ -48,6 +49,8 @@
 #define YM_WRITE        (*((volatile uint8_t *) 0xffff8802))
 #define MFP_TACR        (*((volatile uint8_t *) 0xfffffa19))
 #define MFP_TADR        (*((volatile uint8_t *) 0xfffffa1f))
+#define VBL_VECTOR      (*((volatile uint32_t *) 0x70))  // level 4 autovector
+#define ST_SHIFT_MODE   (*((volatile uint8_t *)  0xffff8260))
 #define TIMER_A_VECTOR  (*((volatile uint32_t *) 0x134))
 
 PlayerStats playerStats;
@@ -115,6 +118,10 @@ static uint16_t oldPal[16];
 static uint16_t oldTTPal[256];
 static uint8_t  oldConterm, oldMixer;
 static uint32_t oldTimerA;
+void            vblHandler(void);       // vbl.s - instead of TOS's VBL handler while the DMA sound is ours
+static uint32_t oldVblVector;
+static uint8_t  oldStShift;
+static uint16_t oldTTShift;
 static int16_t  vblSlot = -1;
 
 //--------------------------------------------------------------------------------------------------------------------
@@ -138,8 +145,12 @@ uint8_t playerDetect(PlayerOpts *o, uint8_t wantVideo, uint8_t noSound)
     o->vmode = MED_VMODE_NONE;
     if(wantVideo) {
         switch(o->machine) {
-            case MED_MACH_TT:                               // TT high monitor shows only TT high, VGA all the rest
-                o->vmode = (rez == 6) ? MED_VMODE_TT_HIGH_WIN : MED_VMODE_TT_MID_WIN;
+            case MED_MACH_TT:                               // full screen ST modes: 32 kB frames (20 fps over ACSI),
+                switch(rez) {                               // shown straight from the chunk, no CPU work. TT low / mid
+                    case 6:  o->vmode = MED_VMODE_TT_HIGH_WIN;  break;  // would need 77..154 kB frames for full screen.
+                    case 2:  o->vmode = MED_VMODE_ST_HIGH;      break;  // TT high monitor shows only TT high - a window
+                    default: o->vmode = MED_VMODE_ST_LOW;       break;  // ST low / mid, TT low / mid (VGA)
+                }
                 break;
             case MED_MACH_FALCON:                           // only its ST compatible modes, no switching
                 if(rez == 0) {
@@ -181,6 +192,8 @@ uint8_t playerOpen(PlayerOpts *o, const char *atariPath, void (*progress)(const 
         strcpy(playerError, "Not enough memory");
         return FALSE;
     }
+    dbgLogNum("machine / vmode / aout", (o->machine << 16) | (o->vmode << 8) | o->aout);
+    dbgLogNum("medBuf", (uint32_t) medBuf);
     if(!medFind(o->machine)) {
         strcpy(playerError, "CosmosEx with the media module not found");
         return FALSE;
@@ -195,7 +208,9 @@ uint8_t playerOpen(PlayerOpts *o, const char *atariPath, void (*progress)(const 
     hdr[MED_OPEN_MAX_SECTORS] = MAXSECTORS;
     putDwordBE(hdr + MED_OPEN_START_MS, o->startMs);
 
+    dbgLog("device found, OPEN");
     st = medOpen(hdr, atariPath);
+    dbgLogNum("OPEN status", st);
     switch(st) {
         case MED_OK:                break;
         case MED_ERR_NOT_FOUND:     strcpy(playerError, "File not found, or not on a translated drive"); return FALSE;
@@ -540,6 +555,15 @@ static void takeSoundSuper(void)
 {
     if(afmt == MED_AFMT_DMA_S8_MONO) {
         DMA_CTRL = 0;
+        // the sound must not look like a monitor change to TOS's VBL handler - see vbl.s
+        oldStShift = ST_SHIFT_MODE;
+        if(opts.machine == MED_MACH_TT) {
+            oldTTShift = TT_SHIFT_MODE;
+        }
+        if(opts.machine == MED_MACH_STE || opts.machine == MED_MACH_TT) {
+            oldVblVector = VBL_VECTOR;
+            VBL_VECTOR   = (uint32_t) vblHandler;
+        }
     } else if(afmt == MED_AFMT_YM) {
         int r;
         YM_SELECT = 7;
@@ -559,7 +583,22 @@ static void takeSoundSuper(void)
 static void giveSoundSuper(void)
 {
     if(afmt == MED_AFMT_DMA_S8_MONO) {
+        uint32_t until;
         DMA_CTRL = 0;
+        until = HZ200 + 10;                                 // 50 ms: GPIP 7 is back to the monitor's level, and a few
+        while((int32_t) (HZ200 - until) < 0) {              // VBLs saw that
+        }
+        if(oldVblVector) {
+            VBL_VECTOR   = oldVblVector;
+            oldVblVector = 0;
+        }
+        if(opts.machine == MED_MACH_TT) {                   // in case the mode was changed anyway
+            if(TT_SHIFT_MODE != oldTTShift) {
+                TT_SHIFT_MODE = oldTTShift;
+            }
+        } else if(ST_SHIFT_MODE != oldStShift) {
+            ST_SHIFT_MODE = oldStShift;
+        }
     } else if(afmt == MED_AFMT_YM) {
         int r;
         MFP_TACR = 0;
@@ -676,7 +715,12 @@ uint8_t playerStart(void)
         wantK = 1;                                          // audio only: the audio is copied out right away
     }
 
+    dbgLogNum("start: afmt / vmode / frames per chunk", (afmt << 16) | (vmode << 8) | framesPerChunk);
+    dbgLogNum("rate", rate);
+    dbgLogNum("chunk bytes", chunkBytes);
+    dbgLogNum("audio max", audioMax);
     avail = (uint32_t) (tt ? Mxalloc(-1, 0) : Malloc(-1));
+    dbgLogNum("free (largest block)", avail);
     for(k = wantK; k >= (video ? 2 : 1); k--) {
         ringSize = 0;
         if(afmt != MED_AFMT_NONE) {
@@ -710,7 +754,11 @@ uint8_t playerStart(void)
     }
     playerStats.latencyMs = (uint16_t) (latencyTicks * 1000 / rate);
 
+    dbgLogNum("chunk buffers", k);
+    dbgLogNum("ring bytes", ringSize);
+    dbgLogNum("allocating", need);
     mem = (uint8_t *) (tt ? Mxalloc(need, 0) : Malloc(need));
+    dbgLogNum("memory at", (uint32_t) mem);
     if(!mem || (int32_t) mem < 0) {
         mem = NULL;
         strcpy(playerError, "Not enough memory");
@@ -768,15 +816,22 @@ uint8_t playerStart(void)
             case MED_VMODE_TT_MID_WIN:  targetRez = 4;  break;
             case MED_VMODE_TT_HIGH_WIN: targetRez = 6;  break;
         }
-        if(ttMode) {                                        // EsetShift - no VDI reinit, restored the same way
-            if(targetRez != oldRez) {
-                EsetShift((oldShift & 0xf8ff) | (targetRez << 8));
-            }
-            Setscreen(screens[0], screens[0], -1);
-        } else {
-            Setscreen(screens[0], screens[0], (targetRez != oldRez) ? targetRez : -1);
+        // Setscreen with the resolution, on the TT too: it sets TOS's own screen state (Line-A, VT52) with the mode -
+        // only switching the hardware (EsetShift) left the TT desktop garbled after ST mid -> ST low -> ST mid
+        dbgLogNum("video: old rez", oldRez);
+        if(ttMode) {
+            dbgLogNum("video: old TT shift", (uint16_t) oldShift);
+        }
+        dbgLogNum("video: Setscreen to rez", (targetRez != oldRez) ? targetRez : 0xffff);
+        Setscreen(screens[0], screens[0], (targetRez != oldRez) ? targetRez : -1);
+        dbgLogNum("video: Getrez now", Getrez());
+        if(ttMode && targetRez != oldRez && Getrez() != targetRez) {    // TOS didn't take that mode - the hardware at least
+            EsetShift((oldShift & 0xf8ff) | (targetRez << 8));
         }
         Vsync();
+        if(ttMode) {
+            dbgLogNum("video: TT shift now", (uint16_t) EgetShift());
+        }
         Supexec(blackPaletteSuper);                         // a mode switch may have set the default palette
         videoTaken = 1;
 
@@ -791,7 +846,10 @@ uint8_t playerStart(void)
 
     // sound
     if(afmt != MED_AFMT_NONE) {
+        dbgLogNum("ring at", (uint32_t) ring);
+        dbgLog("take sound");
         Supexec(takeSoundSuper);
+        dbgLog("sound taken");
         if(afmt == MED_AFMT_YM) {
             medKeepFlock = 1;
             hdIf.forceFlock = 1;                            // flock stays ours - ACSI must not wait for it
@@ -801,7 +859,9 @@ uint8_t playerStart(void)
         soundTaken = 1;
     }
 
+    dbgLog("install VBL routine");
     Supexec(installVblSuper);
+    dbgLogNum("VBL slot", (uint32_t) vblSlot);
     if(vblSlot < 0) {
         strcpy(playerError, "No free VBL slot");
         playerStop();
@@ -933,6 +993,10 @@ static uint8_t fetch(void)
     }
 
     playerStats.chunks++;
+    if(playerStats.chunks <= 3) {
+        dbgLogNum("chunk: bytes of audio", getDwordBE(buf + MED_CHUNK_AUDIO_BYTES));
+        dbgLogNum("chunk: audio start", getDwordBE(buf + MED_CHUNK_AUDIO_START));
+    }
     genStartMs = getDwordBE(buf + MED_CHUNK_GEN_START_MS);
     n = buf[MED_CHUNK_FRAME_COUNT];
     if(n > framesPerChunk) {
@@ -1001,7 +1065,10 @@ uint8_t playerPoll(void)
         if(endReached || bufferedTicks() >= latencyTicks || !canFetch()) {
             buffering = 0;
             if(afmt == MED_AFMT_NONE || audWritten > audPlayed) {
+                dbgLogNum("sound on: played", audPlayed);
+                dbgLogNum("sound on: written", audWritten);
                 Supexec(soundOnSuper);
+                dbgLog("sound is on");
                 running = 1;
             } else if(endReached) {
                 finished = 1;
@@ -1103,6 +1170,7 @@ void playerStop(void)
     vblActive = 0;
     running = 0;
 
+    dbgLog("stop");
     if(vblInstalled) {
         Supexec(removeVblSuper);
         vblInstalled = 0;
@@ -1121,22 +1189,33 @@ void playerStop(void)
         flockTaken = 0;
     }
     if(videoTaken) {
+        dbgLogNum("stop: Getrez", Getrez());
         if(opts.machine == MED_MACH_TT) {
-            if(EgetShift() != oldShift) {
+            dbgLogNum("stop: TT shift", (uint16_t) EgetShift());
+        }
+        dbgLogNum("stop: Setscreen to rez", (Getrez() != oldRez) ? oldRez : 0xffff);
+        Setscreen(oldLog, oldPhys, (Getrez() != oldRez) ? oldRez : -1);    // also resets the palette
+        dbgLogNum("stop: Getrez now", Getrez());
+        if(opts.machine == MED_MACH_TT) {
+            dbgLogNum("stop: TT shift now", (uint16_t) EgetShift());
+            if(EgetShift() != oldShift) {                   // mode, and the palette bank of TT low / mid
+                dbgLog("stop: EsetShift");
                 EsetShift(oldShift);
             }
-            Setscreen(oldLog, oldPhys, -1);
+            dbgLog("stop: TT palette");
             EsetPalette(0, 256, oldTTPal);
-        } else {
-            Setscreen(oldLog, oldPhys, (Getrez() != oldRez) ? oldRez : -1);
         }
+        dbgLog("stop: ST palette");
         Setpalette(oldPal);
         Vsync();
+        dbgLog("stop: cursor, mouse");
         (void) Cursconf(1, 0);
         lineaShowMouse();
         videoTaken = 0;
+        dbgLog("stop: video given back");
     }
 
+    dbgLog("stop: CLOSE");
     medClose();
 
     if(mem) {

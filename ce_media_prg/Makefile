@@ -26,7 +26,7 @@ AT_0 := @
 AT_1 :=
 AT = $(AT_$(V))
 
-COMMON  = app.o med.o player.o ui.o ymisr.o
+COMMON  = app.o dbg.o med.o player.o ui.o vbl.o version.o ymisr.o
 STARTUP = startup.s
 OBJS030 = ../libacsiscsi/cache030.o
 DEPS    = $(patsubst %.c,%.d,$(wildcard *.c))
@@ -54,6 +54,10 @@ $(CONFIGDRIVE)/%.ttp: %.ttp
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# build stamp: date and time of this build, compiled again every time
+version.o: FORCE
+	$(CC) $(CFLAGS) -DBUILD_STAMP='"$(shell date '+%Y-%m-%d %H:%M:%S')"' -c version.c -o $@
+
 %.o: %.s
 	$(AT)$(AS) $(ASFLAGS) $< -o $@
 
@@ -63,7 +67,7 @@ $(CONFIGDRIVE)/%.ttp: %.ttp
 clean:
 	$(AT)rm -f $(TARGETS) *.o *.d
 
-.PHONY: all clean
+.PHONY: all clean FORCE
 .SECONDARY:
 
 ifneq ($(MAKECMDGOALS),clean)
