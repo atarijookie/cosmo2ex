@@ -90,6 +90,7 @@ void TranslatedDisk::setMac(uint8_t* mac)
         memcpy(this->mac, mac, 6);
         loadSettings();
         findAttachedDisks();
+        loadClientState();                  // same device as before ce_cores restart / reconnect? continue on its drive & paths
     }
 }
 
@@ -251,15 +252,144 @@ void TranslatedDisk::resetClientState(void)
     tempFindStorage.clear();                // previous client's Fsfirst() / Fsnext() results
     clearFindStorages();
 
+    resetDriveAndPaths();                   // A:, root on every drive - until the client's MAC is known (setMac() loads its saved state)
+
+    for(int i=0; i<MAX_DRIVES; i++) {
+        conf[i].mediaChanged     = conf[i].enabled;         // new client should re-read enabled drives
+    }
+
+    pexecDriveIndex = -1;                   // no Pexec() image for this client yet
+
+    memset(mac, 0, 6);                      // MAC of this client not known yet - setMac() with its MAC will (re)load its settings and saved state
+    savedClientState.clear();
+}
+
+void TranslatedDisk::resetDriveAndPaths(void)
+{
     currentDriveIndex   = 0;                // start on A: (floppy, not ours) until ST calls Dsetdrv() / Dsetpath()
     currentDriveLetter  = 'A';
 
     for(int i=0; i<MAX_DRIVES; i++) {
         conf[i].currentAtariPath = HOSTPATH_SEPAR_STRING;   // back to root on every drive
-        conf[i].mediaChanged     = conf[i].enabled;         // new client should re-read enabled drives
+    }
+}
+
+std::string TranslatedDisk::clientStateFilePath(void)
+{
+    static const uint8_t noMac[6] = {0};
+
+    if(memcmp(mac, noMac, 6) == 0) {        // don't know which device this is? nowhere to store it
+        return "";
     }
 
-    pexecDriveIndex = -1;                   // no Pexec() image for this client yet
+    std::string dir = Utils::dotEnvValue("DATA_DIR", "", false);
+
+    if(dir.empty()) {
+        return "";
+    }
+
+    char name[64];
+    snprintf(name, sizeof(name), "translated_state_%02X%02X%02X%02X%02X%02X.txt", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    return Utils::mergeHostPaths2(dir, name);
+}
+
+std::string TranslatedDisk::clientStateToString(void)
+{
+    // lines: 'drive <index>', then 'path <index> <full atari path with host separators>' for each drive not in root
+    char tmp[32];
+    snprintf(tmp, sizeof(tmp), "drive %d\n", currentDriveIndex);
+    std::string state = tmp;
+
+    for(int i=2; i<MAX_DRIVES; i++) {
+        if(!conf[i].enabled || conf[i].currentAtariPath.empty() || conf[i].currentAtariPath == HOSTPATH_SEPAR_STRING) {
+            continue;
+        }
+
+        snprintf(tmp, sizeof(tmp), "path %d ", i);
+        state += tmp + conf[i].currentAtariPath + "\n";
+    }
+
+    return state;
+}
+
+void TranslatedDisk::saveClientState(void)
+{
+    std::string path = clientStateFilePath();
+
+    if(path.empty()) {
+        return;
+    }
+
+    std::string state = clientStateToString();
+
+    if(state == savedClientState) {         // nothing changed? don't write (Dsetpath() is called often by the desktop)
+        return;
+    }
+
+    std::string tmpPath = path + ".tmp";    // write + rename - a crash while writing won't leave a half-written state
+    FILE *f = fopen(tmpPath.c_str(), "w");
+
+    if(!f) {
+        logHdd(LOG_ERROR, "TranslatedDisk::saveClientState - failed to open %s - %s", tmpPath.c_str(), strerror(errno));
+        return;
+    }
+
+    bool ok = (fwrite(state.data(), 1, state.size(), f) == state.size());
+    ok = (fclose(f) == 0) && ok;
+
+    if(!ok || rename(tmpPath.c_str(), path.c_str()) != 0) {
+        logHdd(LOG_ERROR, "TranslatedDisk::saveClientState - failed to write %s - %s", path.c_str(), strerror(errno));
+        unlink(tmpPath.c_str());
+        return;
+    }
+
+    savedClientState = state;
+}
+
+void TranslatedDisk::loadClientState(void)
+{
+    std::string path = clientStateFilePath();
+    FILE *f = path.empty() ? NULL : fopen(path.c_str(), "r");
+
+    if(!f) {                                // no saved state - stay on A: and roots
+        return;
+    }
+
+    char line[1024];
+    while(fgets(line, sizeof(line), f)) {
+        line[strcspn(line, "\r\n")] = 0;
+
+        int drive = -1, pos = 0;
+
+        if(sscanf(line, "drive %d", &drive) == 1) {
+            if(drive >= 0 && drive < MAX_DRIVES) {      // floppies too - ST might be on A: now
+                currentDriveIndex   = drive;
+                currentDriveLetter  = 'A' + drive;
+            }
+            continue;
+        }
+
+        if(sscanf(line, "path %d %n", &drive, &pos) == 1 && pos > 0) {
+            if(drive < 2 || drive >= MAX_DRIVES || !conf[drive].enabled) {     // drive not translated (anymore)? stay in root
+                continue;
+            }
+
+            std::string atariPath = line + pos;
+            std::string hostPath;
+            createFullHostPath(atariPath, drive, hostPath);
+
+            if(hostPathExists(hostPath, true)) {        // dir still there? continue in it
+                conf[drive].currentAtariPath = atariPath;
+            }
+        }
+    }
+
+    fclose(f);
+
+    savedClientState = clientStateToString();       // what we use now - dropped paths get removed from the file with the next change
+
+    logHdd(LOG_DEBUG, "TranslatedDisk::loadClientState - restored from %s: current drive %c:, current path there: %s", path.c_str(),
+        currentDriveLetter, conf[currentDriveIndex].currentAtariPath.c_str());
 }
 
 void TranslatedDisk::onGetMounts(uint8_t *cmd)
@@ -344,6 +474,9 @@ void TranslatedDisk::closeFileByIndex(int index)
 void TranslatedDisk::onInitialize(void)     // this method is called on the startup of CosmosEx translated disk driver
 {
     closeAllFiles();
+
+    resetDriveAndPaths();                       // ST was just reset - TOS is on root everywhere, CE_DD will Dsetdrv() the boot drive
+    saveClientState();                          // don't restore the pre-reset drive & paths after a ce_cores restart
 
     tempFindStorage.clear();
     clearFindStorages();

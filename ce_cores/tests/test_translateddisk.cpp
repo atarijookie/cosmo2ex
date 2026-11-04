@@ -451,3 +451,63 @@ TEST_CASE("translated disk: the config drive's root leaves out programs whose ho
         HostTools::setStateForTests((HostTools::Tool) t, -1);
     }
 }
+
+//-----------------------------------------------------------------------------------------------------------------
+// ce_cores restarted (or the device reconnected) while the ST keeps running - CE_DD won't tell us its current drive
+// and paths again, so continue with the ones saved for this device (MAC)
+
+TEST_CASE("translated disk: current drive & path survive ce_cores restart, ST reset drops them")
+{
+    TranslatedDiskHarness h;
+
+    std::string oldDataDir = dotEnv["DATA_DIR"], oldInfDir = CONFIG_DRIVE_INF_DIR;
+    char tmplData[] = "/tmp/ce_test_data_XXXXXX";
+    REQUIRE(mkdtemp(tmplData) != NULL);
+    std::string dataDir = tmplData;
+    dotEnv["DATA_DIR"]      = dataDir;
+    CONFIG_DRIVE_INF_DIR    = dataDir;          // onInitialize() writes DESKTOP.INF there
+
+    uint8_t mac[6] = {0xCA, 0x4E, 0x3E, 0x01, 0x02, 0x03};
+    Settings s(mac);
+    s.setString("PATH_GEM_D", h.drive.c_str());
+
+    REQUIRE(mkdir(h.host("TESTS").c_str(), 0755) == 0);
+    h.touch("TESTS/X.TXT");
+
+    // device connects, ST goes to D:\TESTS
+    h.td->resetClientState();
+    h.td->setMac(mac);
+    h.call(GEMDOS_Dsetdrv, {}, "", 3);
+    CHECK(h.call(GEMDOS_Dsetpath, {}, "\\TESTS") == E_OK);
+    CHECK(h.fattribGet("X.TXT") == 0);                          // found relative to current path
+
+    // ce_cores restarted - device connects again, ST still in D:\TESTS
+    delete h.td;
+    h.td = new TranslatedDisk(&h.dt, &h.hwConfig);
+    h.td->resetClientState();
+    h.td->setMac(mac);
+
+    CHECK(h.call(GEMDOS_Dgetdrv, {}, "") == 3);
+    CHECK(h.fattribGet("X.TXT") == 0);
+
+    // same device reconnects without restart - same thing
+    h.td->resetClientState();
+    h.td->setMac(mac);
+    CHECK(h.call(GEMDOS_Dgetdrv, {}, "") == 3);
+
+    // ST reset - CE_DD initializes, TOS is in roots again; restart after that must not bring D:\TESTS back
+    h.call(GD_CUSTOM_initialize, {0x01, 0x04, 0, 1, 0, 3}, "");
+    delete h.td;
+    h.td = new TranslatedDisk(&h.dt, &h.hwConfig);
+    h.td->resetClientState();
+    h.td->setMac(mac);
+
+    CHECK(h.call(GEMDOS_Dgetdrv, {}, "") == E_NOTHANDLED);      // on A: - not ours
+    h.call(GEMDOS_Dsetdrv, {}, "", 3);
+    CHECK(h.fattribGet("X.TXT") != 0);                          // D:\ root, no X.TXT there - error
+
+    dotEnv["DATA_DIR"]      = oldDataDir;
+    CONFIG_DRIVE_INF_DIR    = oldInfDir;
+    std::string cmd = "rm -rf '" + dataDir + "'";             // settings of this MAC are in h.settingsDir - removed by h
+    system(cmd.c_str());
+}

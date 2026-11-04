@@ -52,6 +52,7 @@ void TranslatedDisk::onDsetdrv(uint8_t *cmd)
     if(newDrive < 2) {                              // floppy drive selected? store current drive, but don't handle
         currentDriveLetter  = 'A' + newDrive;       // store the current drive
         currentDriveIndex   = newDrive;
+        saveClientState();
 
         logHdd(LOG_DEBUG, "TranslatedDisk::onDsetdrv -- new drive index: %d (letter %c) -> it's a floppy, not handled, current drive changed", newDrive, currentDriveLetter);
 
@@ -67,6 +68,7 @@ void TranslatedDisk::onDsetdrv(uint8_t *cmd)
 
         currentDriveLetter  = 'A' + newDrive;       // store the current drive
         currentDriveIndex   = newDrive;
+        saveClientState();
 
         uint16_t drives = getDrivesBitmap();
         dataTrans->addDataWord(drives);             // return the drives in data
@@ -161,6 +163,7 @@ void TranslatedDisk::onDsetpath(uint8_t *cmd)
 
     // if path exists, store it and return OK
     conf[currentDriveIndex].currentAtariPath = fullAtariPath;
+    saveClientState();
     dataTrans->setStatus(E_OK);
 }
 

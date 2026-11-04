@@ -117,6 +117,15 @@ private:
 
     TranslatedFiles files[MAX_FILES];       // open files
 
+    // current drive + current path of each drive, stored per device (MAC) in DATA_DIR - so a restarted ce_cores
+    // (or a reconnected device) continues where the ST is, instead of on A:\ while CE_DD still thinks it's on e.g. O:\TESTS
+    std::string savedClientState;           // what is in the file now - don't rewrite it when nothing changed
+    std::string clientStateFilePath(void);
+    std::string clientStateToString(void);
+    void saveClientState(void);
+    void loadClientState(void);
+    void resetDriveAndPaths(void);
+
     char asciiAtariToPc[256];
 
 	TFindStorage tempFindStorage;
