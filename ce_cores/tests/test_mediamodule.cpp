@@ -258,7 +258,7 @@ TEST_CASE("media module - open before ce_media connects, info, ym table, chunks"
     CHECK(op[4 + MED_OPEN_MACHINE] == MED_MACH_STE);
     CHECK(op[4 + MED_OPEN_VMODE] == MED_VMODE_ST_LOW);
     CHECK(Utils::getWord(&op[4 + MED_OPEN_LATENCY]) == 1000);
-    CHECK(std::string(op.begin() + 4 + MED_OPEN_PATH, op.end()) == "/media/VIDEO\\CLIP.MP4");
+    CHECK(std::string(op.begin() + 4 + MED_OPEN_PATH, op.end()) == Utils::pathToUi("/media/VIDEO\\CLIP.MP4"));    // ce_media gets the path in the UI form (C:\... on Cygwin)
 
     REQUIRE(h.command(MED_CMD_GET_INFO) == MED_OK);
     CHECK(h.dt.reply[MED_INFO_STATE] == MED_STATE_STARTING);
@@ -505,7 +505,7 @@ TEST_CASE("media module - progress from ce_media while it gets ready, OPEN again
     REQUIRE(fm2.connectTo(h.mm->getLink().port()));
     fm2.expect(MLINK_HELLO);
     std::vector<uint8_t> op = fm2.expect(MLINK_OPEN);
-    CHECK(std::string(op.begin() + 4 + MED_OPEN_PATH, op.end()) == "/media/A.MP4");
+    CHECK(std::string(op.begin() + 4 + MED_OPEN_PATH, op.end()) == Utils::pathToUi("/media/A.MP4"));
 }
 
 TEST_CASE("media module - MEDIA_BIN that doesn't exist is reported to the ST") {
