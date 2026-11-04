@@ -15,10 +15,10 @@ T=x86_64-pc-cygwin
 # current sources to the build dir - build outputs of the checkout (Linux ones) are excluded, and the excluded files
 # in the build dir (Cygwin ones from the previous build) are kept, so make rebuilds only what changed
 echo "[windows-cross] syncing sources"
-for d in libdospath ce_cores webserver third_party; do
+for d in libdospath ce_cores webserver ce_media ce_browser third_party; do
     rsync -a --delete \
         --exclude '*.o' --exclude '*.d' --exclude '*.a' --exclude '*.elf' --exclude '*.exe' \
-        --exclude '/obj/' --exclude '/lib/' \
+        --exclude '/obj/' --exclude '/lib/' --exclude '/ce_media' --exclude '/ce_browser' --exclude '/preview_out/' \
         "$SRC/$d/" "$BUILD/$d/"
 done
 mkdir -p "$BUILD/ce_cores/obj" "$BUILD/ce_cores/lib"
@@ -34,6 +34,12 @@ echo "[windows-cross] building webserver + ce_run"
     CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o "$OUT/webserver.exe" . &&
     CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o "$OUT/ce_run.exe" ./cmd/ce_run)
 
+for prog in ce_media ce_browser; do
+    echo "[windows-cross] building $prog"
+    (cd "$BUILD/$prog" &&
+        CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o "$OUT/$prog.exe" .)
+done
+
 #-------------
 # ready to run folder - the same layout as the Windows zip made by release/build.sh
 echo "[windows-cross] assembling $OUT"
@@ -48,6 +54,7 @@ if [ ! -f "$OUT/.env" ]; then
     cp "$SRC/release/files/windows.env" "$OUT/.env"
 fi
 cp "$SRC/release/files/windows-README.txt" "$OUT/README.txt"
+cp "$SRC/release/files/ce_setup_tools.ps1" "$SRC/release/files/ce_setup_tools.bat" "$OUT/"
 echo "$VERSION" > "$OUT/VERSION"
 
 rsync -a --delete "$SRC/webserver/static/" "$OUT/static/"

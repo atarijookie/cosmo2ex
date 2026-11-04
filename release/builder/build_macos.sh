@@ -1,6 +1,7 @@
 #!/bin/sh
-# Builds the macOS programs as universal binaries (Apple Silicon arm64 + Intel x86_64): ce_cores, webserver and
-# ce_run (the launcher, starts and stops ce_cores + webserver). Run on a Mac with the Xcode command line tools and Go.
+# Builds the macOS programs as universal binaries (Apple Silicon arm64 + Intel x86_64): ce_cores, webserver,
+# ce_run (the launcher, starts and stops ce_cores + webserver) ce_media (decoder for the video / audio players)
+# and ce_browser (renders the pages for CE_BROWS.PRG). Run on a Mac with the Xcode command line tools and Go.
 #
 # usage: build_macos.sh <repo dir> <output dir>
 #
@@ -57,16 +58,21 @@ strip "$OUT/ce_cores"
 #-------------
 # pure Go, no cgo - both architectures cross compile on either Mac
 cp -a "$SRC/webserver" "$BUILD/webserver"
+cp -a "$SRC/ce_media" "$BUILD/ce_media"
+cp -a "$SRC/ce_browser" "$BUILD/ce_browser"
 
-for prog in webserver ce_run; do
+for prog in webserver ce_run ce_media ce_browser; do
+    dir="$BUILD/webserver"
     pkg=.
     if [ "$prog" = ce_run ]; then
         pkg=./cmd/ce_run
+    elif [ "$prog" = ce_media ] || [ "$prog" = ce_browser ]; then
+        dir="$BUILD/$prog"
     fi
 
     for goarch in arm64 amd64; do
         echo "[macos $goarch] building $prog"
-        (cd "$BUILD/webserver" && CGO_ENABLED=0 GOOS=darwin GOARCH=$goarch \
+        (cd "$dir" && CGO_ENABLED=0 GOOS=darwin GOARCH=$goarch \
             go build -trimpath -ldflags "-s -w" -o "$BUILD/$prog-$goarch" "$pkg")
     done
 
@@ -77,13 +83,13 @@ done
 #-------------
 # Apple Silicon runs only signed code - the linkers sign ad-hoc, but strip changed ce_cores after that, so sign all
 # of them again (ad-hoc: no certificate, so Gatekeeper still warns about downloaded files - that needs a Developer ID)
-for prog in ce_cores webserver ce_run; do
+for prog in ce_cores webserver ce_run ce_media ce_browser; do
     codesign --force --sign - "$OUT/$prog"
     codesign --verify "$OUT/$prog"
 done
 
 # every binary must have both architectures
-for prog in ce_cores webserver ce_run; do
+for prog in ce_cores webserver ce_run ce_media ce_browser; do
     for arch in $ARCHS; do
         if ! lipo "$OUT/$prog" -verify_arch "$arch"; then
             echo "$prog has no $arch code" >&2

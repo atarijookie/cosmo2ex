@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds the Linux parts (ce_cores.elf + webserver) for one architecture.
+# Builds the Linux parts (ce_cores.elf, webserver, ce_media, ce_browser) for one architecture.
 # Called by release/build.sh - either inside the builder container, or directly on the host for --native builds.
 #
 # usage: build_linux.sh <arch> <repo dir> <output dir>
@@ -43,7 +43,7 @@ BUILD=$(mktemp -d)
 trap 'rm -rf "$BUILD"' EXIT
 
 echo "[$ARCH] copying sources"
-for d in libdospath ce_cores webserver third_party; do
+for d in libdospath ce_cores webserver ce_media ce_browser third_party; do
     cp -a "$SRC/$d" "$BUILD/"
 done
 
@@ -68,5 +68,16 @@ echo "[$ARCH] building webserver"
 cd "$BUILD/webserver"
 CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" GOARM="$GOARM" GO386="$GO386" \
     go build -trimpath -ldflags "-s -w" -o "$OUT/webserver" .
+
+#-------------
+# started by ce_cores, pure Go too: ce_media - decoder for the video / audio players (ffmpeg is a separate program),
+# ce_browser - renders the pages for CE_BROWS.PRG (Chrome is a separate program)
+for prog in ce_media ce_browser; do
+    echo "[$ARCH] building $prog"
+    cd "$BUILD/$prog"
+    rm -f "$prog"
+    CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" GOARM="$GOARM" GO386="$GO386" \
+        go build -trimpath -ldflags "-s -w" -o "$OUT/$prog" .
+done
 
 echo "[$ARCH] done"

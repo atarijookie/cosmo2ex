@@ -174,17 +174,18 @@ void MediaLink::spawnMedia(void)
     snprintf(addr, sizeof(addr), "127.0.0.1:%d", (int) listenPort);
     std::vector<std::string> args = { "serve", "-connect", addr };
 
-    struct { const char *key; const char *arg; } opts[] = {
-        { "MEDIA_FFMPEG",       "-ffmpeg" },
-        { "MEDIA_FFPROBE",      "-ffprobe" },
-        { "MEDIA_DOCKER_IMAGE", "-docker-image" },
-        { "MEDIA_YM_TABLE",     "-ym-table" },
+    // paths go back to the UI form: dotEnvValue() makes Cygwin paths of them, but ce_media is a native Windows program there
+    struct { const char *key; const char *arg; bool path; } opts[] = {
+        { "MEDIA_FFMPEG",       "-ffmpeg",          true },
+        { "MEDIA_FFPROBE",      "-ffprobe",         true },
+        { "MEDIA_DOCKER_IMAGE", "-docker-image",    false },
+        { "MEDIA_YM_TABLE",     "-ym-table",        true },
     };
     for(auto& o : opts) {
         std::string v = Utils::dotEnvValue(o.key, "", false);
         if(!v.empty()) {
             args.push_back(o.arg);
-            args.push_back(v);
+            args.push_back(o.path ? Utils::pathToUi(v) : v);
         }
     }
 

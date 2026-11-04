@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds the Windows programs (ce_cores.exe, webserver.exe, ce_run.exe) - run in a Cygwin shell (packages: gcc-g++,
+# Builds the Windows programs (ce_cores.exe, webserver.exe, ce_run.exe, ce_media.exe, ce_browser.exe) - run in a Cygwin shell (packages: gcc-g++,
 # make, curl) with Go for Windows in PATH. release/build.sh makes the release zip from the output, together with the
 # Atari programs and the other files (those need the m68k-atari-mint toolchain, which is not available in Cygwin).
 #
@@ -18,8 +18,8 @@
 #   - cygwin1.dll as a separate, replaceable DLL (not linked in statically)
 # All of that goes to <output dir>/licenses.
 #
-# The webserver and ce_run (the launcher, starts and stops ce_cores + webserver) are native Windows programs
-# (pure Go, no Cygwin).
+# The webserver, ce_run (the launcher, starts and stops ce_cores + webserver) and ce_media (decoder for the video /
+# audio players) and ce_browser (renders the pages for CE_BROWS.PRG), both started by ce_cores, are native Windows programs (pure Go, no Cygwin).
 
 set -eu
 
@@ -41,7 +41,7 @@ BUILD=$(mktemp -d)
 trap 'rm -rf "$BUILD"' EXIT
 
 echo "[windows] copying sources"
-for d in libdospath ce_cores webserver third_party; do
+for d in libdospath ce_cores webserver ce_media ce_browser third_party; do
     cp -R "$SRC/$d" "$BUILD/"       # not cp -a: setting the checkout's Windows ACLs / owner on the copy fails in Cygwin
 done
 
@@ -76,6 +76,12 @@ echo "[windows] building webserver + ce_run"
     go build -trimpath -ldflags "-s -w" -o "$(cygpath -w "$OUT/webserver.exe")" . &&
     CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
     go build -trimpath -ldflags "-s -w" -o "$(cygpath -w "$OUT/ce_run.exe")" ./cmd/ce_run)
+
+for prog in ce_media ce_browser; do
+    echo "[windows] building $prog"
+    (cd "$BUILD/$prog" && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+        go build -trimpath -ldflags "-s -w" -o "$(cygpath -w "$OUT/$prog.exe")" .)
+done
 
 #-------------
 echo "[windows] license files"

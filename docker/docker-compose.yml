@@ -1,6 +1,10 @@
 # Run from the repository root:
 #   docker compose -f docker/docker-compose.yml up --build
 #
+# Full variant - with ffmpeg and Chrome for the video / audio players and the web browser (CE_VIDEO.TTP,
+# CE_AUDIO.TTP, CE_BROWS.PRG), about 850 MB bigger, not for Pi 1 / Zero (arm/v6):
+#   CE_VARIANT=full docker compose -f docker/docker-compose.yml up --build
+#
 # Settings persist on the host (default: /opt/ce/settings, same as .env).
 # Override with CE_SETTINGS_HOST=/some/host/path
 #
@@ -44,8 +48,13 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: cosmo2ex
+      target: ${CE_VARIANT:-standard}
+    image: cosmo2ex:${CE_VARIANT:-standard}
     network_mode: host
+    security_opt:
+      # Chrome's sandbox (full variant, web browser) uses namespaces, which docker's default seccomp profile
+      # doesn't allow - without this ce_browser can't start Chrome. The container has the host's / and /dev already.
+      - seccomp=unconfined
     environment:
       # ce_cores log level (LOG_LEVEL in .env): 0 off, 1 errors, 2 + warnings, 3 + info, 4 + debug
       CE_LOG_LEVEL: ${CE_LOG_LEVEL:-3}

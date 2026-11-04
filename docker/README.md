@@ -26,9 +26,22 @@ machine, and the platform images only get files copied in. Debian has no
 ARMv6 base image, so linux/arm/v6 is a minimal Raspbian userland (just what
 entrypoint.sh needs: sh, coreutils, sed, tini).
 
+Two variants:
+- standard (the default) - CosmosEx alone, about 150 MB
+- full - also ffmpeg and Chrome headless shell, for the video / audio players
+  and the web browser (CE_VIDEO.TTP, CE_AUDIO.TTP, CE_BROWS.PRG), about 1 GB
+  (270 MB to download). amd64, arm64, arm/v7 and 386 - not arm/v6 (Pi 1 / Zero).
+  Build it with --target full, or docker/build_all.sh --full; released as
+  ghcr.io/<owner>/cosmo2ex:<version>-full. The web browser needs the container
+  started with --security-opt seccomp=unconfined: Chrome's sandbox uses
+  namespaces, which docker's default seccomp profile doesn't allow. The compose
+  file sets it; with docker run add it yourself, else only the players work.
+
 Preferred run (persists settings, exposes the host filesystem, host network
 for UDP discovery broadcasts):
 docker compose -f docker/docker-compose.yml up --build
+The full variant:
+CE_VARIANT=full docker compose -f docker/docker-compose.yml up --build
 
 Interactive run - ce_cores and webserver output in the same console, each
 line prefixed with [cores] or [web]:

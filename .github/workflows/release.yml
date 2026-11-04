@@ -35,7 +35,7 @@ jobs:
       packages: read                            # CI pulls the ce-pico-builder image
 
   windows:
-    # ce_cores.exe + cygwin1.dll + licenses, webserver.exe, ce_run.exe - packed into the zip by the tarballs job
+    # ce_cores.exe + cygwin1.dll + licenses, webserver.exe, ce_run.exe, ce_media.exe, ce_browser.exe - packed into the zip by the tarballs job
     needs: ci
     runs-on: windows-2022
     defaults:
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: '1.22'
-          cache-dependency-path: webserver/go.sum
+          cache-dependency-path: "*/go.sum"                  # webserver, ce_browser
 
       - uses: cygwin/cygwin-install-action@v4
         with:
@@ -67,7 +67,7 @@ jobs:
           if-no-files-found: error
 
   macos:
-    # universal ce_cores, webserver, ce_run (arm64 + x86_64) - packed into the zip by the tarballs job
+    # universal ce_cores, webserver, ce_run, ce_media, ce_browser (arm64 + x86_64) - packed into the zip by the tarballs job
     needs: ci
     runs-on: macos-15
     steps:
@@ -76,7 +76,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: '1.22'
-          cache-dependency-path: webserver/go.sum
+          cache-dependency-path: "*/go.sum"                  # webserver, ce_browser
 
       - name: Build macOS programs
         run: release/builder/build_macos.sh . out/macos
@@ -174,6 +174,31 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=ce
           cache-to: type=gha,scope=ce,mode=max
+
+      # full variant: + ffmpeg and Chrome for the video / audio players and the web browser - tags :1.2.3-full
+      # (+ :latest-full); no arm/v6 (Debian has no packages for it)
+      - id: meta-full
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/cosmo2ex
+          tags: type=semver,pattern={{version}}
+          flavor: |
+            suffix=-full,onlatest=true
+
+      - name: Build and push the full variant
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: full
+          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/386
+          push: true
+          tags: ${{ steps.meta-full.outputs.tags }}
+          labels: ${{ steps.meta-full.outputs.labels }}
+          cache-from: |
+            type=gha,scope=ce
+            type=gha,scope=ce-full
+          cache-to: type=gha,scope=ce-full,mode=max
 
   pico-builder:
     # pushes ghcr.io/<owner>/ce-pico-builder:<hash of firmware/Dockerfile> (+ :latest), unless it's there already

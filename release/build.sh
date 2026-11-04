@@ -11,7 +11,7 @@
 # Needs:
 #   - m68k-atari-mint-gcc toolchain, for the Atari programs on the config drive (these are
 #     the same for every architecture, so they are built once, on this machine)
-#   - docker (not for --native) - ce_cores and webserver are built in the toolchain stage of docker/Dockerfile
+#   - docker (not for --native) - ce_cores, webserver, ce_media and ce_browser are built in the toolchain stage of docker/Dockerfile
 #   - g++, make, go, libudev-dev, libevdev-dev (only for --native)
 #   - python3 (only for windows / macos - makes the zip)
 #
@@ -83,7 +83,7 @@ if [ -n "$missing" ]; then
 fi
 
 if [ "$WINDOWS" -eq 1 ]; then
-    for f in ce_cores.exe cygwin1.dll webserver.exe ce_run.exe licenses/CYGWIN-NOTICE.txt; do
+    for f in ce_cores.exe cygwin1.dll webserver.exe ce_run.exe ce_media.exe ce_browser.exe licenses/CYGWIN-NOTICE.txt; do
         if [ ! -f "${WINDOWS_BIN:-}/$f" ]; then
             echo "windows: WINDOWS_BIN must be the output dir of builder/build_windows.sh, '${WINDOWS_BIN:-}/$f' not found" >&2
             exit 1
@@ -92,7 +92,7 @@ if [ "$WINDOWS" -eq 1 ]; then
 fi
 
 if [ "$MACOS" -eq 1 ]; then
-    for f in ce_cores webserver ce_run; do
+    for f in ce_cores webserver ce_run ce_media ce_browser; do
         if [ ! -f "${MACOS_BIN:-}/$f" ]; then
             echo "macos: MACOS_BIN must be the output dir of builder/build_macos.sh, '${MACOS_BIN:-}/$f' not found" >&2
             exit 1
@@ -124,6 +124,7 @@ cp -r "$ROOT/webserver/static"          "$COMMON/static"
 cp "$ROOT/ce_cores/ce_logo.bin"         "$COMMON/"
 cp "$ROOT/ce_cores/core/fdd_test.st"    "$COMMON/"
 cp "$RELEASE_DIR/files/ce_run.sh"       "$COMMON/"
+cp "$RELEASE_DIR/files/ce_setup_tools.sh" "$COMMON/"   # ffmpeg + Chrome for the players / browser (asks)
 echo "$VERSION" >                       "$COMMON/VERSION"
 
 # config drive - same layering as the docker image, then the freshly built Atari programs
@@ -140,7 +141,7 @@ cp "$ROOT/ce_media_prg/ce_video.ttp"     "$COMMON/configdrive/"
 cp "$ROOT/ce_media_prg/ce_audio.ttp"     "$COMMON/configdrive/"
 cp "$ROOT/test_ce/ce_tests.tos"          "$COMMON/configdrive/tests/"
 
-chmod 755 "$COMMON/ce_run.sh"
+chmod 755 "$COMMON/ce_run.sh" "$COMMON/ce_setup_tools.sh"
 
 #-------------
 # Linux programs - per architecture
@@ -174,7 +175,7 @@ for arch in $ARCHS; do
     mkdir -p "$PKG/bin"
 
     cp -a "$COMMON/." "$PKG/bin/"
-    cp "$BIN/ce_cores.elf" "$BIN/webserver" "$PKG/bin/"
+    cp "$BIN/ce_cores.elf" "$BIN/webserver" "$BIN/ce_media" "$BIN/ce_browser" "$PKG/bin/"
     cp "$RELEASE_DIR/files/ce.service" "$PKG/"
     cp "$ROOT/LICENSE" "$PKG/"
     echo "$VERSION" > "$PKG/VERSION"
@@ -192,7 +193,8 @@ if [ "$WINDOWS" -eq 1 ]; then
     mkdir -p "$PKG"
 
     cp -a "$COMMON/." "$PKG/"
-    rm "$PKG/ce_run.sh"                                         # ce_run.exe instead
+    rm "$PKG/ce_run.sh" "$PKG/ce_setup_tools.sh"                # ce_run.exe, ce_setup_tools.bat instead
+    cp "$RELEASE_DIR/files/ce_setup_tools.ps1" "$RELEASE_DIR/files/ce_setup_tools.bat" "$PKG/"
     cp "$RELEASE_DIR/files/windows.env" "$PKG/.env"
     cp "$RELEASE_DIR/files/windows-README.txt" "$PKG/README.txt"
     cp -r "$WINDOWS_BIN/." "$PKG/"
@@ -216,10 +218,10 @@ if [ "$MACOS" -eq 1 ]; then
     cp "$RELEASE_DIR/files/macos-README.txt" "$PKG/README.txt"
     cp "$RELEASE_DIR/files/CosmosEx.command" "$PKG/"
     cp "$ROOT/LICENSE" "$PKG/licenses/Cosmo2ex-license.txt"
-    for f in ce_cores webserver ce_run; do
+    for f in ce_cores webserver ce_run ce_media ce_browser; do
         cp "$MACOS_BIN/$f" "$PKG/"
     done
-    chmod 755 "$PKG/ce_cores" "$PKG/webserver" "$PKG/ce_run" "$PKG/CosmosEx.command"    # lost in CI artifacts
+    chmod 755 "$PKG/ce_cores" "$PKG/webserver" "$PKG/ce_run" "$PKG/ce_media" "$PKG/ce_browser" "$PKG/ce_setup_tools.sh" "$PKG/CosmosEx.command"    # lost in CI artifacts
 
     # python's zipfile keeps the permissions (Archive Utility restores them), so the programs stay executable
     rm -f "$OUT/$NAME.zip"

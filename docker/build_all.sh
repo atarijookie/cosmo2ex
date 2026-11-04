@@ -3,7 +3,9 @@
 # per platform into docker/out/ - copy it to the target and load it there with:
 #   docker load -i cosmo2ex-<platform>.tar.gz
 #
-# usage: docker/build_all.sh [platform ...]
+# usage: docker/build_all.sh [--full] [platform ...]
+#   --full:   the full variant (+ ffmpeg and Chrome for the players and the web browser), tagged cosmo2ex:full,
+#             saved as cosmo2ex-full-<platform>.tar.gz; not for linux/arm/v6
 #   platform: linux/amd64 linux/arm64 linux/arm/v7 linux/arm/v6 linux/386 (default: all of them)
 #     linux/arm64   - Pi 3 / 4 / 5 / Zero 2 W with 64-bit OS
 #     linux/arm/v7  - Pi 2 / 3 / 4 / 5 with 32-bit OS
@@ -21,10 +23,21 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT="$ROOT/docker/out"
 IMAGE=cosmo2ex
+TARGET=standard
+NAME=cosmo2ex
+ALL="linux/amd64 linux/arm64 linux/arm/v7 linux/arm/v6 linux/386"
+
+if [ "${1:-}" = --full ]; then
+    shift
+    IMAGE=cosmo2ex:full
+    TARGET=full
+    NAME=cosmo2ex-full
+    ALL="linux/amd64 linux/arm64 linux/arm/v7 linux/386"
+fi
 
 PLATFORMS="$*"
 if [ -z "$PLATFORMS" ]; then
-    PLATFORMS="linux/amd64 linux/arm64 linux/arm/v7 linux/arm/v6 linux/386"
+    PLATFORMS="$ALL"
 fi
 
 # config drive drivers - build them fresh if the Atari toolchain is here
@@ -35,11 +48,11 @@ else
 fi
 
 echo "Building $IMAGE for: $PLATFORMS"
-docker build --platform "$(echo $PLATFORMS | tr ' ' ',')" -f "$ROOT/docker/Dockerfile" -t "$IMAGE" "$ROOT"
+docker build --platform "$(echo $PLATFORMS | tr ' ' ',')" -f "$ROOT/docker/Dockerfile" --target "$TARGET" -t "$IMAGE" "$ROOT"
 
 mkdir -p "$OUT"
 for p in $PLATFORMS; do
-    f="$OUT/$IMAGE-$(echo "${p#linux/}" | tr '/' '-').tar.gz"
+    f="$OUT/$NAME-$(echo "${p#linux/}" | tr '/' '-').tar.gz"
     docker save --platform "$p" "$IMAGE" | gzip > "$f"
     echo "Saved $f"
 done

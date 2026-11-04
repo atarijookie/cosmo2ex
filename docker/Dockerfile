@@ -2,8 +2,18 @@
 #
 # CosmosEx Linux apps: ce_cores (C++) + webserver (Go) in one image.
 #
+# Two variants (build targets):
+#   standard  - CosmosEx alone (the default, the last stage)
+#   full      - + ffmpeg and Chrome headless shell, for the video / audio players and the web browser (CE_VIDEO.TTP,
+#               CE_AUDIO.TTP, CE_BROWS.PRG), about 850 MB more (240 MB more to download). amd64, arm64, arm/v7
+#               and 386 - not arm/v6.
+#               Chrome's sandbox uses namespaces, which docker's default seccomp profile doesn't allow, so the web
+#               browser works only when the container runs with --security-opt seccomp=unconfined (or a seccomp
+#               profile that allows them). ffmpeg works without it.
+#
 # Build from the repository root, for this machine:
 #   docker build -f docker/Dockerfile -t cosmo2ex .
+#   docker build -f docker/Dockerfile --target full -t cosmo2ex:full .
 #
 # For all platforms at once (amd64, arm64, arm/v7, arm/v6 = Pi 1 / Zero, 386), see docker/build_all.sh.
 # The programs are always cross compiled on the build machine (no QEMU), the target platform
@@ -118,7 +128,7 @@ ENV PATH=/usr/local/go/bin:$PATH \
     GOFLAGS=-buildvcs=false
 
 # ---------------------------------------------------------------------------
-# ce_cores + webserver, cross compiled for the target platform
+# ce_cores + webserver + ce_media + ce_browser, cross compiled for the target platform
 # ---------------------------------------------------------------------------
 FROM toolchain AS build
 ARG TARGETARCH
@@ -126,6 +136,8 @@ ARG TARGETARCH
 COPY libdospath/ /src/libdospath/
 COPY ce_cores/ /src/ce_cores/
 COPY webserver/ /src/webserver/
+COPY ce_media/ /src/ce_media/
+COPY ce_browser/ /src/ce_browser/
 COPY third_party/ /src/third_party/
 COPY release/builder/build_linux.sh /src/release/builder/
 
@@ -218,7 +230,7 @@ RUN sed -i 's/\r$//' entrypoint.sh ce_start.sh ce_stop.sh .env \
 
 # Fail the build if the files ce_cores loads on start are not where .env says they are.
 # The configdrive drivers (*.bs, *.prg) are gitignored, so they must be present in the build context.
-# (ce_cores.elf and webserver are copied in later, from the build stage)
+# (ce_cores.elf, webserver, ce_media and ce_browser are copied in later, from the build stage)
 RUN set -e; . ./.env; \
     for d in "$CE_DIR" "$BIN_DIR"; do \
         [ -d "/files$d" ] || { echo "missing dir from .env: $d" >&2; exit 1; }; \
@@ -239,7 +251,59 @@ FROM base-debian AS base-386
 FROM scratch AS base-armv6
 COPY --from=packages /rootfs/ /
 
-FROM base-${TARGETARCH}${TARGETVARIANT}
+# ---------------------------------------------------------------------------
+# Full variant: ffmpeg + Chrome headless shell, as Debian packages of the target platform - downloaded and
+# unpacked on the build machine like the other packages, so nothing runs emulated here either. apt resolves the
+# dependencies against the package list of the runtime base image, so only what it doesn't have is added.
+# Unpacking skips the maintainer scripts - what they would do and is needed is done here: the blas / lapack
+# alternatives (ffmpeg needs them), and the user Chrome runs as (it must not run as root).
+# Left out: the Mesa GPU drivers and their LLVM (about 160 MB) - nothing headless uses them - and docs / locales.
+# ---------------------------------------------------------------------------
+FROM --platform=$BUILDPLATFORM debian:bookworm AS fullpkgs
+ARG TARGETARCH
+ARG TARGETVARIANT
+
+COPY --from=base-debian /var/lib/dpkg/status /target/status
+COPY --from=base-debian /etc/passwd /etc/group /target/
+
+RUN set -e; \
+    case "$TARGETARCH$TARGETVARIANT" in \
+        amd64|arm64|arm64v8)        debarch=$TARGETARCH ;; \
+        386)                        debarch=i386 ;; \
+        armv7)                      debarch=armhf ;; \
+        *)  echo "the full image is not available for $TARGETARCH$TARGETVARIANT" >&2; exit 1 ;; \
+    esac; \
+    dpkg --add-architecture "$debarch"; \
+    apt-get update; \
+    mkdir -p /debs/partial /full/etc /full/var/lib/cebrowser; \
+    apt-get -o APT::Architecture="$debarch" -o APT::Architectures="$debarch" \
+        -o Dir::State::status=/target/status -o Dir::Cache::archives=/debs \
+        --download-only --no-install-recommends -y install ffmpeg chromium-headless-shell fonts-liberation; \
+    for deb in /debs/*.deb; do dpkg-deb -x "$deb" /full; done; \
+    # merged /usr: /lib, /bin, ... are symlinks in the base image, COPY can't put dirs over them
+    for d in bin sbin lib lib32 lib64; do \
+        if [ -d "/full/$d" ] && [ ! -L "/full/$d" ]; then \
+            mkdir -p "/full/usr/$d"; cp -a "/full/$d/." "/full/usr/$d/"; rm -rf "/full/$d"; \
+        fi; \
+    done; \
+    for alt in blas lapack; do \
+        for f in /full/usr/lib/*/$alt/lib$alt.so.3; do \
+            [ -e "$f" ] && ln -sf "$alt/lib$alt.so.3" "$(dirname "$(dirname "$f")")/lib$alt.so.3"; \
+        done; \
+    done; \
+    rm -rf /full/usr/lib/*/dri /full/usr/lib/*/libLLVM* /full/usr/lib/*/libz3* \
+        /full/usr/share/doc /full/usr/share/man /full/usr/share/locale /full/usr/share/info; \
+    cp /target/passwd /target/group /full/etc/; \
+    echo 'cebrowser:x:999:999:CosmosEx web browser:/var/lib/cebrowser:/usr/sbin/nologin' >> /full/etc/passwd; \
+    echo 'cebrowser:x:999:' >> /full/etc/group; \
+    chown 999:999 /full/var/lib/cebrowser; \
+    test -x /full/usr/bin/ffmpeg; test -x /full/usr/lib/chromium/chromium-headless-shell; \
+    rm -rf /debs /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Standard variant
+# ---------------------------------------------------------------------------
+FROM base-${TARGETARCH}${TARGETVARIANT} AS runtime
 
 ENV CE_DIR=/opt/ce \
     BIN_DIR=/opt/ce/bin \
@@ -251,7 +315,7 @@ ENV CE_DIR=/opt/ce \
 
 COPY --from=packages /overlay/ /
 COPY --from=files /files/ /
-COPY --from=build /out/ce_cores.elf /out/webserver /opt/ce/bin/
+COPY --from=build /out/ce_cores.elf /out/webserver /out/ce_media /out/ce_browser /opt/ce/bin/
 
 WORKDIR /opt/ce/bin
 
@@ -260,3 +324,15 @@ EXPOSE 7200/udp
 EXPOSE 7300 7301 7302
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/opt/ce/bin/entrypoint.sh"]
+
+# ---------------------------------------------------------------------------
+# Full variant - ce_cores takes CHROME_PATH and BROWSER_USER from the environment when .env doesn't set them,
+# ce_media finds ffmpeg in PATH
+# ---------------------------------------------------------------------------
+FROM runtime AS full
+COPY --from=fullpkgs /full/ /
+ENV CHROME_PATH=/usr/lib/chromium/chromium-headless-shell \
+    BROWSER_USER=cebrowser
+
+# the default (last) target
+FROM runtime AS standard

@@ -16,6 +16,11 @@
 **/*.elf
 **/*.map
 webserver/webserver
+ce_media/ce_media
+ce_media/preview_out
+ce_browser/ce_browser
+ce_browser/preview_out
+ce_browser/preview_out.log
 
 # Firmware / MCU / tests are not needed to build the Linux apps
 ce_fdd_mfm

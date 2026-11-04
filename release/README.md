@@ -101,6 +101,8 @@ The release workflow does both (`macos` job, then `tarballs`).
 - `install.sh` - installs / upgrades / uninstalls from a tarball
 - `builder/build_linux.sh` - builds `ce_cores` + `webserver` for one architecture
 - `files/ce_run.sh` - runs `ce_cores` + `webserver` in the foreground, used by the service
+- `files/ce_setup_tools.sh` (Linux, macOS), `files/ce_setup_tools.ps1` + `.bat` (Windows) - yes / no questions that install
+  ffmpeg (players) and Chrome headless shell (browser) and write their paths to `.env`; `install.sh` offers it at the end
 - `files/ce.service` - the systemd unit
 - `builder/build_windows.sh` - builds the Windows programs, in Cygwin
 - `builder/build_windows_cross.sh` - builds the Windows programs on Linux from the current sources, for development

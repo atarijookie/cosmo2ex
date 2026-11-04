@@ -133,6 +133,15 @@ void BrowserLink::spawnBrowser(void)
     }
 
     std::string bin = Utils::dotEnvValue("BROWSER_BIN", "", false);
+    if(bin.empty()) {                                           // default: next to ce_cores (as the releases install it)
+        std::string binDir = Utils::dotEnvValue("BIN_DIR", "", false);
+        for(const char *name : { "/ce_browser", "/ce_browser.exe" }) {
+            if(!binDir.empty() && Utils::fileExists(binDir + name)) {
+                bin = binDir + name;
+                break;
+            }
+        }
+    }
     if(bin.empty()) {
         if(!binMissingLogged) {
             logHdd(LOG_INFO, "BrowserLink - BROWSER_BIN not set in .env, start it yourself: ce_browser serve -connect 127.0.0.1:%d",
@@ -143,9 +152,31 @@ void BrowserLink::spawnBrowser(void)
         return;
     }
 
+    if(!Utils::fileExists(bin)) {                               // say so - exec would only fail with 127
+        if(!binMissingLogged) {
+            logHdd(LOG_ERROR, "BrowserLink - BROWSER_BIN %s doesn't exist", bin.c_str());
+            binMissingLogged = true;
+        }
+        setLinkMsg("ce_browser not found: " + bin);
+        return;
+    }
+    binMissingLogged = false;
+
     char portArg[32];
     snprintf(portArg, sizeof(portArg), "127.0.0.1:%d", (int) listenPort);
-    char *argv[] = { (char *) bin.c_str(), (char *) "serve", (char *) "-connect", portArg, NULL };
+    // CHROME_PATH in .env (set by ce_setup_tools) - .env values are not in our environment, so pass it on as -chrome;
+    // in the UI form, ce_browser is a native Windows program there
+    std::string chrome = Utils::dotEnvValue("CHROME_PATH", "", false);
+    if(!chrome.empty()) {
+        chrome = Utils::pathToUi(chrome);
+    }
+    std::vector<char *> argvVec = { (char *) bin.c_str(), (char *) "serve", (char *) "-connect", portArg };
+    if(!chrome.empty()) {
+        argvVec.push_back((char *) "-chrome");
+        argvVec.push_back((char *) chrome.c_str());
+    }
+    argvVec.push_back(NULL);
+    char **argv = argvVec.data();
 
     lastSpawnMs = Utils::getCurrentMs();
     spawnedOnce = true;

@@ -19,6 +19,11 @@ ce_cores over the network, and the web interface can be opened from other comput
 
 Start with Windows: press Win+R, type  shell:startup  and put a shortcut to ce_run.exe into the folder that opens.
 
+Video / audio players and web browser
+-------------------------------------
+CE_VIDEO.TTP, CE_AUDIO.TTP and CE_BROWS.PRG (on the config drive) need ffmpeg and Chrome on this PC. Double-click
+ce_setup_tools.bat - it asks, then downloads them into the tools folder here. Then restart Cosmo2ex.
+
 Files
 -----
 This folder can be anywhere, e.g. C:\Cosmo2ex. Settings, logs and runtime data are in your own folder,

@@ -209,6 +209,17 @@ install_ce() {
 
     port=$(env_value "$BIN_DIR/.env" WEBSERVER_PORT)
     echo "  web UI:  https://$(hostname):$port"
+
+    # ffmpeg + Chrome for the video / audio players and the web browser - asks before installing anything
+    if [ -x "$BIN_DIR/ce_setup_tools.sh" ] && { [ -t 0 ] || [ -r /dev/tty ]; }; then
+        echo ""
+        printf "Set up ffmpeg and Chrome for the video / audio players and the web browser now? [Y/n] "
+        read -r a </dev/tty || a=n
+        case "$a" in
+            ""|y|Y|yes) "$BIN_DIR/ce_setup_tools.sh" ;;
+            *)          echo "Later: sudo $BIN_DIR/ce_setup_tools.sh" ;;
+        esac
+    fi
 }
 
 #-------------

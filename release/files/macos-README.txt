@@ -23,6 +23,12 @@ and the web interface can be opened from other computers.
 
 Start at login: System Settings > General > Login Items > + > select CosmosEx.command.
 
+Video / audio players and web browser
+-------------------------------------
+CE_VIDEO.TTP, CE_AUDIO.TTP and CE_BROWS.PRG (on the config drive) need ffmpeg and Chrome on this Mac. To get them,
+open Terminal, drag ce_setup_tools.sh from this folder into it and press Enter. It asks before installing anything
+(ffmpeg with Homebrew, Chrome headless shell from Google into the tools folder here), then restart Cosmo2ex.
+
 Files
 -----
 This folder can be anywhere, e.g. in Applications. Settings, logs and runtime data are in your own folder,

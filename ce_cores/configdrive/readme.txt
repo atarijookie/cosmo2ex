@@ -55,6 +55,9 @@ Options: -l<ms> buffer (default 1000),
 -n no sound. Keys: Esc quit, Space
 pause, Left / Right 10 s, Up / Down
 1 min.
+The host needs ffmpeg (and the
+browser Chrome): run ce_setup_tools
+in the CosmosEx folder on the host.
 
 
 Folder DRIVERS\
