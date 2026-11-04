@@ -87,12 +87,14 @@ private:
     bool        endGiven;
     std::string linkMsg;
     std::vector<uint8_t> rx;
+    bool        rxHeld;                 // rx has chunks not handled yet - the queue was full
 
     void threadCode(void);
     bool openListener(void);
     void acceptClient(void);
     void closeClient(const char *why);
     bool readClient(void);
+    bool processRx(void);
     void handleMessage(uint8_t type, const uint8_t *payload, uint32_t len);
     bool queueFull(void);
 

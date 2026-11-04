@@ -19,6 +19,7 @@
 #define SPAWN_RETRY_MS          10000   // don't start ce_media again sooner than this
 #define SEND_TIMEOUT_MS         500
 #define POLL_MS                 100
+#define HELD_POLL_MS            2                 // chunks wait in rx - look again soon
 #define DEFAULT_QUEUE_BYTES     (1024 * 1024)   // ~1.5 s of ST video - the ST keeps its own buffer on top of that
 #define LIVE_QUEUE_CHUNKS       2               // live streams: only the newest chunks, older are dropped
 #define LIVE_AUDIO_QUEUE_CHUNKS 3               // live with sound: nothing dropped (the sound would jump), ce_media
@@ -42,6 +43,7 @@ MediaLink::MediaLink()
     streamOpen       = false;
     live             = false;
     liveAudio        = false;
+    rxHeld           = false;
     gen              = 0;
     queueBytes       = 0;
     queueLimit       = DEFAULT_QUEUE_BYTES;
@@ -284,7 +286,14 @@ void MediaLink::threadCode(void)
             pfd[n].fd = clientFd; pfd[n].events = queueFull() ? 0 : POLLIN; pfd[n].revents = 0; n++;
         }
 
-        int res = poll(pfd, n, POLL_MS);
+        if(clientFd >= 0 && rxHeld && !queueFull()) {          // room again - the chunks waiting in rx first
+            if(!processRx()) {
+                closeClient("bad message");
+                continue;
+            }
+        }
+
+        int res = poll(pfd, n, rxHeld ? HELD_POLL_MS : POLL_MS);
         if(res > 0) {
             if(pfd[0].revents & POLLIN) {
                 acceptClient();
@@ -323,6 +332,7 @@ void MediaLink::acceptClient(void)
         fdClient = fd;
     }
     rx.clear();
+    rxHeld = false;
     connected = true;
     logHdd(LOG_INFO, "MediaLink - ce_media connected");
 
@@ -354,6 +364,7 @@ void MediaLink::closeClient(const char *why)
     }
     connected = false;
     rx.clear();
+    rxHeld = false;
 
     std::lock_guard<std::mutex> lock(dataMutex);
     if(streamOpen && !infoBlk.empty() && infoBlk[MED_INFO_STATE] == MED_STATE_READY) {
@@ -375,8 +386,15 @@ bool MediaLink::readClient(void)
         return false;
     }
     rx.insert(rx.end(), buf, buf + got);
+    return processRx();
+}
 
+// handles the whole messages in rx - but stops while the queue is full: one recv() can bring several small chunks,
+// and the rest waits here like it waits in the socket (live with sound: never more than LIVE_AUDIO_QUEUE_CHUNKS)
+bool MediaLink::processRx(void)
+{
     size_t pos = 0;
+    rxHeld = false;
     while(rx.size() - pos >= MLINK_HEADER_SIZE) {
         uint8_t  type = rx[pos];
         uint32_t len  = Utils::getDword(&rx[pos + 1]);
@@ -385,6 +403,10 @@ bool MediaLink::readClient(void)
             return false;
         }
         if(rx.size() - pos - MLINK_HEADER_SIZE < len) {
+            break;
+        }
+        if(type == MLINK_CHUNK && queueFull()) {
+            rxHeld = true;
             break;
         }
         handleMessage(type, rx.data() + pos + MLINK_HEADER_SIZE, len);
