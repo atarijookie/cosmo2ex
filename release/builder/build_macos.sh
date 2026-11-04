@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds the macOS programs as universal binaries (Apple Silicon arm64 + Intel x86_64): ce_cores, webserver,
-# ce_run (the launcher, starts and stops ce_cores + webserver) ce_media (decoder for the video / audio players)
-# and ce_browser (renders the pages for CE_BROWS.PRG). Run on a Mac with the Xcode command line tools and Go.
+# ce_run (the launcher, starts and stops ce_cores + webserver), ce_media (decoder for the video / audio players),
+# ce_browser (renders the pages for CE_BROWS.PRG) and ce_doomgeneric (Doom for CE_DOOM.PRG). Run on a Mac with the Xcode command line tools and Go.
 #
 # usage: build_macos.sh <repo dir> <output dir>
 #
@@ -49,7 +49,16 @@ for arch in $ARCHS; do
     echo "[macos $arch] building ce_cores"
     make -C "$BUILD/$arch/ce_cores" -j"$NCPU" UNAME_S=Darwin \
         CXX="clang++ -arch $arch" CC="clang -arch $arch"
+
+    echo "[macos $arch] building ce_doomgeneric"
+    make -C "$BUILD/$arch/third_party/doomgeneric" clean >/dev/null
+    make -C "$BUILD/$arch/third_party/doomgeneric" -j"$NCPU" UNAME_S=Darwin CC="clang -arch $arch"
 done
+
+echo "[macos] ce_doomgeneric -> universal binary"
+lipo -create -output "$OUT/ce_doomgeneric" "$BUILD/arm64/third_party/doomgeneric/ce_doomgeneric" \
+    "$BUILD/x86_64/third_party/doomgeneric/ce_doomgeneric"
+strip "$OUT/ce_doomgeneric"
 
 echo "[macos] ce_cores -> universal binary"
 lipo -create -output "$OUT/ce_cores" "$BUILD/arm64/ce_cores/ce_cores" "$BUILD/x86_64/ce_cores/ce_cores"
@@ -83,13 +92,13 @@ done
 #-------------
 # Apple Silicon runs only signed code - the linkers sign ad-hoc, but strip changed ce_cores after that, so sign all
 # of them again (ad-hoc: no certificate, so Gatekeeper still warns about downloaded files - that needs a Developer ID)
-for prog in ce_cores webserver ce_run ce_media ce_browser; do
+for prog in ce_cores webserver ce_run ce_media ce_browser ce_doomgeneric; do
     codesign --force --sign - "$OUT/$prog"
     codesign --verify "$OUT/$prog"
 done
 
 # every binary must have both architectures
-for prog in ce_cores webserver ce_run ce_media ce_browser; do
+for prog in ce_cores webserver ce_run ce_media ce_browser ce_doomgeneric; do
     for arch in $ARCHS; do
         if ! lipo "$OUT/$prog" -verify_arch "$arch"; then
             echo "$prog has no $arch code" >&2

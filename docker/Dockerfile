@@ -4,9 +4,9 @@
 #
 # Two variants (build targets):
 #   standard  - CosmosEx alone (the default, the last stage)
-#   full      - + ffmpeg and Chrome headless shell, for the video / audio players and the web browser (CE_VIDEO.TTP,
-#               CE_AUDIO.TTP, CE_BROWS.PRG), about 850 MB more (240 MB more to download). amd64, arm64, arm/v7
-#               and 386 - not arm/v6.
+#   full      - + ffmpeg, Chrome headless shell and Doom (ce_doomgeneric + Freedoom), for the video / audio players,
+#               the web browser and Doom (CE_VIDEO.TTP, CE_AUDIO.TTP, CE_BROWS.PRG, CE_DOOM.PRG), about 880 MB
+#               more (250 MB more to download). amd64, arm64, arm/v7 and 386 - not arm/v6.
 #               Chrome's sandbox uses namespaces, which docker's default seccomp profile doesn't allow, so the web
 #               browser works only when the container runs with --security-opt seccomp=unconfined (or a seccomp
 #               profile that allows them). ffmpeg works without it.
@@ -220,7 +220,6 @@ COPY webserver/static/ ./static/
 # ce_cores binary assets (logo, floppy images, config drive)
 COPY ce_cores/ce_logo.bin ce_cores/core/fdd_test.st ./
 COPY ce_cores/configdrive/ ./configdrive/
-COPY ce_cores/core/configdrive/ ./configdrive/
 
 # Helper scripts used on the host install; handy inside the container too
 COPY shellscripts/ce_start.sh shellscripts/ce_stop.sh docker/entrypoint.sh ./
@@ -297,8 +296,12 @@ RUN set -e; \
     echo 'cebrowser:x:999:999:CosmosEx web browser:/var/lib/cebrowser:/usr/sbin/nologin' >> /full/etc/passwd; \
     echo 'cebrowser:x:999:' >> /full/etc/group; \
     chown 999:999 /full/var/lib/cebrowser; \
+    # Freedoom for CE_DOOM.PRG: just the WAD of phase 1 from the package (it depends on a Doom engine we don't want)
+    cd /debs; apt-get download freedoom; \
+    dpkg-deb --fsys-tarfile freedoom_*.deb | tar -x -C /full ./usr/share/games/doom/freedoom1.wad; \
     test -x /full/usr/bin/ffmpeg; test -x /full/usr/lib/chromium/chromium-headless-shell; \
-    rm -rf /debs /var/lib/apt/lists/*
+    test -f /full/usr/share/games/doom/freedoom1.wad; \
+    cd /; rm -rf /debs /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
 # Standard variant
@@ -327,10 +330,13 @@ ENTRYPOINT ["/usr/bin/tini", "--", "/opt/ce/bin/entrypoint.sh"]
 
 # ---------------------------------------------------------------------------
 # Full variant - ce_cores takes CHROME_PATH and BROWSER_USER from the environment when .env doesn't set them,
-# ce_media finds ffmpeg in PATH
+# ce_media finds ffmpeg in PATH, ce_doomgeneric next to itself and freedoom1.wad in /usr/share/games/doom.
+# ce_doomgeneric is GPL-2: its source is third_party/doomgeneric of the same commit of the repository.
 # ---------------------------------------------------------------------------
 FROM runtime AS full
 COPY --from=fullpkgs /full/ /
+COPY --from=build /out/ce_doomgeneric /opt/ce/bin/
+COPY third_party/doomgeneric/LICENSE /opt/ce/bin/licenses/ce_doomgeneric-GPL-2.0.txt
 ENV CHROME_PATH=/usr/lib/chromium/chromium-headless-shell \
     BROWSER_USER=cebrowser
 

@@ -22,6 +22,7 @@
 #include "translatedhelper.h"
 #include "gemdos.h"
 #include "gemdos_errno.h"
+#include "../media/hosttools.h"
 
 // read only for the ST: has the read only attribute (see ldp_getAttributes()) - checked also for root, who could write
 // it anyway - or we just can't write it
@@ -191,7 +192,7 @@ void TranslatedDisk::onDgetpath(uint8_t *cmd)
     dataTrans->setStatus(E_OK);
 }
 
-bool TranslatedDisk::buildGemdosFindstorageData(TFindStorage& fs, const std::string& hostSearchString, uint8_t findAttribs, bool isRootDir, bool isInArchive)
+bool TranslatedDisk::buildGemdosFindstorageData(TFindStorage& fs, const std::string& hostSearchString, uint8_t findAttribs, bool isRootDir, bool isInArchive, bool hideMissingTools)
 {
     fs.clear();                     // clear find storage
 
@@ -207,6 +208,9 @@ bool TranslatedDisk::buildGemdosFindstorageData(TFindStorage& fs, const std::str
     // go through the dir, find all items, store them in buffer
     uint8_t* bfr = fs.buffer;
     while(ldp_findFirstAndNext(sp, di)) {   // try to find item
+        if(hideMissingTools && HostTools::hideOnConfigDrive(di.name)) {    // e.g. CE_BROWS.PRG without Chrome on the host
+            continue;
+        }
         if(fs.count < fs.maxCount) {        // if still can fit in the buffer
             diskItemToAtariFindStorageItem(di, bfr, isInArchive);   // disk item to this buffer position
             bfr += 23;                      // pointer in buffer to next item
@@ -325,7 +329,11 @@ void TranslatedDisk::onFsfirst(uint8_t *cmd)
     bool rootDir = isRootDir(justPath);
 
     //now use the dir translator to get the dir content
-    res = buildGemdosFindstorageData(tempFindStorage, hostSearchString, findAttribs, rootDir, isInArchive);
+    bool configDriveRoot = rootDir && atariDriveIndex == configDriveIndex;
+    if(configDriveRoot) {
+        HostTools::refresh();                                       // the answer counts for the next listing
+    }
+    res = buildGemdosFindstorageData(tempFindStorage, hostSearchString, findAttribs, rootDir, isInArchive, configDriveRoot);
 
     if(!res) {
         logHdd(LOG_ERROR, "TranslatedDisk::onFsfirst - host search string: %s -- failed to build gemdos find storage data", hostSearchString.c_str());

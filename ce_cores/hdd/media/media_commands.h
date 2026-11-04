@@ -74,6 +74,10 @@
 #define MED_AOUT_YM                     2           // plain ST - samples through the YM2149 volume registers
 
 #define MED_OPF_LIVE                    0x01        // low latency: 1 frame per chunk, the host keeps only the newest chunks
+#define MED_OPF_GAME                    0x02        // the path is the name of a game on the host ("doom"), not a file -
+                                                    // it runs there, takes the keys from MED_CMD_INPUT; use with LIVE
+#define MED_OPF_HALF_RATE               0x04        // sound at half the rate (YM 7877 Hz, DMA 12517 Hz): half the CPU
+                                                    // time of the YM interrupt on a plain ST - the same volume table
 
 //------------------------------------------------------------------------------------------------------------------
 // GET_INFO reply (512 B)

@@ -13,6 +13,12 @@
 //	-docker-image <image>   run ffmpeg / ffprobe in this docker image instead (e.g. linuxserver/ffmpeg)
 //	-docker <path>          docker binary (default: docker)
 //	-ym-table <file>        plain ST sound: YM volume table from this file (256 x 16 B, as ST demos used)
+//	-doom-bin <path>        CE_DOOM.PRG: the Doom engine (default: ce_doomgeneric next to ce_media)
+//	-doom-wad <path>        its WAD (default: doom.wad, doom1.wad or freedoom1.wad in tools/ next to ce_media,
+//	                        ../tools, /usr/share/games/doom)
+//
+//	ce_media check ffmpeg|doom [decoder options]   exit code 0 when it's there - ce_cores shows / hides the
+//	                                               players and CE_DOOM.PRG on the config drive by it
 package main
 
 import (
@@ -20,6 +26,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -33,6 +40,8 @@ func decoderFlags(fs *flag.FlagSet) *Decoder {
 	fs.StringVar(&d.dockerImage, "docker-image", "", "run ffmpeg / ffprobe in this docker image")
 	fs.StringVar(&d.docker, "docker", "docker", "docker binary")
 	fs.StringVar(&d.ymTablePath, "ym-table", "", "plain ST sound: YM volume table file (256 x 16 B) instead of the built one")
+	fs.StringVar(&d.doomBin, "doom-bin", "", "Doom engine (default: ce_doomgeneric next to ce_media)")
+	fs.StringVar(&d.doomWad, "doom-wad", "", "Doom WAD (default: freedoom1.wad in tools/ next to ce_media, ...)")
 	return d
 }
 
@@ -52,7 +61,9 @@ func usage() {
   ce_media preview [-machine st|ste|tt|falcon] [-vmode st-low|st-high|tt-mid|tt-high|none] [-audio dma|ym|none]
                    [-start <s>] [-seconds <s>] [-frames <n>] [-out <dir>] [decoder options] <file>
   ce_media probe [decoder options] <file>
-decoder options: -ffmpeg <path> -ffprobe <path> -docker-image <image> -docker <path> -ym-table <file>`)
+  ce_media check ffmpeg|doom [decoder options]
+decoder options: -ffmpeg <path> -ffprobe <path> -docker-image <image> -docker <path> -ym-table <file>
+                 -doom-bin <path> -doom-wad <path>`)
 	os.Exit(2)
 }
 
@@ -105,7 +116,50 @@ func main() {
 			fmt.Printf("audio:    stream %d\n", p.audioIndex)
 		}
 
+	case "check":
+		if len(os.Args) < 3 {
+			usage()
+		}
+		fs := flag.NewFlagSet("check", flag.ExitOnError)
+		dec := decoderFlags(fs)
+		fs.Parse(os.Args[3:])
+		dec.fixup()
+		if err := dec.check(os.Args[2]); err != nil {
+			if isTerminal(os.Stderr) { // run by hand: why; from ce_cores (every now and then): only the exit code
+				fmt.Fprintln(os.Stderr, err)
+			}
+			os.Exit(1)
+		}
+
 	default:
 		usage()
 	}
+}
+
+func isTerminal(f *os.File) bool {
+	st, err := f.Stat()
+	return err == nil && st.Mode()&os.ModeCharDevice != 0
+}
+
+// check: is what this feature needs on this host - only looked up, nothing is started
+func (d *Decoder) check(what string) error {
+	switch what {
+	case "ffmpeg":
+		if d.dockerImage != "" { // the image is downloaded when a player starts the first time
+			if _, err := exec.LookPath(d.docker); err != nil {
+				return fmt.Errorf("docker not found (MEDIA_DOCKER_IMAGE is set)")
+			}
+			return nil
+		}
+		for _, b := range []string{d.ffmpeg, d.ffprobe} {
+			if _, err := exec.LookPath(b); err != nil {
+				return fmt.Errorf("%s not found", b)
+			}
+		}
+		return nil
+	case "doom":
+		_, _, err := d.findDoom()
+		return err
+	}
+	return fmt.Errorf("unknown: %s (ffmpeg, doom)", what)
 }

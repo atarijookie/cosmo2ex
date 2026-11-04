@@ -11,7 +11,7 @@
 # Needs:
 #   - m68k-atari-mint-gcc toolchain, for the Atari programs on the config drive (these are
 #     the same for every architecture, so they are built once, on this machine)
-#   - docker (not for --native) - ce_cores, webserver, ce_media and ce_browser are built in the toolchain stage of docker/Dockerfile
+#   - docker (not for --native) - ce_cores, webserver, ce_media, ce_browser and ce_doomgeneric are built in the toolchain stage of docker/Dockerfile
 #   - g++, make, go, libudev-dev, libevdev-dev (only for --native)
 #   - python3 (only for windows / macos - makes the zip)
 #
@@ -83,7 +83,7 @@ if [ -n "$missing" ]; then
 fi
 
 if [ "$WINDOWS" -eq 1 ]; then
-    for f in ce_cores.exe cygwin1.dll webserver.exe ce_run.exe ce_media.exe ce_browser.exe licenses/CYGWIN-NOTICE.txt; do
+    for f in ce_cores.exe cygwin1.dll webserver.exe ce_run.exe ce_media.exe ce_browser.exe ce_doomgeneric.exe licenses/CYGWIN-NOTICE.txt; do
         if [ ! -f "${WINDOWS_BIN:-}/$f" ]; then
             echo "windows: WINDOWS_BIN must be the output dir of builder/build_windows.sh, '${WINDOWS_BIN:-}/$f' not found" >&2
             exit 1
@@ -92,7 +92,7 @@ if [ "$WINDOWS" -eq 1 ]; then
 fi
 
 if [ "$MACOS" -eq 1 ]; then
-    for f in ce_cores webserver ce_run ce_media ce_browser; do
+    for f in ce_cores webserver ce_run ce_media ce_browser ce_doomgeneric; do
         if [ ! -f "${MACOS_BIN:-}/$f" ]; then
             echo "macos: MACOS_BIN must be the output dir of builder/build_macos.sh, '${MACOS_BIN:-}/$f' not found" >&2
             exit 1
@@ -129,7 +129,6 @@ echo "$VERSION" >                       "$COMMON/VERSION"
 
 # config drive - same layering as the docker image, then the freshly built Atari programs
 cp -r "$ROOT/ce_cores/configdrive"      "$COMMON/configdrive"
-cp -r "$ROOT/ce_cores/core/configdrive/." "$COMMON/configdrive/"
 mkdir -p "$COMMON/configdrive/drivers" "$COMMON/configdrive/tests"
 cp "$ROOT/ce_dd_bootsectors/ce_dd.bs"    "$COMMON/configdrive/drivers/"
 cp "$ROOT/ce_dd_bootsectors/ce_dd_l2.bs" "$COMMON/configdrive/drivers/"
@@ -139,9 +138,20 @@ cp "$ROOT/ce_fakesting/ce_sting.prg"     "$COMMON/configdrive/drivers/"
 cp "$ROOT/ce_browser_prg/ce_brows.prg"   "$COMMON/configdrive/"
 cp "$ROOT/ce_media_prg/ce_video.ttp"     "$COMMON/configdrive/"
 cp "$ROOT/ce_media_prg/ce_audio.ttp"     "$COMMON/configdrive/"
+cp "$ROOT/ce_media_prg/ce_doom.prg"      "$COMMON/configdrive/"
 cp "$ROOT/test_ce/ce_tests.tos"          "$COMMON/configdrive/tests/"
 
 chmod 755 "$COMMON/ce_run.sh" "$COMMON/ce_setup_tools.sh"
+
+# ce_doomgeneric is GPL-2 (doomgeneric) - its license and where its source is go with it
+mkdir -p "$COMMON/licenses"
+cp "$ROOT/third_party/doomgeneric/LICENSE" "$COMMON/licenses/ce_doomgeneric-GPL-2.0.txt"
+cat > "$COMMON/licenses/ce_doomgeneric-SOURCE.txt" <<EOF
+ce_doomgeneric (Doom for CE_DOOM.PRG) is doomgeneric (https://github.com/ozkl/doomgeneric) with a CosmosEx port,
+under the GNU General Public License version 2 (ce_doomgeneric-GPL-2.0.txt). It is a separate program, which
+ce_media starts. Its complete source code, exactly as built for this release ($VERSION):
+  https://github.com/atarijookie/cosmo2ex - folder third_party/doomgeneric of the commit of this release
+EOF
 
 #-------------
 # Linux programs - per architecture
@@ -175,7 +185,7 @@ for arch in $ARCHS; do
     mkdir -p "$PKG/bin"
 
     cp -a "$COMMON/." "$PKG/bin/"
-    cp "$BIN/ce_cores.elf" "$BIN/webserver" "$BIN/ce_media" "$BIN/ce_browser" "$PKG/bin/"
+    cp "$BIN/ce_cores.elf" "$BIN/webserver" "$BIN/ce_media" "$BIN/ce_browser" "$BIN/ce_doomgeneric" "$PKG/bin/"
     cp "$RELEASE_DIR/files/ce.service" "$PKG/"
     cp "$ROOT/LICENSE" "$PKG/"
     echo "$VERSION" > "$PKG/VERSION"
@@ -218,10 +228,10 @@ if [ "$MACOS" -eq 1 ]; then
     cp "$RELEASE_DIR/files/macos-README.txt" "$PKG/README.txt"
     cp "$RELEASE_DIR/files/CosmosEx.command" "$PKG/"
     cp "$ROOT/LICENSE" "$PKG/licenses/Cosmo2ex-license.txt"
-    for f in ce_cores webserver ce_run ce_media ce_browser; do
+    for f in ce_cores webserver ce_run ce_media ce_browser ce_doomgeneric; do
         cp "$MACOS_BIN/$f" "$PKG/"
     done
-    chmod 755 "$PKG/ce_cores" "$PKG/webserver" "$PKG/ce_run" "$PKG/ce_media" "$PKG/ce_browser" "$PKG/ce_setup_tools.sh" "$PKG/CosmosEx.command"    # lost in CI artifacts
+    chmod 755 "$PKG/ce_cores" "$PKG/webserver" "$PKG/ce_run" "$PKG/ce_media" "$PKG/ce_browser" "$PKG/ce_doomgeneric" "$PKG/ce_setup_tools.sh" "$PKG/CosmosEx.command"    # lost in CI artifacts
 
     # python's zipfile keeps the permissions (Archive Utility restores them), so the programs stay executable
     rm -f "$OUT/$NAME.zip"

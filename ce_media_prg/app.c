@@ -8,6 +8,7 @@
 //             -n       no sound
 //             -d       debug log to X:\CE_MEDIA.LOG (X = drive of the file)
 //             -p<n>    VBLs between a new screen address and its palette (default 1)
+//             -h       sound at half the rate (YM 7877 Hz, DMA 12517 Hz) - less CPU time on a plain ST
 //   keys:     Esc / Q quit, Space pause, Left / Right -+10 s, Down / Up -+60 s
 //
 // The file must be on a CosmosEx translated drive - the host reads and converts it.
@@ -146,7 +147,7 @@ int appMain(uint8_t wantVideo)
     args[len] = 0;
 
     print("\33E");
-    print(wantVideo ? "CosmosEx video player\r\n" : "CosmosEx audio player\r\n");
+    print(wantVideo ? "Cosmo2ex video player\r\n" : "Cosmo2ex audio player\r\n");
 
     p = args;
     for(;;) {
@@ -164,6 +165,7 @@ int appMain(uint8_t wantVideo)
             case 'p':   o.palDelay  = (uint8_t) parseNum(&p);   break;
             case 'n':   noSound     = TRUE;                     break;
             case 'd':   debug       = TRUE;                     break;
+            case 'h':   o.flags    |= MED_OPF_HALF_RATE;        break;
         }
         while(*p && *p != ' ') {
             p++;
@@ -174,8 +176,8 @@ int appMain(uint8_t wantVideo)
     if(i == 0) {
         print("\r\nusage: ");
         print(wantVideo ? "CE_VIDEO" : "CE_AUDIO");
-        print(" [-l<ms>] [-f<fps>] [-s<sec>] [-n] [-d] file\r\n");
-        print("The file must be on a CosmosEx translated drive.\r\n");
+        print(" [-l<ms>] [-f<fps>] [-s<sec>] [-n] [-h] [-d] file\r\n");
+        print("The file must be on a Cosmo2ex translated drive.\r\n");
         print("Keys: Esc quit, Space pause, arrows seek.\r\n");
         print("Build ");
         print(buildStamp);

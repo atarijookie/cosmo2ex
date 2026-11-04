@@ -23,6 +23,8 @@ typedef struct {
     uint8_t  maxFps;            // 0 = host default
     uint32_t startMs;
     uint8_t  palDelay;          // VBLs between a new screen address and its palette (see player.c)
+    uint8_t  flags;             // MED_OPF_*: LIVE - the newest frame is shown as soon as it's here (a game);
+                                // GAME - the path is a game on the host ("doom")
 } PlayerOpts;
 
 typedef struct {

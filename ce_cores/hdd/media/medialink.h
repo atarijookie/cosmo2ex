@@ -50,6 +50,11 @@ public:
     size_t queuedBytes(void);           // for tests
     void setQueueLimit(size_t bytes) { queueLimit = bytes; }
 
+    // ce_media binary (MEDIA_BIN, else BIN_DIR/ce_media), "" when there's none; its options from .env (-ffmpeg ...) -
+    // also used by HostTools for 'ce_media check'
+    static std::string mediaBin(void);
+    static void appendOptionArgs(std::vector<std::string>& args);
+
 private:
     int  fdListen;
     int  fdClient;
@@ -71,6 +76,7 @@ private:
 
     bool        streamOpen;
     bool        live;
+    bool        liveAudio;              // live stream with sound - its chunks are not dropped (queueFull() waits instead)
     uint32_t    gen;
     std::vector<uint8_t> openMsg;       // MLINK_OPEN payload of the current stream, sent again when ce_media (re)connects
     std::vector<uint8_t> infoBlk;       // from ce_media, empty until it came

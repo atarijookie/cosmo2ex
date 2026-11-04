@@ -180,12 +180,12 @@ static void waitVbls(int n)
     }
 }
 
+static uint8_t waitReady(void (*progress)(const char *msg));
+
 uint8_t playerOpen(PlayerOpts *o, const char *atariPath, void (*progress)(const char *msg))
 {
     uint8_t hdr[MED_OPEN_PATH];
     uint8_t st;
-    int     i;
-    static char lastMsg[MED_INFO_MSG_SIZE];
 
     opts = *o;
     if(!medInit(o->machine)) {
@@ -195,7 +195,7 @@ uint8_t playerOpen(PlayerOpts *o, const char *atariPath, void (*progress)(const 
     dbgLogNum("machine / vmode / aout", (o->machine << 16) | (o->vmode << 8) | o->aout);
     dbgLogNum("medBuf", (uint32_t) medBuf);
     if(!medFind(o->machine)) {
-        strcpy(playerError, "CosmosEx with the media module not found");
+        strcpy(playerError, "Cosmo2ex with the media module not found");
         return FALSE;
     }
 
@@ -205,6 +205,7 @@ uint8_t playerOpen(PlayerOpts *o, const char *atariPath, void (*progress)(const 
     hdr[MED_OPEN_AOUT]        = o->aout;
     putWordBE(hdr + MED_OPEN_LATENCY, o->latencyMs);
     hdr[MED_OPEN_MAX_FPS]     = o->maxFps;
+    hdr[MED_OPEN_FLAGS]       = o->flags;
     hdr[MED_OPEN_MAX_SECTORS] = MAXSECTORS;
     putDwordBE(hdr + MED_OPEN_START_MS, o->startMs);
 
@@ -217,6 +218,19 @@ uint8_t playerOpen(PlayerOpts *o, const char *atariPath, void (*progress)(const 
         case MED_ERR_NOT_RUNNING:   strcpy(playerError, "The host can't start ce_media");               return FALSE;
         default:                    strcpy(playerError, "OPEN failed");                                return FALSE;
     }
+
+    if(!waitReady(progress)) {                              // CLOSE - else the host keeps decoding / the game running
+        medClose();
+        return FALSE;
+    }
+    return TRUE;
+}
+
+// after a successful OPEN: wait for READY, take the stream's parameters (and the YM table)
+static uint8_t waitReady(void (*progress)(const char *msg))
+{
+    static char lastMsg[MED_INFO_MSG_SIZE];
+    int i;
 
     // The host probes the file and starts the decoder - or first downloads the ffmpeg docker image, which can take
     // many minutes. No timeout: it says what it's doing (or that it failed); Esc gives up.
@@ -502,6 +516,11 @@ static void vblRoutine(void)
                 buffering = 1;
                 playerStats.underruns++;
             }
+        } else if(opts.flags & MED_OPF_LIVE) {              // live: no clock to keep - it ends when the game does
+            if(endReached && fqShown >= fqWrite) {
+                running = 0;
+                finished = 1;
+            }
         } else if(fqShown >= fqWrite) {                     // no sound: the frames are all there is
             uint32_t lastTick = fqWrite ? fq[(fqWrite - 1) & FQ_MASK].tick : 0;
             if(audPlayed >= lastTick + frameTicks) {
@@ -518,7 +537,13 @@ static void vblRoutine(void)
 
     if(vmode != MED_VMODE_NONE && fqShown < fqWrite) {
         uint32_t n = fqShown;
-        if(fq[n & FQ_MASK].tick <= audPlayed) {
+        if(opts.flags & MED_OPF_LIVE) {                     // live (a game): the newest frame, now - its time
+            playerStats.skipped += fqWrite - 1 - n;         // stamp is when the host made it, not when to show it
+            n = fqWrite - 1;
+            present(&fq[n & FQ_MASK]);
+            fqShown = n + 1;
+            playerStats.frames++;
+        } else if(fq[n & FQ_MASK].tick <= audPlayed) {
             while(n + 1 < fqWrite && fq[(n + 1) & FQ_MASK].tick <= audPlayed) {    // late - show the newest one due
                 n++;
                 playerStats.skipped++;
@@ -698,6 +723,9 @@ uint8_t playerStart(void)
     latencyTicks = (uint32_t) opts.latencyMs * rate / 1000;
     dmaHiMask    = (opts.machine == MED_MACH_STE) ? 0x3f : 0xff;
     lowWater     = rate / 10;                               // 100 ms: the VBL notices in time, also at 50 Hz
+    if(opts.flags & MED_OPF_LIVE) {                         // a game: its sound only a little behind the picture -
+        lowWater = rate * 6 / 100;                          // 60 ms is still 3 VBLs to notice, 120 ms buffered
+    }
     frameTicks   = video ? rate * 1000 / fpsX1000 : 0;    // all fits in 32 bits: rate <= 50066, <= 8 frames
 
     if(video) {
@@ -725,7 +753,9 @@ uint8_t playerStart(void)
         ringSize = 0;
         if(afmt != MED_AFMT_NONE) {
             ringSize = video ? (uint32_t) (k + 2) * audioMax : latencyTicks + 3 * audioMax;
-            if(ringSize < 8192) {
+            if(opts.flags & MED_OPF_LIVE) {                 // live: no deeper than the latency - a fuller ring
+                ringSize = 2 * lowWater + 2 * audioMax;     // would only delay the sound
+            } else if(ringSize < 8192) {
                 ringSize = 8192;
             }
             ringSize = (ringSize + 511) & ~511UL;
@@ -1053,7 +1083,7 @@ uint8_t playerPoll(void)
         return FALSE;
     }
     if(playerStats.errors > 20 && playerStats.chunks == 0) {
-        strcpy(playerError, "Transfers from the CosmosEx fail");
+        strcpy(playerError, "Transfers from the Cosmo2ex fail");
         return FALSE;
     }
 

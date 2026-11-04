@@ -76,6 +76,11 @@ public:
 
     void noteActivity(void);            // the ST used the browser - ce_browser started by us is stopped after BROWSER_IDLE_MIN without it
 
+    // ce_browser binary (BROWSER_BIN, else BIN_DIR/ce_browser), "" when there's none; CHROME_PATH for its -chrome
+    // ("" = its default) - also used by HostTools for 'ce_browser check'
+    static std::string browserBin(void);
+    static std::string chromePath(void);
+
 private:
     int  fdListen;
     int  fdClient;                      // connection from ce_browser, -1 if none

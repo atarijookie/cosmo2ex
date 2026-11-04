@@ -1,1 +1,2 @@
-ce_main_app/configdrive/readme.txt text eol=crlf
+# shown on the ST (TOS needs CR LF) - stored with LF, checked out with CR LF
+ce_cores/configdrive/readme.txt text eol=crlf

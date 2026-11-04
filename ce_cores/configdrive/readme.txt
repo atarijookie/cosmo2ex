@@ -52,12 +52,33 @@ middle). Sound: DMA sound on STE / TT /
 Falcon, YM chip on ST.
 Options: -l<ms> buffer (default 1000),
 -f<fps> max frame rate, -s<sec> start,
--n no sound. Keys: Esc quit, Space
+-n no sound, -h sound at half rate.
+Keys: Esc quit, Space
 pause, Left / Right 10 s, Up / Down
 1 min.
-The host needs ffmpeg (and the
-browser Chrome): run ce_setup_tools
-in the CosmosEx folder on the host.
+
+CE_DOOM.PRG (in the root)
+-----------
+Doom - it runs on the host, the ST
+shows it full screen and sends the
+keys. Arrows move, Control fires,
+Space opens, Shift runs, Alternate +
+arrows strafe, 1..7 weapons, Tab map,
+Esc menu (quit Doom there), Undo quits
+at once. Freedoom is the free game it
+plays - or your own DOOM.WAD.
+Sound effects (no music): DMA sound,
+on a plain ST the YM. -h halves the
+sound rate (less CPU on a ST), -n no
+sound.
+
+
+These programs need programs on the
+host: ffmpeg (players), Chrome
+(browser), Freedoom (Doom) - run
+ce_setup_tools in the Cosmo2ex folder
+on the host. Until then this drive
+doesn't show them.
 
 
 Folder DRIVERS\

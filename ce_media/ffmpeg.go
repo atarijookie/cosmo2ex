@@ -27,6 +27,8 @@ type Decoder struct {
 	cleanups    sync.WaitGroup // stopped decoders / containers still ending
 	wmu         sync.Mutex
 	worker      *worker // docker: the container ffmpeg runs in (dockerworker.go)
+	doomBin     string  // games (game.go): engine and WAD - default: found by findDoom
+	doomWad     string
 }
 
 //--------------------------------------------------------------------------------------------------------------------

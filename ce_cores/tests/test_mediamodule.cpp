@@ -22,6 +22,7 @@
 #include "hdd/media/mediamodule.h"
 #include "hdd/media/media_commands.h"
 #include "hdd/media/medialink_protocol.h"
+#include "hdd/media/hosttools.h"
 
 namespace {
 
@@ -138,10 +139,11 @@ struct FakeMedia {
     }
 
     // chunk: header + 'size' bytes in total, bytes after the header count up from 'first'
-    void sendChunk(uint32_t gen, uint32_t seq, uint32_t size = 4096, uint8_t flags = 0, uint8_t first = 0) {
+    void sendChunk(uint32_t gen, uint32_t seq, uint32_t size = 4096, uint8_t flags = 0, uint8_t first = 0, uint32_t audioBytes = 0) {
         std::vector<uint8_t> c(size, 0);
         Utils::storeDword(&c[MED_CHUNK_GENERATION], gen);
         Utils::storeDword(&c[MED_CHUNK_SEQ], seq);
+        Utils::storeDword(&c[MED_CHUNK_AUDIO_BYTES], audioBytes);
         c[MED_CHUNK_FLAGS] = flags;
         for(uint32_t i=MED_CHUNK_HEADER_SIZE; i<size; i++) {
             c[i] = (uint8_t) (first + i);
@@ -361,12 +363,31 @@ TEST_CASE("media module - full queue stops reading, live keeps the newest") {
     Utils::sleepMs(100);
     REQUIRE(h.getChunk(gen) == MED_OK);
     CHECK(Utils::getDword(&h.dt.reply[MED_CHUNK_SEQ]) == 3);         // only the 2 newest are kept
+    std::vector<uint8_t> tk = fm.expect(MLINK_TAKEN);                // ce_media may send the next one
+    REQUIRE(tk.size() == 8);
+    CHECK(Utils::getDword(&tk[0]) == gen);
+    CHECK(Utils::getDword(&tk[4]) == 3);
 
     uint8_t keys[2] = { 0x39, 0xb9 };
     REQUIRE(h.command(MED_CMD_INPUT, { 2, keys[0], keys[1] }) == MED_OK);
     std::vector<uint8_t> in = fm.expect(MLINK_INPUT);
     CHECK(in == std::vector<uint8_t>(keys, keys + 2));
     CHECK(h.command(MED_CMD_INPUT, { 7 }) == MED_ERR_BAD_PARAM);
+
+    // live with sound (a game with its sound effects): every chunk counts - none dropped, a short queue instead
+    REQUIRE(h.open("E:\\GAME", MED_OPF_LIVE) == MED_OK);
+    gen = Utils::getDword(fm.expect(MLINK_OPEN).data());
+    for(int i=0; i<6; i++) {
+        fm.sendChunk(gen, i, 4096, 0, 0, 1000);
+    }
+    REQUIRE(medWaitFor([&]() { return h.mm->getLink().queuedBytes() >= 3 * 4096; }));
+    Utils::sleepMs(200);
+    CHECK(h.mm->getLink().queuedBytes() == 3 * 4096);               // stopped reading at 3
+    for(int i=0; i<6; i++) {
+        REQUIRE(medWaitFor([&]() { return h.mm->getLink().queuedBytes() > 0; }));
+        REQUIRE(h.getChunk(gen) == MED_OK);
+        CHECK(Utils::getDword(&h.dt.reply[MED_CHUNK_SEQ]) == (uint32_t) i);
+    }
 }
 
 TEST_CASE("media module - ce_media errors and disconnects show in INFO") {
@@ -515,4 +536,133 @@ TEST_CASE("media module - MEDIA_BIN that doesn't exist is reported to the ST") {
     REQUIRE(medWaitFor([&]() { h.command(MED_CMD_GET_INFO); return h.dt.reply[MED_INFO_STATE] == MED_STATE_ERROR; }));
     CHECK(std::string((const char *) &h.dt.reply[MED_INFO_MSG]) == "ce_media not found: /nonexistent/ce_media");
     unsetenv("MEDIA_BIN");
+}
+
+//------------------------------------------------------------------------------------------------------------------
+// Doom on the host with the real ce_media and engine - only when CE_MEDIA_TEST_BIN, CE_DOOM_TEST_BIN and
+// CE_DOOM_TEST_WAD are set, e.g.:
+//   CE_MEDIA_TEST_BIN=../ce_media/ce_media CE_DOOM_TEST_BIN=../third_party/doomgeneric/ce_doomgeneric
+//     CE_DOOM_TEST_WAD=/tmp/freedoom1.wad ./tests/run_tests.elf -tc="*Doom*,*host tools*"
+
+static bool doomTestSet(void)
+{
+    return getenv("CE_MEDIA_TEST_BIN") && getenv("CE_DOOM_TEST_BIN") && getenv("CE_DOOM_TEST_WAD");
+}
+
+TEST_CASE("media module: Doom on the host - game OPEN, live chunks, keys" * doctest::skip(!doomTestSet()))
+{
+    setenv("MEDIA_BIN", getenv("CE_MEDIA_TEST_BIN"), 1);
+    setenv("MEDIA_DOOM_BIN", getenv("CE_DOOM_TEST_BIN"), 1);
+    setenv("MEDIA_DOOM_WAD", getenv("CE_DOOM_TEST_WAD"), 1);
+    MedHarness h;
+    h.mm->setPathResolver([](const std::string&, std::string&) { FAIL("a game must not be looked up as a file"); return false; });
+
+    REQUIRE(h.command(MED_CMD_IDENTIFY) == MED_OK);
+    REQUIRE(medWaitFor([&]() { return h.mm->getLink().isConnected(); }, 15000));
+
+    // with its sound effects: STE - DMA sound, plain ST - the YM (which needs the volume table)
+    uint8_t machine = MED_MACH_STE, aout = MED_AOUT_DMA, afmt = MED_AFMT_DMA_S8_MONO;
+    uint32_t rate = 25033;
+    SUBCASE("STE, DMA sound") {}
+    SUBCASE("ST, YM") { machine = MED_MACH_ST; aout = MED_AOUT_YM; afmt = MED_AFMT_YM; rate = 15754; }
+
+    std::vector<uint8_t> d(MED_OPEN_SIZE, 0);
+    d[MED_OPEN_MACHINE] = machine;
+    d[MED_OPEN_VMODE] = MED_VMODE_ST_LOW;
+    d[MED_OPEN_AOUT] = aout;
+    d[MED_OPEN_FLAGS] = MED_OPF_LIVE | MED_OPF_GAME;
+    d[MED_OPEN_MAX_SECTORS] = 254;
+    memcpy(&d[MED_OPEN_PATH], "doom", 4);
+    REQUIRE(h.command(MED_CMD_OPEN, {}, d) == MED_OK);
+
+    REQUIRE(medWaitFor([&]() { h.command(MED_CMD_GET_INFO); return h.dt.reply[MED_INFO_STATE] != MED_STATE_STARTING; }, 15000));
+    std::vector<uint8_t> info = h.dt.reply;
+    INFO("message: " << std::string((const char *) &info[MED_INFO_MSG]));
+    REQUIRE(info[MED_INFO_STATE] == MED_STATE_READY);
+    CHECK(info[MED_INFO_VMODE] == MED_VMODE_ST_LOW);
+    CHECK(info[MED_INFO_AFMT] == afmt);
+    CHECK(Utils::getDword(&info[MED_INFO_CLOCK_RATE]) == rate);
+    if(aout == MED_AOUT_YM) {                                       // what CE_DOOM asks for right after READY
+        REQUIRE(h.command(MED_CMD_GET_YM_TABLE) == MED_OK);
+        CHECK(h.dt.reply.size() == MED_YM_TABLE_SIZE);
+    }
+    CHECK(info[MED_INFO_FRAMES_PER_CHUNK] == 1);
+    CHECK(Utils::getDword(&info[MED_INFO_DURATION_MS]) == 0);
+    MESSAGE("title '" << std::string((const char *) &info[MED_INFO_TITLE]) << "'");
+
+    uint32_t gen = h.mm->getLink().generation();
+    uint32_t start = Utils::getCurrentMs();
+    uint32_t nextAudio = 0;
+    int frames = 0;
+    while(frames < 20 && Utils::elapsedMs(start) < 5000) {
+        REQUIRE(h.getChunk(gen) == MED_OK);
+        if(h.dt.reply[MED_CHUNK_FLAGS] & MED_CHF_EMPTY) {
+            Utils::sleepMs(5);
+            continue;
+        }
+        CHECK(h.dt.reply[MED_CHUNK_FRAME_COUNT] == 1);
+        CHECK(Utils::getDword(&h.dt.reply[MED_CHUNK_AUDIO_BYTES]) >= rate / 20 - 2);   // 1/20 s of sound - every chunk
+        CHECK(Utils::getDword(&h.dt.reply[MED_CHUNK_AUDIO_START]) == nextAudio);
+        nextAudio += Utils::getDword(&h.dt.reply[MED_CHUNK_AUDIO_BYTES]);
+        frames++;
+        if(frames == 5) {                                           // Return pressed and released - Doom's menu
+            REQUIRE(h.command(MED_CMD_INPUT, {2, 0x1c, 0x9c}) == MED_OK);
+        }
+    }
+    CHECK(frames == 20);
+    MESSAGE("20 frames in " << Utils::elapsedMs(start) << " ms");
+
+    // the ST falls behind (here: takes nothing for 2 s) - nothing piles up: then only the chunks on the way are
+    // there, the next ones come at the game's pace again (before: seconds of chunks queued in the link)
+    Utils::sleepMs(2000);
+    int quick = 0;
+    uint32_t t0 = Utils::getCurrentMs();
+    while(Utils::elapsedMs(t0) < 300) {
+        REQUIRE(h.getChunk(gen) == MED_OK);
+        if(h.dt.reply[MED_CHUNK_FLAGS] & MED_CHF_EMPTY) {
+            Utils::sleepMs(2);
+            continue;
+        }
+        CHECK(Utils::getDword(&h.dt.reply[MED_CHUNK_AUDIO_START]) == nextAudio);  // and the sound goes on seamlessly
+        nextAudio += Utils::getDword(&h.dt.reply[MED_CHUNK_AUDIO_BYTES]);
+        quick++;
+    }
+    MESSAGE(quick << " chunks in 300 ms after a 2 s pause");
+    CHECK(quick <= 2 + 8);
+
+    REQUIRE(h.seek(3000) == MED_OK);                                // a game can't seek - it goes on
+    REQUIRE(h.command(MED_CMD_CLOSE) == MED_OK);
+
+    unsetenv("MEDIA_DOOM_BIN");
+    unsetenv("MEDIA_DOOM_WAD");
+}
+
+TEST_CASE("media module: host tools check with the real ce_media" * doctest::skip(!doomTestSet()))
+{
+    setenv("MEDIA_BIN", getenv("CE_MEDIA_TEST_BIN"), 1);
+    setenv("MEDIA_DOOM_BIN", getenv("CE_DOOM_TEST_BIN"), 1);
+    setenv("MEDIA_DOOM_WAD", getenv("CE_DOOM_TEST_WAD"), 1);
+    setenv("BROWSER_BIN", "/nonexistent/ce_browser", 1);
+    unsetenv("SUDO_USER");
+
+    HostTools::resetForTests();
+    HostTools::refresh();
+    REQUIRE(medWaitFor([&]() { return !HostTools::checkRunning() && HostTools::state(HostTools::DOOM) != -1; }, 15000));
+    CHECK(HostTools::state(HostTools::DOOM) == 1);
+    CHECK(HostTools::state(HostTools::CHROME) == 0);               // no ce_browser
+    CHECK(!HostTools::hideOnConfigDrive("CE_DOOM.PRG"));
+    CHECK(HostTools::hideOnConfigDrive("ce_brows.prg"));
+
+    setenv("MEDIA_DOOM_WAD", "/nonexistent/doom.wad", 1);           // checked again: the WAD is gone
+    HostTools::resetForTests();
+    HostTools::refresh();
+    REQUIRE(medWaitFor([&]() { return !HostTools::checkRunning() && HostTools::state(HostTools::DOOM) != -1; }, 15000));
+    CHECK(HostTools::state(HostTools::DOOM) == 0);
+    CHECK(HostTools::hideOnConfigDrive("CE_DOOM.PRG"));
+
+    HostTools::resetForTests();
+    unsetenv("MEDIA_BIN");
+    unsetenv("MEDIA_DOOM_BIN");
+    unsetenv("MEDIA_DOOM_WAD");
+    unsetenv("BROWSER_BIN");
 }

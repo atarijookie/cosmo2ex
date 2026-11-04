@@ -20,6 +20,7 @@
 #include "network/netadapter.h"
 #include "browser/browsermodule.h"
 #include "media/mediamodule.h"
+#include "media/hosttools.h"
 
 extern DebugVars    dbgVars;
 
@@ -78,6 +79,7 @@ void HddClient::onClientConnected(void)
     slm->reset();                           // new device - printer as after power on
 
     browser->reset();                       // new device - its ce_browser starts when CE_BROWS.PRG asks
+    HostTools::refresh();                   // which programs the config drive shows - known before the desktop lists it
 
     media->reset();                         // new device - no stream, ce_media starts when CE_VIDEO / CE_AUDIO asks
 }

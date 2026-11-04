@@ -109,8 +109,11 @@ void MediaModule::open(void)
 
     link.close();                                                   // the previous stream ends, whatever happens next
 
+    bool game = (buf[MED_OPEN_FLAGS] & MED_OPF_GAME) != 0;
     std::string hostPath;
-    if(!resolvePath(atariPath, hostPath)) {
+    if(game) {                                                      // a game on the host - its name goes as it is
+        hostPath = atariPath;
+    } else if(!resolvePath(atariPath, hostPath)) {
         logHdd(LOG_INFO, "MediaModule::open - %s is not on a translated drive, or doesn't exist", atariPath.c_str());
         dataTrans->setStatus(MED_ERR_NOT_FOUND);
         return;
@@ -123,7 +126,7 @@ void MediaModule::open(void)
 
     uint32_t gen = nextGen++;
     bool live = (buf[MED_OPEN_FLAGS] & MED_OPF_LIVE) != 0;
-    link.open(gen, buf, Utils::pathToUi(hostPath), live);          // Windows: ce_media is a Windows program - C:\... path
+    link.open(gen, buf, game ? hostPath : Utils::pathToUi(hostPath), live);   // Windows: ce_media is a Windows program - C:\... path
 
     logHdd(LOG_INFO, "MediaModule::open - %s -> %s, machine %d, vmode %d, audio %d, latency %d ms, %d sectors%s",
            atariPath.c_str(), hostPath.c_str(), (int) buf[MED_OPEN_MACHINE], (int) vmode, (int) aout,

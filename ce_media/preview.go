@@ -27,6 +27,8 @@ func previewMain(args []string) int {
 	outDir := fs.String("out", "preview_out", "output directory")
 	maxSectors := fs.Int("max-sectors", 254, "biggest chunk the ST takes")
 	live := fs.Bool("live", false, "low latency stream (1 frame per chunk)")
+	halfRate := fs.Bool("half-rate", false, "sound at half the rate (YM 7877 Hz, DMA 12517 Hz)")
+	game := fs.Bool("game", false, "the argument is a game on the host (doom), not a file - as CE_DOOM.PRG gets it")
 	dec := decoderFlags(fs)
 	fs.Parse(args)
 	dec.fixup()
@@ -40,6 +42,9 @@ func previewMain(args []string) int {
 	req := OpenReq{maxSectors: *maxSectors, startMs: int(*start * 1000), path: file, latencyMs: 1000}
 	if *live {
 		req.flags |= opfLive
+	}
+	if *halfRate {
+		req.flags |= opfHalfRate
 	}
 	switch *machine {
 	case "st":
@@ -82,36 +87,54 @@ func previewMain(args []string) int {
 		return 2
 	}
 
-	if err := dec.waitImage(nil, func(m string) { fmt.Println(m) }); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
+	var l Layout
+	var src Source
+	var err error
 	t0 := time.Now()
-	pr, err := dec.probe(file)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	l, err := computeLayout(req, pr.hasVideo, pr.hasAudio, pr.fpsNum, pr.fpsDen)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	fmt.Printf("file:    %s (%s), %d ms, video %v %dx%d aspect %.3f %d/%d fps, audio %v - probe %v\n", file, pr.title,
-		pr.durationMs, pr.hasVideo, pr.width, pr.height, pr.dar, pr.fpsNum, pr.fpsDen, pr.hasAudio, time.Since(t0).Round(time.Millisecond))
-	if l.hasVideo() {
-		aw, ah := activeSize(l.vm, pr.dar)
-		fmt.Printf("layout:  %s %dx%d (picture %dx%d), %.3f fps, %d frames/chunk, slot %d sectors\n",
-			l.vm.name, l.vm.w, l.vm.h, aw, ah, float64(l.fpsNum)/float64(l.fpsDen), l.F, l.slotSectors)
-	}
-	fmt.Printf("         audio format %d at %d Hz, chunk max %d sectors (audio max %d B)\n", l.afmt, l.rate, l.chunkSectors, l.audioMax)
-
 	ymTable := dec.ymTable()
-	t0 = time.Now()
-	src, err := openFFmpegSource(dec, file, pr, &l, req.startMs)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
+	if *game { // a game: no probe, its picture at Doom's 35 fps (or less), its sound effects
+		req.flags |= opfLive | opfGame
+		if l, err = computeLayout(req, true, req.aout != aoutNone, 35, 1); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		g, title, err := openGameSource(dec, file, &l)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		src = g
+		fmt.Printf("game:    %s (%s), started in %v\n", file, title, time.Since(t0).Round(time.Millisecond))
+		fmt.Printf("layout:  %s %dx%d, %.3f fps, %d frames/chunk, slot %d sectors\n",
+			l.vm.name, l.vm.w, l.vm.h, float64(l.fpsNum)/float64(l.fpsDen), l.F, l.slotSectors)
+	} else {
+		if err := dec.waitImage(nil, func(m string) { fmt.Println(m) }); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		pr, err := dec.probe(file)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if l, err = computeLayout(req, pr.hasVideo, pr.hasAudio, pr.fpsNum, pr.fpsDen); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		fmt.Printf("file:    %s (%s), %d ms, video %v %dx%d aspect %.3f %d/%d fps, audio %v - probe %v\n", file, pr.title,
+			pr.durationMs, pr.hasVideo, pr.width, pr.height, pr.dar, pr.fpsNum, pr.fpsDen, pr.hasAudio, time.Since(t0).Round(time.Millisecond))
+		if l.hasVideo() {
+			aw, ah := activeSize(l.vm, pr.dar)
+			fmt.Printf("layout:  %s %dx%d (picture %dx%d), %.3f fps, %d frames/chunk, slot %d sectors\n",
+				l.vm.name, l.vm.w, l.vm.h, aw, ah, float64(l.fpsNum)/float64(l.fpsDen), l.F, l.slotSectors)
+		}
+		fmt.Printf("         audio format %d at %d Hz, chunk max %d sectors (audio max %d B)\n", l.afmt, l.rate, l.chunkSectors, l.audioMax)
+
+		t0 = time.Now()
+		if src, err = openFFmpegSource(dec, file, pr, &l, req.startMs); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
 	}
 	defer src.Close()
 

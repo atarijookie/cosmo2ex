@@ -1,5 +1,6 @@
 #!/bin/sh
-# Builds the Windows programs (ce_cores.exe, webserver.exe, ce_run.exe, ce_media.exe, ce_browser.exe) - run in a Cygwin shell (packages: gcc-g++,
+# Builds the Windows programs (ce_cores.exe, webserver.exe, ce_run.exe, ce_media.exe, ce_browser.exe,
+# ce_doomgeneric.exe) - run in a Cygwin shell (packages: gcc-g++,
 # make, curl) with Go for Windows in PATH. release/build.sh makes the release zip from the output, together with the
 # Atari programs and the other files (those need the m68k-atari-mint toolchain, which is not available in Cygwin).
 #
@@ -54,6 +55,12 @@ mkdir -p "$BUILD/ce_cores/obj" "$BUILD/ce_cores/lib"
 echo "[windows] building ce_cores"
 make -C "$BUILD/ce_cores" -j"$(nproc)"
 strip -o "$OUT/ce_cores.exe" "$BUILD/ce_cores/ce_cores.exe"
+
+# Doom for CE_DOOM.PRG - a Cygwin program too (needs only cygwin1.dll), GPL, ce_media starts it
+echo "[windows] building ce_doomgeneric"
+make -C "$BUILD/third_party/doomgeneric" clean >/dev/null
+make -C "$BUILD/third_party/doomgeneric" -j"$(nproc)"
+strip -o "$OUT/ce_doomgeneric.exe" "$BUILD/third_party/doomgeneric/ce_doomgeneric.exe"
 
 # Cygwin DLLs it needs - cygcheck lists the whole chain as Windows paths; Windows' own DLLs are not ours to bundle
 cygcheck "$OUT/ce_cores.exe" | tr -d '\r' | sed 's/^ *//' | grep -i '\\bin\\cyg[^\\]*\.dll$' | sort -u |

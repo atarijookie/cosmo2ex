@@ -25,9 +25,10 @@ Start at login: System Settings > General > Login Items > + > select CosmosEx.co
 
 Video / audio players and web browser
 -------------------------------------
-CE_VIDEO.TTP, CE_AUDIO.TTP and CE_BROWS.PRG (on the config drive) need ffmpeg and Chrome on this Mac. To get them,
-open Terminal, drag ce_setup_tools.sh from this folder into it and press Enter. It asks before installing anything
-(ffmpeg with Homebrew, Chrome headless shell from Google into the tools folder here), then restart Cosmo2ex.
+CE_VIDEO.TTP, CE_AUDIO.TTP, CE_BROWS.PRG and CE_DOOM.PRG (on the config drive) need ffmpeg, Chrome and Freedoom on
+this Mac - the config drive shows them only when they're here. To get them, open Terminal, drag ce_setup_tools.sh from
+this folder into it and press Enter. It asks before installing anything (ffmpeg with Homebrew, Chrome headless shell
+from Google and Freedoom into the tools folder here), then restart Cosmo2ex.
 
 Files
 -----

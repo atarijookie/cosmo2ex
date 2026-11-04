@@ -19,6 +19,7 @@
 #include "hdd/translated/translateddisk.h"
 #include "hdd/translated/gemdos.h"
 #include "hdd/translated/gemdos_errno.h"
+#include "hdd/media/hosttools.h"
 
 extern std::map<std::string, std::string> dotEnv;
 
@@ -414,4 +415,39 @@ TEST_CASE("translated disk: generated DESKTOP.INF / NEWDESK.INF are in root of c
 
     // only in the root - elsewhere it's a normal (read only) file of the config drive
     CHECK(h.call(GEMDOS_Fopen, {0}, "C:\\DRIVERS\\NEWDESK.INF") == (uint8_t) EFILNF);
+}
+
+TEST_CASE("translated disk: the config drive's root leaves out programs whose host side isn't there")
+{
+    ConfigDriveHarness c;
+    TranslatedDiskHarness& h = *c.h;
+    for(const char *n : { "/ce_doom.prg", "/ce_brows.prg", "/ce_video.ttp", "/ce_audio.ttp", "/drivers/ce_doom.prg" }) {
+        c.writeFile(c.configDrive + n, "prg");
+    }
+
+    HostTools::setStateForTests(HostTools::DOOM,   0);          // missing
+    HostTools::setStateForTests(HostTools::CHROME, 1);          // there
+    HostTools::setStateForTests(HostTools::FFMPEG, -1);         // not checked yet - shown
+
+    auto found = [&](const char *path) {                        // Fsfirst for exactly this name: DTA, attributes, path
+        return h.call(GEMDOS_Fsfirst, {0, 0, 0x10, 0, 0x07}, path) == E_OK;
+    };
+    CHECK(!found("C:\\CE_DOOM.PRG"));
+    CHECK(!found("C:\\ce_doom.prg"));
+    CHECK(found("C:\\CE_BROWS.PRG"));
+    CHECK(found("C:\\CE_VIDEO.TTP"));
+    CHECK(found("C:\\CE_AUDIO.TTP"));
+    CHECK(found("C:\\README.TXT"));
+    CHECK(found("C:\\DRIVERS\\CE_DOOM.PRG"));                 // only the root
+
+    HostTools::setStateForTests(HostTools::FFMPEG, 0);
+    CHECK(!found("C:\\CE_VIDEO.TTP"));
+    CHECK(!found("C:\\CE_AUDIO.TTP"));
+
+    h.touch("CE_DOOM.PRG");                                     // other drives: everything
+    CHECK(h.call(GEMDOS_Fsfirst, {0, 0, 0x10, 0, 0x07}, "D:\\CE_DOOM.PRG") == E_OK);
+
+    for(int t=0; t<HostTools::TOOL_COUNT; t++) {
+        HostTools::setStateForTests((HostTools::Tool) t, -1);
+    }
 }

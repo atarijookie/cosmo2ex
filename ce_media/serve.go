@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -15,18 +16,42 @@ import (
 type streamCtl struct {
 	stop chan struct{}
 	done chan struct{}
+	mu   sync.Mutex // src is set by the stream's goroutine, read by the message loop (keys)
 	src  Source
+	gen  uint32
+	// live streams: one token per chunk that may be on the way to the ST - a chunk takes one, msgTaken gives it
+	// back. So at most liveInFlight chunks wait anywhere between here and the ST (the TCP buffers could hold
+	// seconds of them), and each one is made from what's newest when the ST is ready for it. nil = not used.
+	credits chan struct{}
+}
+
+const liveInFlight = 2
+
+// waitCredit: before each chunk of a live stream - a token, or the stream is stopped. nil when not used.
+func (ctl *streamCtl) waitCredit() func() error {
+	if ctl.credits == nil {
+		return nil
+	}
+	return func() error {
+		select {
+		case <-ctl.credits:
+			return nil
+		case <-ctl.stop:
+			return errStopped
+		}
+	}
 }
 
 type server struct {
 	link *Link
 	dec  *Decoder
 
-	cur     *streamCtl
-	req     OpenReq
-	probe   *Probe
-	layout  *Layout
-	ymTable []ymEntry
+	cur         *streamCtl
+	peerVersion int // of ce_cores: from 2 on it says when the ST took a live chunk (msgTaken)
+	req         OpenReq
+	probe       *Probe
+	layout      *Layout
+	ymTable     []ymEntry
 }
 
 func serve(addr string, dec *Decoder) error {
@@ -63,7 +88,15 @@ func serve(addr string, dec *Decoder) error {
 		switch m.typ {
 		case msgHello:
 			if len(m.payload) >= 2 {
-				log.Printf("ce_cores link version %d", binary.BigEndian.Uint16(m.payload))
+				s.peerVersion = int(binary.BigEndian.Uint16(m.payload))
+				log.Printf("ce_cores link version %d", s.peerVersion)
+			}
+		case msgTaken:
+			if s.cur != nil && s.cur.credits != nil && len(m.payload) >= 4 && binary.BigEndian.Uint32(m.payload) == s.cur.gen {
+				select {
+				case s.cur.credits <- struct{}{}:
+				default:
+				}
 			}
 		case msgOpen:
 			s.stopStream()
@@ -77,13 +110,20 @@ func serve(addr string, dec *Decoder) error {
 			s.probe, s.layout = nil, nil
 			s.startStream(req.gen, req.startMs, true)
 		case msgSeek:
-			if len(m.payload) < 8 || s.layout == nil {
+			if len(m.payload) < 8 || s.layout == nil || s.req.flags&opfGame != 0 { // a game can't seek
 				continue
 			}
 			s.stopStream()
 			s.startStream(binary.BigEndian.Uint32(m.payload), int(binary.BigEndian.Uint32(m.payload[4:])), false)
 		case msgInput:
-			// files don't take keys - a game source would get them here
+			if s.cur != nil {
+				s.cur.mu.Lock()
+				g, ok := s.cur.src.(*gameSource)
+				s.cur.mu.Unlock()
+				if ok {
+					g.keys(m.payload)
+				}
+			}
 		case msgClose:
 			s.stopStream()
 			s.probe, s.layout = nil, nil
@@ -109,9 +149,23 @@ func (s *server) stopStream() {
 
 // startStream: probe (first time) and decode from startMs. The goroutine sends INFO when it's the OPEN.
 func (s *server) startStream(gen uint32, startMs int, sendInfo bool) {
-	ctl := &streamCtl{stop: make(chan struct{}), done: make(chan struct{})}
+	ctl := &streamCtl{stop: make(chan struct{}), done: make(chan struct{}), gen: gen}
+	if req := s.req; req.flags&opfLive != 0 && s.peerVersion >= 2 {
+		ctl.credits = make(chan struct{}, liveInFlight)
+		for i := 0; i < liveInFlight; i++ {
+			ctl.credits <- struct{}{}
+		}
+	}
 	s.cur = ctl
 	req := s.req
+
+	if req.flags&opfGame != 0 {
+		go func() {
+			defer close(ctl.done)
+			s.runGame(ctl, gen, req)
+		}()
+		return
+	}
 
 	go func() {
 		defer close(ctl.done)
@@ -152,7 +206,9 @@ func (s *server) startStream(gen uint32, startMs int, sendInfo bool) {
 			s.sendInfoError(err.Error())
 			return
 		}
+		ctl.mu.Lock()
 		ctl.src = src
+		ctl.mu.Unlock()
 		defer src.Close()
 
 		select { // stopped while starting - the ST moved on
@@ -172,6 +228,7 @@ func (s *server) startStream(gen uint32, startMs int, sendInfo bool) {
 		go func() { <-ctl.stop; src.Close() }()
 
 		st := newStream(l, src, gen, startMs, s.ymTable, s.link.send, ctl.stop)
+		st.waitReady = ctl.waitCredit()
 		t0 = time.Now()
 		if err := st.run(); err != nil && err != errStopped {
 			log.Printf("stream: %v", err)
@@ -179,6 +236,52 @@ func (s *server) startStream(gen uint32, startMs int, sendInfo bool) {
 			log.Printf("stream generation %d ended (sent in %v)", gen, time.Since(t0).Round(time.Millisecond))
 		}
 	}()
+}
+
+// runGame: a game on the host (OPEN with MED_OPF_GAME) - no probe, no seek; it runs until the ST closes it or the
+// game ends (quit from its menu)
+func (s *server) runGame(ctl *streamCtl, gen uint32, req OpenReq) {
+	if req.vmode == vmodeNone {
+		s.sendInfoError("a game needs a screen")
+		return
+	}
+	l, err := computeLayout(req, true, req.aout != aoutNone, 35, 1) // Doom's world moves 35 times a second
+	if err != nil {
+		s.sendInfoError(err.Error())
+		return
+	}
+	s.layout = &l
+
+	s.link.send(msgInfo, infoBlock(stateStarting, nil, 0, "", "Starting "+req.path+"..."))
+	src, title, err := openGameSource(s.dec, req.path, &l)
+	if err != nil {
+		s.sendInfoError(err.Error())
+		return
+	}
+	ctl.mu.Lock()
+	ctl.src = src
+	ctl.mu.Unlock()
+	defer src.Close()
+
+	select {
+	case <-ctl.stop:
+		return
+	default:
+	}
+	log.Printf("game %s: %s, %d/%d fps, %d sectors/chunk", req.path, l.vm.name, l.fpsNum, l.fpsDen, l.chunkSectors)
+	if l.afmt == afmtYM { // before READY - the ST asks for the table as soon as it sees READY
+		s.link.send(msgYmTable, ymTableBytes(s.ymTable))
+	}
+	s.link.send(msgInfo, infoBlock(stateReady, &l, 0, title, ""))
+
+	go func() { <-ctl.stop; src.Close() }()
+	st := newStream(&l, src, gen, 0, s.ymTable, s.link.send, ctl.stop)
+	st.waitReady = ctl.waitCredit() // the frame is taken when the ST is ready for it - as fresh as it gets
+	if err := st.run(); err != nil && err != errStopped {
+		log.Printf("game stream: %v", err)
+	} else if err == nil {
+		log.Printf("game %s ended", req.path)
+	}
 }
 
 func maxInt(a, b int) int {

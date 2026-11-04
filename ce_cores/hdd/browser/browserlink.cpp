@@ -123,15 +123,8 @@ bool BrowserLink::openListener(void)
 //--------------------------------------------------------
 // ce_browser process
 
-void BrowserLink::spawnBrowser(void)
+std::string BrowserLink::browserBin(void)
 {
-    if(childPid != 0) {                                         // already started, just not connected yet
-        return;
-    }
-    if(spawnedOnce && Utils::elapsedMs(lastSpawnMs) < SPAWN_RETRY_MS) {
-        return;
-    }
-
     std::string bin = Utils::dotEnvValue("BROWSER_BIN", "", false);
     if(bin.empty()) {                                           // default: next to ce_cores (as the releases install it)
         std::string binDir = Utils::dotEnvValue("BIN_DIR", "", false);
@@ -142,6 +135,30 @@ void BrowserLink::spawnBrowser(void)
             }
         }
     }
+    return bin;
+}
+
+std::string BrowserLink::chromePath(void)
+{
+    // CHROME_PATH in .env (set by ce_setup_tools) - .env values are not in our environment, so it goes as -chrome;
+    // in the UI form, ce_browser is a native Windows program there
+    std::string chrome = Utils::dotEnvValue("CHROME_PATH", "", false);
+    if(!chrome.empty()) {
+        chrome = Utils::pathToUi(chrome);
+    }
+    return chrome;
+}
+
+void BrowserLink::spawnBrowser(void)
+{
+    if(childPid != 0) {                                         // already started, just not connected yet
+        return;
+    }
+    if(spawnedOnce && Utils::elapsedMs(lastSpawnMs) < SPAWN_RETRY_MS) {
+        return;
+    }
+
+    std::string bin = browserBin();
     if(bin.empty()) {
         if(!binMissingLogged) {
             logHdd(LOG_INFO, "BrowserLink - BROWSER_BIN not set in .env, start it yourself: ce_browser serve -connect 127.0.0.1:%d",
@@ -164,12 +181,7 @@ void BrowserLink::spawnBrowser(void)
 
     char portArg[32];
     snprintf(portArg, sizeof(portArg), "127.0.0.1:%d", (int) listenPort);
-    // CHROME_PATH in .env (set by ce_setup_tools) - .env values are not in our environment, so pass it on as -chrome;
-    // in the UI form, ce_browser is a native Windows program there
-    std::string chrome = Utils::dotEnvValue("CHROME_PATH", "", false);
-    if(!chrome.empty()) {
-        chrome = Utils::pathToUi(chrome);
-    }
+    std::string chrome = chromePath();
     std::vector<char *> argvVec = { (char *) bin.c_str(), (char *) "serve", (char *) "-connect", portArg };
     if(!chrome.empty()) {
         argvVec.push_back((char *) "-chrome");

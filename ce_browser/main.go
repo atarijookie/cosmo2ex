@@ -82,6 +82,23 @@ func main() {
 		serveMain(os.Args[2:])
 		return
 	}
+	// check [-chrome <path>]: exit code 0 when Chrome is there - ce_cores shows / hides CE_BROWS.PRG by it
+	if len(os.Args) >= 2 && os.Args[1] == "check" {
+		fs := flag.NewFlagSet("check", flag.ExitOnError)
+		chromePath := fs.String("chrome", os.Getenv("CHROME_PATH"), "path to chrome / chrome-headless-shell")
+		fs.Parse(os.Args[2:])
+		if *chromePath == "" {
+			*chromePath = chromeDefaultPath()
+		}
+		if st, err := os.Stat(*chromePath); err != nil || st.IsDir() {
+			// run by hand: why; from ce_cores (every now and then): only the exit code
+			if fi, err := os.Stderr.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+				fmt.Fprintf(os.Stderr, "chrome not found at %q\n", *chromePath)
+			}
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) < 2 || os.Args[1] != "preview" {
 		flag.Usage = usage
 		usage()

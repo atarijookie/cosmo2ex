@@ -18,7 +18,7 @@ echo "[windows-cross] syncing sources"
 for d in libdospath ce_cores webserver ce_media ce_browser third_party; do
     rsync -a --delete \
         --exclude '*.o' --exclude '*.d' --exclude '*.a' --exclude '*.elf' --exclude '*.exe' \
-        --exclude '/obj/' --exclude '/lib/' --exclude '/ce_media' --exclude '/ce_browser' --exclude '/preview_out/' \
+        --exclude '/obj/' --exclude '/lib/' --exclude '/ce_media' --exclude '/ce_browser' --exclude '/preview_out/' --exclude '/ce_doomgeneric' \
         "$SRC/$d/" "$BUILD/$d/"
 done
 mkdir -p "$BUILD/ce_cores/obj" "$BUILD/ce_cores/lib"
@@ -27,6 +27,10 @@ mkdir -p "$BUILD/ce_cores/obj" "$BUILD/ce_cores/lib"
 echo "[windows-cross] building ce_cores"
 # UNAME_S selects the Cygwin part of the makefiles (also in libdospath, the sub-make gets it from the command line)
 make -C "$BUILD/ce_cores" -j"$(nproc)" UNAME_S=CYGWIN_NT-10.0 CXX=$T-g++ CC=$T-gcc AR=$T-ar
+
+echo "[windows-cross] building ce_doomgeneric"
+make -C "$BUILD/third_party/doomgeneric" -j"$(nproc)" UNAME_S=CYGWIN_NT-10.0 CC=$T-gcc
+cp "$BUILD/third_party/doomgeneric/ce_doomgeneric.exe" "$OUT/"
 
 #-------------
 echo "[windows-cross] building webserver + ce_run"
@@ -63,7 +67,6 @@ cp "$SRC/ce_cores/core/ce_logo.bin" "$SRC/ce_cores/core/fdd_test.st" "$OUT/"
 # config drive - same layering as release/build.sh, with the Atari programs built in the checkout (if they are there)
 rm -rf "$OUT/configdrive"
 cp -r "$SRC/ce_cores/configdrive" "$OUT/configdrive"
-cp -r "$SRC/ce_cores/core/configdrive/." "$OUT/configdrive/"
 mkdir -p "$OUT/configdrive/drivers" "$OUT/configdrive/tests"
 for f in ce_dd_bootsectors/ce_dd.bs ce_dd_bootsectors/ce_dd_l2.bs ce_dd_prg/ce_dd.prg; do
     if [ -f "$SRC/$f" ]; then cp "$SRC/$f" "$OUT/configdrive/drivers/"; fi

@@ -23,7 +23,9 @@ const (
 	aoutYM   = 2
 
 	// OPEN flags
-	opfLive = 0x01
+	opfLive     = 0x01
+	opfGame     = 0x02 // path = name of a game on the host ("doom")
+	opfHalfRate = 0x04 // sound at half the rate: YM 7877 Hz, DMA 12517 Hz - half the CPU time on a plain ST
 
 	// OPEN data offsets (the first 16 bytes come in MLINK_OPEN)
 	openMachine    = 0
@@ -90,7 +92,7 @@ const (
 	ymTableSize  = 256 * ymTableEntry
 
 	// link
-	linkVersion    = 1
+	linkVersion    = 2 // 2: msgTaken
 	linkHeaderSize = 5
 	linkMaxPayload = 512 * 1024
 
@@ -99,6 +101,7 @@ const (
 	msgSeek       = 0x03
 	msgInput      = 0x04
 	msgClose      = 0x05
+	msgTaken      = 0x06 // generation, seq: the ST took this chunk of a live stream
 	msgHelloReply = 0x81
 	msgInfo       = 0x82
 	msgYmTable    = 0x83

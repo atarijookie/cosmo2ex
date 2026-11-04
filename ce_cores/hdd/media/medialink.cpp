@@ -21,6 +21,8 @@
 #define POLL_MS                 100
 #define DEFAULT_QUEUE_BYTES     (1024 * 1024)   // ~1.5 s of ST video - the ST keeps its own buffer on top of that
 #define LIVE_QUEUE_CHUNKS       2               // live streams: only the newest chunks, older are dropped
+#define LIVE_AUDIO_QUEUE_CHUNKS 3               // live with sound: nothing dropped (the sound would jump), ce_media
+                                                // waits when this many are waiting for the ST - a short queue, low lag
 #define MAX_CHUNK_BYTES         (254 * 512)     // one ACSI transfer
 
 MediaLink::MediaLink()
@@ -39,6 +41,7 @@ MediaLink::MediaLink()
 
     streamOpen       = false;
     live             = false;
+    liveAudio        = false;
     gen              = 0;
     queueBytes       = 0;
     queueLimit       = DEFAULT_QUEUE_BYTES;
@@ -130,15 +133,8 @@ void MediaLink::setLinkMsg(const std::string& msg)
 //--------------------------------------------------------
 // ce_media process
 
-void MediaLink::spawnMedia(void)
+std::string MediaLink::mediaBin(void)
 {
-    if(childPid != 0) {
-        return;
-    }
-    if(spawnedOnce && Utils::elapsedMs(lastSpawnMs) < SPAWN_RETRY_MS) {
-        return;
-    }
-
     std::string bin = Utils::dotEnvValue("MEDIA_BIN", "", false);
     if(bin.empty()) {                                           // default: next to ce_cores
         std::string binDir = Utils::dotEnvValue("BIN_DIR", "", false);
@@ -149,6 +145,39 @@ void MediaLink::spawnMedia(void)
             }
         }
     }
+    return bin;
+}
+
+void MediaLink::appendOptionArgs(std::vector<std::string>& args)
+{
+    // paths go back to the UI form: dotEnvValue() makes Cygwin paths of them, but ce_media is a native Windows program there
+    struct { const char *key; const char *arg; bool path; } opts[] = {
+        { "MEDIA_FFMPEG",       "-ffmpeg",          true },
+        { "MEDIA_FFPROBE",      "-ffprobe",         true },
+        { "MEDIA_DOCKER_IMAGE", "-docker-image",    false },
+        { "MEDIA_YM_TABLE",     "-ym-table",        true },
+        { "MEDIA_DOOM_BIN",     "-doom-bin",        true },
+        { "MEDIA_DOOM_WAD",     "-doom-wad",        true },
+    };
+    for(auto& o : opts) {
+        std::string v = Utils::dotEnvValue(o.key, "", false);
+        if(!v.empty()) {
+            args.push_back(o.arg);
+            args.push_back(o.path ? Utils::pathToUi(v) : v);
+        }
+    }
+}
+
+void MediaLink::spawnMedia(void)
+{
+    if(childPid != 0) {
+        return;
+    }
+    if(spawnedOnce && Utils::elapsedMs(lastSpawnMs) < SPAWN_RETRY_MS) {
+        return;
+    }
+
+    std::string bin = mediaBin();
     if(bin.empty()) {
         if(!binMissingLogged) {
             logHdd(LOG_INFO, "MediaLink - MEDIA_BIN not set in .env, start it yourself: ce_media serve -connect 127.0.0.1:%d",
@@ -173,21 +202,7 @@ void MediaLink::spawnMedia(void)
     char addr[32];
     snprintf(addr, sizeof(addr), "127.0.0.1:%d", (int) listenPort);
     std::vector<std::string> args = { "serve", "-connect", addr };
-
-    // paths go back to the UI form: dotEnvValue() makes Cygwin paths of them, but ce_media is a native Windows program there
-    struct { const char *key; const char *arg; bool path; } opts[] = {
-        { "MEDIA_FFMPEG",       "-ffmpeg",          true },
-        { "MEDIA_FFPROBE",      "-ffprobe",         true },
-        { "MEDIA_DOCKER_IMAGE", "-docker-image",    false },
-        { "MEDIA_YM_TABLE",     "-ym-table",        true },
-    };
-    for(auto& o : opts) {
-        std::string v = Utils::dotEnvValue(o.key, "", false);
-        if(!v.empty()) {
-            args.push_back(o.arg);
-            args.push_back(o.path ? Utils::pathToUi(v) : v);
-        }
-    }
+    appendOptionArgs(args);
 
     lastSpawnMs = Utils::getCurrentMs();
     spawnedOnce = true;
@@ -252,7 +267,10 @@ void MediaLink::noteActivity(void)
 bool MediaLink::queueFull(void)
 {
     std::lock_guard<std::mutex> lock(dataMutex);
-    return !live && queueBytes >= queueLimit;
+    if(live) {
+        return liveAudio && queue.size() >= LIVE_AUDIO_QUEUE_CHUNKS;
+    }
+    return queueBytes >= queueLimit;
 }
 
 void MediaLink::threadCode(void)
@@ -418,7 +436,10 @@ void MediaLink::handleMessage(uint8_t type, const uint8_t *payload, uint32_t len
             auto c = std::make_shared<std::vector<uint8_t>>(payload, payload + len);
             queue.push_back(c);
             queueBytes += len;
-            while(live && queue.size() > LIVE_QUEUE_CHUNKS) {    // live: the newest count, not every one
+            if(Utils::getDword((uint8_t *) payload + MED_CHUNK_AUDIO_BYTES) > 0) {
+                liveAudio = true;                               // from now on every chunk counts
+            }
+            while(live && !liveAudio && queue.size() > LIVE_QUEUE_CHUNKS) {    // live: the newest count, not every one
                 queueBytes -= queue.front()->size();
                 queue.pop_front();
             }
@@ -482,6 +503,7 @@ void MediaLink::open(uint32_t g, const uint8_t *openHeader, const std::string& h
         clearStream();
         streamOpen = true;
         live       = isLive;
+        liveAudio  = false;
         gen        = g;
         openMsg    = p;
         infoBlk.clear();
@@ -566,15 +588,27 @@ std::vector<uint8_t> MediaLink::ymTable(void)
 
 MediaChunk MediaLink::popChunk(uint32_t g)
 {
-    std::lock_guard<std::mutex> lock(dataMutex);
-    if(!streamOpen || g != gen || queue.empty()) {
-        return NULL;
+    MediaChunk c;
+    bool       wasLive;
+    {
+        std::lock_guard<std::mutex> lock(dataMutex);
+        if(!streamOpen || g != gen || queue.empty()) {
+            return NULL;
+        }
+        c = queue.front();
+        queue.pop_front();
+        queueBytes -= c->size();
+        if((*c)[MED_CHUNK_FLAGS] & MED_CHF_END) {
+            endGiven = true;
+        }
+        wasLive = live;
     }
-    MediaChunk c = queue.front();
-    queue.pop_front();
-    queueBytes -= c->size();
-    if((*c)[MED_CHUNK_FLAGS] & MED_CHF_END) {
-        endGiven = true;
+
+    if(wasLive) {                       // ce_media may send the next one (MLINK_TAKEN) - outside the lock
+        std::vector<uint8_t> t(8);
+        memcpy(t.data(), c->data() + MED_CHUNK_GENERATION, 4);
+        memcpy(t.data() + 4, c->data() + MED_CHUNK_SEQ, 4);
+        sendMessage(MLINK_TAKEN, t);
     }
     return c;
 }

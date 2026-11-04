@@ -219,7 +219,7 @@ static void drawToolbar(void)
 static void readStatus(void)
 {
     if(brwGetStatus() != BRW_OK) {
-        strcpy(localMsg, "CosmosEx is not answering");
+        strcpy(localMsg, "Cosmo2ex is not answering");
         return;
     }
     localMsg[0] = 0;
@@ -287,7 +287,7 @@ static uint8_t pageUpdate(void)
         if(res != BRW_OK) {
             resumeRow = 0;
             if(res == BRW_FAILED) {
-                strcpy(localMsg, "CosmosEx is not answering");
+                strcpy(localMsg, "Cosmo2ex is not answering");
             }
             return drawn;
         }
@@ -586,7 +586,7 @@ static void waitKeyOrClick(void)
 static void helpScreen(void)
 {
     static const char *lines[] = {
-        "CE_BROWS - web browser for CosmosEx",
+        "CE_BROWS - web browser for Cosmo2ex",
         "",
         "F1, Help      this help",
         "Ctrl+L, F3    open URL / search",
@@ -840,7 +840,7 @@ int main(void)
 {
     const char *err = NULL;
 
-    (void) Cconws("\33E\r\nCE_BROWS - web browser for CosmosEx\r\n\r\n");
+    (void) Cconws("\33E\r\nCE_BROWS - web browser for Cosmo2ex\r\n\r\n");
 
     if(!videoDetect(&err)) {
         (void) Cconws(err);
@@ -854,9 +854,9 @@ int main(void)
         return 0;
     }
 
-    (void) Cconws("Looking for CosmosEx...\r\n");
+    (void) Cconws("Looking for Cosmo2ex...\r\n");
     if(!brwFind()) {
-        (void) Cconws("CosmosEx with the browser module not found.\r\nIs ce_cores up to date?\r\nPress a key.\r\n");
+        (void) Cconws("Cosmo2ex with the browser module not found.\r\nIs ce_cores up to date?\r\nPress a key.\r\n");
         Cnecin();
         return 0;
     }

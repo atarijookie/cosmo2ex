@@ -2,6 +2,8 @@
 # Sets up the programs CosmosEx's helpers need, by asking simple yes / no questions:
 #   - ffmpeg      - for the video and audio players (CE_VIDEO.TTP, CE_AUDIO.TTP), used by ce_media
 #   - Chrome      - headless, for the web browser (CE_BROWS.PRG), used by ce_browser
+#   - Freedoom    - the game data for Doom (CE_DOOM.PRG), played by ce_doomgeneric (comes with CosmosEx)
+# The config drive shows these Atari programs only when what they need is here.
 #
 # usage:  Linux:  sudo /opt/ce/bin/ce_setup_tools.sh
 #         macOS:  ./ce_setup_tools.sh   (in the CosmosEx folder, not as root)
@@ -13,6 +15,8 @@
 #            next to the bin folder; on other Linux CPUs (Raspberry Pi, ...) Chromium from the system's packages.
 #            Chrome doesn't need docker - ce_browser starts it as a normal program. On Linux it also adds a user
 #            for it (Chrome must not run as root) and, on Ubuntu, the AppArmor rule Chrome's sandbox needs.
+#   Freedoom: downloaded from its GitHub release (checked against its SHA-256), freedoom1.wad to the tools folder -
+#            ce_media looks there (also for your own doom.wad / doom1.wad, if you put one there).
 # The paths go to .env (MEDIA_FFMPEG, CHROME_PATH, ...), so it can be run again any time - it skips what's working.
 # Enter takes the answer in capitals ([Y/n]: yes).
 
@@ -27,6 +31,8 @@ FFMPEG_IMAGE=linuxserver/ffmpeg     # amd64 + arm64 only
 BROWSER_USER_NEW=cebrowser
 CFT_URL=https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_STABLE
 CFT_DL=https://storage.googleapis.com/chrome-for-testing-public
+FREEDOOM_URL=https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip
+FREEDOOM_SHA256=3f9b264f3e3ce503b4fb7f6bdcb1f419d93c7b546f4df3e874dd878db9688f59
 
 #-------------
 # helpers
@@ -461,6 +467,60 @@ fi
 if [ -n "$CHROME" ] && [ "$OS" = Linux ]; then
     browser_user
     chrome_apparmor
+fi
+say ""
+
+#-------------
+# Doom: the engine comes with CosmosEx, the game data (a WAD) is downloaded
+
+doom_wad() {        # the WAD ce_media would use, "" when none
+    w=$(env_get MEDIA_DOOM_WAD)
+    if [ -n "$w" ]; then
+        [ -f "$w" ] && echo "$w"
+        return
+    fi
+    for d in "$TOOLS_DIR" /usr/share/games/doom /usr/local/share/games/doom; do
+        for n in doom.wad doom1.wad freedoom1.wad; do
+            if [ -f "$d/$n" ]; then
+                echo "$d/$n"
+                return
+            fi
+        done
+    done
+}
+
+sha256_of() {
+    if have sha256sum; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
+
+freedoom_download() {
+    ask "  Download Freedoom (a free Doom game, about 25 MB) to $TOOLS_DIR?" Y || return 1
+    if [ "$OS" = Linux ] && ! have unzip; then
+        pkg_install unzip || { warn "can't install unzip"; return 1; }
+    fi
+    mkdir -p "$TOOLS_DIR"
+    zip="$TOOLS_DIR/freedoom.zip"
+    download "$FREEDOOM_URL" "$zip" || { rm -f "$zip"; return 1; }
+    if [ "$(sha256_of "$zip")" != "$FREEDOOM_SHA256" ]; then
+        rm -f "$zip"
+        warn "the download doesn't match its checksum - not used"
+        return 1
+    fi
+    unzip -q -o -j "$zip" '*/freedoom1.wad' -d "$TOOLS_DIR" || { rm -f "$zip"; return 1; }
+    rm -f "$zip"
+    chmod a+r "$TOOLS_DIR/freedoom1.wad"
+    ok "Freedoom in $TOOLS_DIR/freedoom1.wad"
+}
+
+say "3) Doom - for CE_DOOM.PRG"
+if [ ! -x "$SCRIPT_DIR/ce_doomgeneric" ] && [ -z "$(env_get MEDIA_DOOM_BIN)" ]; then
+    warn "the Doom engine (ce_doomgeneric) is not in this CosmosEx folder - update CosmosEx"
+elif [ -n "$(doom_wad)" ]; then
+    ok "Doom: $(doom_wad)"
+elif freedoom_download; then
+    say "  CE_DOOM.PRG shows up on the config drive within a minute."
+else
+    warn "no Doom WAD - CE_DOOM.PRG stays hidden (run this again to download Freedoom)"
 fi
 say ""
 

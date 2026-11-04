@@ -21,6 +21,8 @@ ce_media/preview_out
 ce_browser/ce_browser
 ce_browser/preview_out
 ce_browser/preview_out.log
+third_party/doomgeneric/obj
+third_party/doomgeneric/ce_doomgeneric
 
 # Firmware / MCU / tests are not needed to build the Linux apps
 ce_fdd_mfm

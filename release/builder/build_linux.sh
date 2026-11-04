@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds the Linux parts (ce_cores.elf, webserver, ce_media, ce_browser) for one architecture.
+# Builds the Linux parts (ce_cores.elf, webserver, ce_media, ce_browser, ce_doomgeneric) for one architecture.
 # Called by release/build.sh - either inside the builder container, or directly on the host for --native builds.
 #
 # usage: build_linux.sh <arch> <repo dir> <output dir>
@@ -61,6 +61,13 @@ make -C "$BUILD/ce_cores" -j"$(nproc)" \
     CXX="${CROSS}g++ $ARCH_FLAGS" CC="${CROSS}gcc $ARCH_FLAGS" AR="${CROSS}ar" UNAME_S=Linux
 
 "${CROSS}strip" -o "$OUT/ce_cores.elf" "$BUILD/ce_cores/ce_cores.elf"
+
+#-------------
+# ce_doomgeneric - Doom for CE_DOOM.PRG (GPL, a separate program ce_media starts), plain C
+echo "[$ARCH] building ce_doomgeneric"
+make -C "$BUILD/third_party/doomgeneric" clean >/dev/null
+make -C "$BUILD/third_party/doomgeneric" -j"$(nproc)" CC="${CROSS}gcc $ARCH_FLAGS" UNAME_S=Linux
+"${CROSS}strip" -o "$OUT/ce_doomgeneric" "$BUILD/third_party/doomgeneric/ce_doomgeneric"
 
 #-------------
 # webserver - pure Go, so it cross compiles without any C toolchain

@@ -144,7 +144,9 @@ private:
 //  void onFgetdta(uint8_t *cmd);                    // this function needs to be handled on ST only
     void onFsfirst(uint8_t *cmd);
     void onFsnext(uint8_t *cmd);
-    bool buildGemdosFindstorageData(TFindStorage& fs, const std::string& hostSearchString, uint8_t findAttribs, bool isRootDir, bool isInArchive);    // helper function, not called from ST directly
+    // helper function, not called from ST directly; hideMissingTools: the config drive's root - leave out the programs
+    // whose host side isn't there (HostTools)
+    bool buildGemdosFindstorageData(TFindStorage& fs, const std::string& hostSearchString, uint8_t findAttribs, bool isRootDir, bool isInArchive, bool hideMissingTools = false);
     void diskItemToAtariFindStorageItem(DiskItem& di, uint8_t* buf, bool isInArchive);
 
     // file and directory manipulation

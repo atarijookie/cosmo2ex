@@ -35,7 +35,12 @@ const (
 	ymRate     = 15754 // MFP timer A: 2.4576 MHz / 4 / 39 (15753.8 Hz) - the nearest it gets to the 15650 Hz of ST demos
 	ymCtrl     = 1     // prescaler 4
 	ymData     = 39
-	timerRate  = 200 // clock without audio: the 200 Hz system timer
+	// half rate (MED_OPF_HALF_RATE): the same volume table, only the timer runs at half the speed
+	dmaRateHalf    = 12517 // 8 MHz / 640
+	dmaModeRegHalf = 0x81  // mono, 12.5 kHz
+	ymRateHalf     = 7877  // 2.4576 MHz / 4 / 78
+	ymDataHalf     = 78
+	timerRate      = 200 // clock without audio: the 200 Hz system timer
 
 	defaultFramesPerChunk = 3   // 3 ST frames + audio fit in one 127 kB ACSI transfer
 	audioOnlyChunkMs      = 500 // audio only: half a second per chunk
@@ -81,6 +86,8 @@ type Layout struct {
 	afmt    uint8
 	rate    int // clock ticks per second
 	live    bool
+	dmaMode uint8 // STE sound mode register, MFP timer A data for the YM - for the rate
+	ymData  uint8
 
 	fpsNum, fpsDen int // frames per second = fpsNum / fpsDen
 	F              int // frames per chunk, 0 = audio only
@@ -115,7 +122,10 @@ func ceilDiv(a, b int) int { return (a + b - 1) / b }
 
 // computeLayout: what this ST gets for this file. srcFpsNum / srcFpsDen = 0 when unknown.
 func computeLayout(req OpenReq, hasVideo, hasAudio bool, srcFpsNum, srcFpsDen int) (Layout, error) {
-	l := Layout{machine: req.machine, live: req.flags&opfLive != 0}
+	l := Layout{machine: req.machine, live: req.flags&opfLive != 0, dmaMode: dmaModeReg, ymData: ymData}
+	if req.flags&opfHalfRate != 0 {
+		l.dmaMode, l.ymData = dmaModeRegHalf, ymDataHalf
+	}
 
 	maxSectors := req.maxSectors
 	if maxSectors <= 0 || maxSectors > maxSectorsLimit {
@@ -125,8 +135,12 @@ func computeLayout(req OpenReq, hasVideo, hasAudio bool, srcFpsNum, srcFpsDen in
 	switch {
 	case !hasAudio || req.aout == aoutNone:
 		l.afmt, l.rate = afmtNone, timerRate
+	case req.aout == aoutDMA && req.flags&opfHalfRate != 0:
+		l.afmt, l.rate = afmtDMA, dmaRateHalf
 	case req.aout == aoutDMA:
 		l.afmt, l.rate = afmtDMA, dmaRate
+	case req.aout == aoutYM && req.flags&opfHalfRate != 0:
+		l.afmt, l.rate = afmtYM, ymRateHalf
 	case req.aout == aoutYM:
 		l.afmt, l.rate = afmtYM, ymRate
 	default:
@@ -213,9 +227,9 @@ func infoBlock(state uint8, l *Layout, durationMs int, title, msg string) []byte
 			binary.BigEndian.PutUint32(b[infoFpsX1000:], uint32(int64(l.fpsNum)*1000/int64(l.fpsDen)))
 		}
 		binary.BigEndian.PutUint32(b[infoClockRate:], uint32(l.rate))
-		b[infoDmaMode] = dmaModeReg
+		b[infoDmaMode] = l.dmaMode
 		b[infoYmTimerCtrl] = ymCtrl
-		b[infoYmTimerData] = ymData
+		b[infoYmTimerData] = l.ymData
 		binary.BigEndian.PutUint16(b[infoChunkSectors:], uint16(l.chunkSectors))
 		binary.BigEndian.PutUint16(b[infoAudioMax:], uint16(l.audioMax))
 	}

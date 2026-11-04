@@ -28,9 +28,10 @@ entrypoint.sh needs: sh, coreutils, sed, tini).
 
 Two variants:
 - standard (the default) - CosmosEx alone, about 150 MB
-- full - also ffmpeg and Chrome headless shell, for the video / audio players
-  and the web browser (CE_VIDEO.TTP, CE_AUDIO.TTP, CE_BROWS.PRG), about 1 GB
-  (270 MB to download). amd64, arm64, arm/v7 and 386 - not arm/v6 (Pi 1 / Zero).
+- full - also ffmpeg, Chrome headless shell and Doom (ce_doomgeneric with
+  Freedoom), for the video / audio players, the web browser and Doom
+  (CE_VIDEO.TTP, CE_AUDIO.TTP, CE_BROWS.PRG, CE_DOOM.PRG), about 1 GB
+  (280 MB to download). The standard image's config drive hides them. amd64, arm64, arm/v7 and 386 - not arm/v6 (Pi 1 / Zero).
   Build it with --target full, or docker/build_all.sh --full; released as
   ghcr.io/<owner>/cosmo2ex:<version>-full. The web browser needs the container
   started with --security-opt seccomp=unconfined: Chrome's sandbox uses

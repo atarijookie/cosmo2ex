@@ -10,7 +10,7 @@
 // The INFO block, YM table and chunks are already in the format the ST gets (media_commands.h) - ce_cores only keeps
 // them and hands them out.
 
-#define MLINK_VERSION               1
+#define MLINK_VERSION               2           // 2: MLINK_TAKEN
 #define MLINK_HEADER_SIZE           5
 #define MLINK_MAX_PAYLOAD           (512 * 1024)        // a bigger length means a broken stream - the connection is closed
 
@@ -21,6 +21,9 @@
 #define MLINK_SEEK                  0x03    // generation (DW), position ms (DW) - restart the stream there
 #define MLINK_INPUT                 0x04    // scancodes (B each)
 #define MLINK_CLOSE                 0x05    // stop the stream
+#define MLINK_TAKEN                 0x06    // generation (DW), seq (DW) - the ST took this chunk of a live stream: ce_media
+                                            // sends a new one only then (at most 2 on the way), so nothing piles up
+                                            // between it and the ST - a game stays as fresh as the ST can take it
 
 // ce_media -> ce_cores
 #define MLINK_HELLO_REPLY           0x81    // version (W)

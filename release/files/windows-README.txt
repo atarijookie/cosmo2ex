@@ -21,8 +21,9 @@ Start with Windows: press Win+R, type  shell:startup  and put a shortcut to ce_r
 
 Video / audio players and web browser
 -------------------------------------
-CE_VIDEO.TTP, CE_AUDIO.TTP and CE_BROWS.PRG (on the config drive) need ffmpeg and Chrome on this PC. Double-click
-ce_setup_tools.bat - it asks, then downloads them into the tools folder here. Then restart Cosmo2ex.
+CE_VIDEO.TTP, CE_AUDIO.TTP, CE_BROWS.PRG and CE_DOOM.PRG (on the config drive) need ffmpeg, Chrome and Freedoom on
+this PC - the config drive shows them only when they're here. Double-click ce_setup_tools.bat - it asks, then
+downloads them into the tools folder here. Then restart Cosmo2ex.
 
 Files
 -----

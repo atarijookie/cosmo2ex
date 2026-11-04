@@ -4,6 +4,9 @@
 #               downloaded from gyan.dev (the build ffmpeg.org links for Windows), or ffmpeg in Docker Desktop
 #   - Chrome  - headless, for the web browser (CE_BROWS.PRG), used by ce_browser.exe
 #               Chrome for Testing's chrome-headless-shell from Google
+#   - Freedoom - the game data for Doom (CE_DOOM.PRG), played by ce_doomgeneric.exe (comes with CosmosEx);
+#               from its GitHub release, checked against its SHA-256 - freedoom1.wad to tools\
+# The config drive shows these Atari programs only when what they need is here.
 # Both are unpacked to the tools folder next to this script, their paths go to .env (MEDIA_FFMPEG, CHROME_PATH).
 # It can be run again any time - it skips what's working. Enter takes the answer in capitals ([Y/n]: yes).
 
@@ -19,6 +22,8 @@ $FfmpegUrl    = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zi
 $FfmpegImage  = 'linuxserver/ffmpeg'
 $CftVersion   = 'https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_STABLE'
 $CftDownload  = 'https://storage.googleapis.com/chrome-for-testing-public'
+$FreedoomUrl    = 'https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip'
+$FreedoomSha256 = '3f9b264f3e3ce503b4fb7f6bdcb1f419d93c7b546f4df3e874dd878db9688f59'
 
 #-------------
 # helpers
@@ -195,6 +200,54 @@ if (-not (Test-Chrome)) {
     try { $done = Install-Chrome } catch { Warn $_.Exception.Message }
     if ($done) { $changed = $true }
     else { Warn "no Chrome - the web browser won't work (run this again to install it)" }
+}
+Write-Host ''
+
+#-------------
+# Doom: the engine comes with CosmosEx, the game data (a WAD) is downloaded
+
+function Get-DoomWad {
+    $w = Get-EnvValue 'MEDIA_DOOM_WAD'
+    if ($w) { if (Test-Path $w) { return $w } else { return '' } }
+    foreach ($n in 'doom.wad', 'doom1.wad', 'freedoom1.wad') {
+        $p = Join-Path $ToolsDir $n
+        if (Test-Path $p) { return $p }
+    }
+    return ''
+}
+
+function Install-Freedoom {
+    if (-not (Ask "  Download Freedoom (a free Doom game, about 25 MB) to $ToolsDir?" $true)) { return $false }
+    New-Item -ItemType Directory -Force -Path $ToolsDir | Out-Null
+    $zip = Join-Path $ToolsDir 'freedoom.zip'
+    Download $FreedoomUrl $zip
+    if ((Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower() -ne $FreedoomSha256) {
+        Remove-Item $zip
+        Warn "the download doesn't match its checksum - not used"
+        return $false
+    }
+    $tmp = Join-Path $ToolsDir 'freedoom-unpack'
+    if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+    Expand-Archive -Path $zip -DestinationPath $tmp -Force
+    Remove-Item $zip
+    $wad = Get-ChildItem $tmp -Recurse -Filter 'freedoom1.wad' | Select-Object -First 1
+    if (-not $wad) { Remove-Item $tmp -Recurse -Force; Warn 'freedoom1.wad not in the download'; return $false }
+    Move-Item -Force $wad.FullName (Join-Path $ToolsDir 'freedoom1.wad')
+    Remove-Item $tmp -Recurse -Force
+    Ok "Freedoom in $(Join-Path $ToolsDir 'freedoom1.wad')"
+    return $true
+}
+
+Write-Host '3) Doom - for CE_DOOM.PRG'
+if (-not (Test-Path (Join-Path $Dir 'ce_doomgeneric.exe')) -and -not (Get-EnvValue 'MEDIA_DOOM_BIN')) {
+    Warn 'the Doom engine (ce_doomgeneric.exe) is not in this CosmosEx folder - update CosmosEx'
+} elseif (Get-DoomWad) {
+    Ok "Doom: $(Get-DoomWad)"
+} else {
+    $done = $false
+    try { $done = Install-Freedoom } catch { Warn $_.Exception.Message }
+    if ($done) { Write-Host '  CE_DOOM.PRG shows up on the config drive within a minute.' }
+    else { Warn 'no Doom WAD - CE_DOOM.PRG stays hidden (run this again to download Freedoom)' }
 }
 Write-Host ''
 

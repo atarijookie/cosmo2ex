@@ -28,6 +28,7 @@ type Stream struct {
 	audio      AudioConv
 	sink       func(typ byte, payload []byte) error
 	stop       <-chan struct{}
+	waitReady  func() error // live streams: before each chunk, until the ST is ready for another one (nil: never)
 }
 
 func newStream(l *Layout, src Source, gen uint32, genStartMs int, ymTable []ymEntry,
@@ -67,6 +68,11 @@ func (s *Stream) run() error {
 	for k := 0; ; k++ {
 		if s.stopped() {
 			return errStopped
+		}
+		if s.waitReady != nil {
+			if err := s.waitReady(); err != nil {
+				return err
+			}
 		}
 
 		var frames [][]byte

@@ -178,7 +178,7 @@ void uiStart(const char *path)
     print("\33p");
     memset(line, ' ', cols);
     line[cols - 1] = 0;
-    memcpy(line + 1, "CosmosEx audio player", 21);
+    memcpy(line + 1, "Cosmo2ex audio player", 21);
     print(line);
     print("\33q");
 

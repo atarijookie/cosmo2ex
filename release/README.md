@@ -102,7 +102,11 @@ The release workflow does both (`macos` job, then `tarballs`).
 - `builder/build_linux.sh` - builds `ce_cores` + `webserver` for one architecture
 - `files/ce_run.sh` - runs `ce_cores` + `webserver` in the foreground, used by the service
 - `files/ce_setup_tools.sh` (Linux, macOS), `files/ce_setup_tools.ps1` + `.bat` (Windows) - yes / no questions that install
-  ffmpeg (players) and Chrome headless shell (browser) and write their paths to `.env`; `install.sh` offers it at the end
+  ffmpeg (players), Chrome headless shell (browser) and Freedoom (Doom) and write their paths to `.env`; `install.sh`
+  offers it at the end. The config drive hides CE_VIDEO / CE_AUDIO / CE_BROWS / CE_DOOM while their host side is missing
+  (`ce_cores/hdd/media/hosttools.cpp`)
+- `ce_doomgeneric` (Doom engine, `third_party/doomgeneric`) is GPL-2 - every package has its license and where its source
+  is in `licenses/`
 - `files/ce.service` - the systemd unit
 - `builder/build_windows.sh` - builds the Windows programs, in Cygwin
 - `builder/build_windows_cross.sh` - builds the Windows programs on Linux from the current sources, for development
