@@ -109,6 +109,7 @@ echo "Building Atari programs"
 make -C "$ROOT/libacsiscsi"
 make -C "$ROOT/ce_dd_bootsectors" all       # builds also ce_dd_prg
 make -C "$ROOT/ce_sting_stx_driver"         # ce_eth.stx - port driver for real STinG
+make -C "$ROOT/ce_mintnet_xif_driver"       # ce_eth.xif - interface driver for MiNTnet
 make -C "$ROOT/ce_fakesting"                # ce_sting.prg - fake STinG
 make -C "$ROOT/ce_browser_prg"              # ce_brows.prg - web browser
 make -C "$ROOT/ce_media_prg"                # ce_video.ttp, ce_audio.ttp - players
@@ -134,6 +135,7 @@ cp "$ROOT/ce_dd_bootsectors/ce_dd.bs"    "$COMMON/configdrive/drivers/"
 cp "$ROOT/ce_dd_bootsectors/ce_dd_l2.bs" "$COMMON/configdrive/drivers/"
 cp "$ROOT/ce_dd_prg/ce_dd.prg"           "$COMMON/configdrive/drivers/"
 cp "$ROOT/ce_sting_stx_driver/ce_eth.stx" "$COMMON/configdrive/drivers/"
+cp "$ROOT/ce_mintnet_xif_driver/ce_eth.xif" "$COMMON/configdrive/drivers/"
 cp "$ROOT/ce_fakesting/ce_sting.prg"     "$COMMON/configdrive/drivers/"
 cp "$ROOT/ce_browser_prg/ce_brows.prg"   "$COMMON/configdrive/"
 cp "$ROOT/ce_media_prg/ce_video.ttp"     "$COMMON/configdrive/"

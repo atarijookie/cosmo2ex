@@ -8,9 +8,11 @@
 // Network for STinG over raw ethernet frames (W6100 socket 0 in MACRAW mode). STinG gets its own MAC address (derived
 // from ours), the W6100 sockets for host connection keep using our MAC + IP. The pico filters received frames (only IPv4
 // for STinG's MAC goes to ST), answers ARP for STinG's IP and resolves next hop MAC addresses for the IP packets the ST
-// sends - so the ST sees just IP packets. Protocol description: ce_sting_stx_driver/README.md
+// sends - so the ST sees just IP packets.
+// In frame mode (RAWNET_CFG_FRAMES, for MiNTnet) the ST gets and sends whole ethernet frames, the stack there does ARP - the
+// pico only keeps the frames for this MAC + broadcasts. Protocol description: ce_sting_stx_driver/README.md
 
-#define RAWNET_PROTO_VERSION    1
+#define RAWNET_PROTO_VERSION    2
 
 #define RX_RING_SIZE        32768       // received IP packets waiting for RECV, as [len16][packet]
 #define BATCH_MAX           16384       // max packet data in one RECV / SEND (RECV header not included)
@@ -28,6 +30,7 @@
 #define ARP_SIZE            28
 #define IP_HDR_SIZE         20
 #define IP_MAX_SIZE         1500
+#define FRAME_MAX_SIZE      (ETH_HDR_SIZE + IP_MAX_SIZE)
 
 // status byte of the commands
 #define ST_OK               0x00
@@ -41,6 +44,7 @@ static EthernetMacraw macraw;
 
 static bool     enabled;
 static bool     acceptBroadcast;
+static bool     frameMode;
 static uint8_t  stingMac[6];
 static uint8_t  stingIp[4];
 
@@ -49,17 +53,17 @@ static const uint8_t zeroMac[6]  = { 0, 0, 0, 0, 0, 0 };
 
 static struct {
     uint32_t rxFrames;          // frames read from W6100 (all, also the ones not for STinG)
-    uint32_t rxDelivered;       // IP packets given to ST
-    uint32_t rxDropped;         // IP packets dropped - ring full or too big for ST's RECV
-    uint32_t txPackets;         // IP packets sent
-    uint32_t txDropped;         // IP packets dropped - no ARP reply, no pending slot, frame not sent
+    uint32_t rxDelivered;       // IP packets (frames in frame mode) given to ST
+    uint32_t rxDropped;         // the same dropped - ring full or too big for ST's RECV
+    uint32_t txPackets;         // IP packets (frames in frame mode) sent
+    uint32_t txDropped;         // the same dropped - no ARP reply, no pending slot, frame not sent
     uint32_t arpRequests;       // ARP requests sent
     uint32_t arpReplies;        // ARP replies sent
     uint32_t badCommands;       // commands with bad parameters
 } stats;
 
 //------------------
-// received IP packets, each stored as [len16][packet]
+// received IP packets (frames in frame mode), each stored as [len16][packet]
 static uint8_t  rxRing[RX_RING_SIZE];
 static uint32_t ringHead, ringTail, ringUsed, ringCount;
 
@@ -398,7 +402,7 @@ static void onIdentify(void)
     storeWord(r + 8, RAWNET_PROTO_VERSION);
     memcpy(r + 10, stingMac, 6);
     r[16] = (Ethernet.linkStatus() == LinkON) ? 1 : 0;
-    r[17] = (enabled ? 0x01 : 0) | (macraw.isOpen() ? 0x02 : 0);
+    r[17] = (enabled ? 0x01 : 0) | (macraw.isOpen() ? 0x02 : 0) | (frameMode ? 0x04 : 0);
     storeWord(r + 18, BATCH_MAX);
 
     IPAddress ip = Ethernet.localIP();              // pico's own IP, just for info
@@ -414,27 +418,32 @@ static void onConfig(const uint8_t *par)
 {
     uint8_t flags = par[0];
 
-    if(!(flags & 0x01)) {                           // disable
+    if(!(flags & RAWNET_CFG_ENABLE)) {              // disable
         debug("stingNet - disabled\n");
         enabled = false;
+        frameMode = false;
         macraw.stop();
         resetQueues();
         replyStatus(ST_OK);
         return;
     }
 
-    if(!enabled) {                                  // was off, start clean
+    bool wantFrames = (flags & RAWNET_CFG_FRAMES) != 0;
+
+    if(!enabled || wantFrames != frameMode) {       // was off or other mode (ring holds the other format), start clean
         resetQueues();
     }
 
+    frameMode = wantFrames;
+
     bool ipChanged = !enabled || memcmp(stingIp, par + 1, 4) != 0;
 
-    if(enabled && ipChanged) {
+    if(enabled && ipChanged && !frameMode) {
         debug("stingNet - IP changed to %d.%d.%d.%d\n", par[1], par[2], par[3], par[4]);
     }
 
     memcpy(stingIp, par + 1, 4);
-    acceptBroadcast = (flags & 0x02) != 0;
+    acceptBroadcast = (flags & RAWNET_CFG_BROADCAST) != 0;
 
     if(!macraw.isOpen() && !macraw.begin(false)) {  // no MAC filter - STinG has its own MAC, we filter in stingNetProcess()
         enabled = false;
@@ -443,14 +452,19 @@ static void onConfig(const uint8_t *par)
     }
 
     if(!enabled) {
-        debug("stingNet - enabled, IP %d.%d.%d.%d, MAC %02X:%02X:%02X:%02X:%02X:%02X\n", stingIp[0], stingIp[1], stingIp[2], stingIp[3],
-              stingMac[0], stingMac[1], stingMac[2], stingMac[3], stingMac[4], stingMac[5]);
+        if(frameMode) {
+            debug("stingNet - enabled, frame mode, MAC %02X:%02X:%02X:%02X:%02X:%02X\n",
+                  stingMac[0], stingMac[1], stingMac[2], stingMac[3], stingMac[4], stingMac[5]);
+        } else {
+            debug("stingNet - enabled, IP %d.%d.%d.%d, MAC %02X:%02X:%02X:%02X:%02X:%02X\n", stingIp[0], stingIp[1], stingIp[2], stingIp[3],
+                  stingMac[0], stingMac[1], stingMac[2], stingMac[3], stingMac[4], stingMac[5]);
+        }
     }
 
     enabled = true;
 
     static const uint8_t noIp[4] = { 0xff, 0xff, 0xff, 0xff };     // STinG's port without IP set yet
-    if(ipChanged && memcmp(stingIp, noIp, 4) != 0 && (stingIp[0] | stingIp[1] | stingIp[2] | stingIp[3]) != 0) {
+    if(!frameMode && ipChanged && memcmp(stingIp, noIp, 4) != 0 && (stingIp[0] | stingIp[1] | stingIp[2] | stingIp[3]) != 0) {
         sendArp(1, bcastMac, zeroMac, stingIp);     // gratuitous ARP - tell the network where STinG's IP is now
     }
     replyStatus(ST_OK);
@@ -480,8 +494,42 @@ static void onSend(const uint8_t *par)
     ipcSetBufferAndPutToFifo(bfr, 1, STATE_DATA_WRITE, count, NULL, 0);
 }
 
+// frame mode: [len16][ethernet frame], padded to even length
+static uint8_t transmitFrames(void)
+{
+    uint32_t off = 0;
+
+    while(off + 2 <= sendExpected) {
+        uint16_t len = getWord(sendBuf + off);
+
+        if(len == 0) {
+            break;
+        }
+
+        if(len < ETH_HDR_SIZE || len > FRAME_MAX_SIZE || off + 2 + len > sendExpected) {
+            stats.badCommands++;
+            return ST_BAD_PARAM;
+        }
+
+        if(macraw.sendFrame(sendBuf + off + 2, len, NULL, 0)) {
+            stats.txPackets++;
+        } else {
+            stats.txDropped++;
+        }
+
+        off += 2 + len;
+        off += (off & 1);
+    }
+
+    return ST_OK;
+}
+
 static uint8_t transmitBatch(void)
 {
+    if(frameMode) {
+        return transmitFrames();
+    }
+
     uint32_t off = 0;
 
     while(off + 6 <= sendExpected) {                // [len16][next hop IP][IP packet], padded to even length
@@ -689,6 +737,13 @@ void stingNetProcess(void)
         bool bcast = memcmp(frameBuf, bcastMac, 6) == 0;
 
         if(!toUs && !bcast) {                       // the rest of the frame is skipped by next parseFrame(), without SPI transfer
+            continue;
+        }
+
+        if(frameMode) {                             // whole frame goes to ST, ARP too - the stack there handles it
+            uint16_t rest = MIN((uint16_t) (len - ETH_HDR_SIZE), (uint16_t) IP_MAX_SIZE);
+            int got = macraw.read(frameBuf + ETH_HDR_SIZE, rest);
+            ringPush(frameBuf, ETH_HDR_SIZE + got);
             continue;
         }
 

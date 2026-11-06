@@ -3,8 +3,8 @@
 
 #include <Arduino.h>
 
-// Network for STinG (ce_sting_stx_driver/CE_ETH.STX) over raw ethernet frames on W6100 socket 0. The ACSI / SCSI commands of
-// HOSTMOD_RAW_NET are answered here on the pico and not forwarded to the host. Protocol: ce_sting_stx_driver/README.md
+// Network for STinG (ce_sting_stx_driver/CE_ETH.STX) and MiNTnet over raw ethernet frames on W6100 socket 0. The ACSI / SCSI
+// commands of HOSTMOD_RAW_NET are answered here on the pico and not forwarded to the host. Protocol: ce_sting_stx_driver/README.md
 
 #define HOSTMOD_RAW_NET             7
 
@@ -13,6 +13,11 @@
 #define RAWNET_CMD_SEND             0x02
 #define RAWNET_CMD_RECV             0x03
 #define RAWNET_CMD_GET_STATS        0x04
+
+// flags of RAWNET_CMD_CONFIG
+#define RAWNET_CFG_ENABLE           0x01
+#define RAWNET_CFG_BROADCAST        0x02        // IP mode: receive IP broadcasts too
+#define RAWNET_CFG_FRAMES           0x04        // frame mode: whole ethernet frames, the stack on ST does ARP (protocol version 2+)
 
 bool stingNetCommand(uint8_t *cmd, uint32_t cmdLen);    // true if it was a HOSTMOD_RAW_NET command - then handled here, don't send to host
 bool stingNetOwnsWrite(void);                           // true while the data of a DMA write belong to STinG SEND, not to host

@@ -135,7 +135,7 @@ TEST_CASE_FIXTURE(FirmwareFixture, "IDENTIFY - magic, own locally administered M
     REQUIRE(r.data.size() == 32);
     CHECK(r.status == 0);
     CHECK(memcmp(r.data.data(), "CERAWNET", 8) == 0);
-    CHECK(r.data[9] == 1);                                  // protocol version
+    CHECK(r.data[9] == 2);                                  // protocol version
 
     std::vector<uint8_t> mac(r.data.begin() + 10, r.data.begin() + 16);
     CHECK((mac[0] & 0x03) == 0x02);                         // locally administered, unicast
@@ -377,4 +377,184 @@ TEST_CASE_FIXTURE(FirmwareFixture, "a new command ends a SEND data phase that di
     uint8_t read6[6] = { 0x08, 0, 0, 0, 1, 0 };
     CHECK_FALSE(stingNetCommand(read6, 6));                 // host command - the next write data are host's again
     CHECK_FALSE(stingNetOwnsWrite());
+}
+
+//--------------------------------------------------------
+// frame mode (RAWNET_CFG_FRAMES, MiNTnet): whole ethernet frames, ARP is the business of the stack on ST
+
+static const uint8_t CFG_FRAMES_ON = RAWNET_CFG_ENABLE | RAWNET_CFG_FRAMES;
+
+// SEND batch in frame mode: [len16][frame], padded to even
+static std::vector<uint8_t> frameEntry(const std::vector<uint8_t> &frame)
+{
+    std::vector<uint8_t> e = { (uint8_t)(frame.size() >> 8), (uint8_t) frame.size() };
+    e.insert(e.end(), frame.begin(), frame.end());
+    if (e.size() & 1) e.push_back(0);
+    return e;
+}
+
+// the frames of a RECV reply
+static std::vector<std::vector<uint8_t>> recvFrames(const Reply &r)
+{
+    std::vector<std::vector<uint8_t>> frames;
+    REQUIRE(r.data.size() >= 16);
+
+    size_t pos = 16;
+    size_t end = 16 + ((r.data[2] << 8) | r.data[3]);
+    uint16_t count = (r.data[4] << 8) | r.data[5];
+
+    for (int i = 0; i < count; i++) {
+        REQUIRE(pos + 2 <= end);
+        uint16_t len = (r.data[pos] << 8) | r.data[pos + 1];
+        REQUIRE(pos + 2 + len <= end);
+        frames.emplace_back(r.data.begin() + pos + 2, r.data.begin() + pos + 2 + len);
+        pos += 2 + len + (len & 1);
+    }
+
+    CHECK(pos == end);
+    return frames;
+}
+
+TEST_CASE_FIXTURE(FirmwareFixture, "frame mode - no gratuitous ARP, IDENTIFY tells the mode") {
+    icdCmd(RAWNET_CMD_CONFIG, 0);
+    EthernetMacraw::resetFake();
+
+    CHECK(icdCmd(RAWNET_CMD_CONFIG, CFG_FRAMES_ON).status == 0);    // no IP - the stack on ST knows it
+    CHECK(EthernetMacraw::open);
+    CHECK(EthernetMacraw::sent.empty());
+
+    CHECK((shortCmd(RAWNET_CMD_IDENTIFY).data[17] & 0x04) == 0x04);
+
+    icdCmd(RAWNET_CMD_CONFIG, 0);
+    CHECK((shortCmd(RAWNET_CMD_IDENTIFY).data[17] & 0x04) == 0);
+}
+
+TEST_CASE_FIXTURE(FirmwareFixture, "frame mode - RECV gives whole frames for our MAC + broadcasts, ARP is not answered") {
+    netStart(CFG_FRAMES_ON);
+    auto mac = stingMac();
+    uint8_t otherMac[6]  = { 0x02, 1, 2, 3, 4, 5 };
+    uint8_t multicast[6] = { 0x01, 0x00, 0x5e, 0x00, 0x00, 0xfb };
+    uint8_t zero[6] = { 0 };
+
+    auto arp   = ethFrame(BCAST_MAC, PEER_MAC, 0x0806, arpPayload(1, PEER_MAC, PEER_IP, zero, STING_IP));
+    auto ip    = ethFrame(mac.data(), PEER_MAC, 0x0800, ipPacket(PEER_IP, STING_IP, 31));
+    auto ipv6  = ethFrame(mac.data(), PEER_MAC, 0x86dd, std::vector<uint8_t>(40, 0x66));
+    auto ipBc  = ethFrame(BCAST_MAC, PEER_MAC, 0x0800, ipPacket(PEER_IP, BCAST_MAC, 8));
+
+    EthernetMacraw::rxFrames.push_back(arp);
+    EthernetMacraw::rxFrames.push_back(ethFrame(otherMac, PEER_MAC, 0x0800, ipPacket(PEER_IP, STING_IP, 10)));   // other MAC
+    EthernetMacraw::rxFrames.push_back(ip);
+    EthernetMacraw::rxFrames.push_back(ethFrame(multicast, PEER_MAC, 0x0800, ipPacket(PEER_IP, STING_IP, 10)));  // multicast
+    EthernetMacraw::rxFrames.push_back(ipv6);
+    EthernetMacraw::rxFrames.push_back(ipBc);
+    stingNetProcess();
+
+    CHECK(EthernetMacraw::sent.empty());                    // no ARP reply from pico
+
+    Reply r = icdCmd(RAWNET_CMD_RECV, 4, 1);
+    CHECK(r.status == 0);
+    CHECK(r.data.size() % 16 == 0);
+
+    auto frames = recvFrames(r);
+    REQUIRE(frames.size() == 4);
+    CHECK(frames[0] == arp);
+    CHECK(frames[1] == ip);
+    CHECK(frames[2] == ipv6);
+    CHECK(frames[3] == ipBc);
+}
+
+TEST_CASE_FIXTURE(FirmwareFixture, "frame mode - short frames stay as they came, the biggest frame fits") {
+    netStart(CFG_FRAMES_ON);
+    auto mac = stingMac();
+
+    auto small = ethFrame(mac.data(), PEER_MAC, 0x0800, ipPacket(PEER_IP, STING_IP, 6));
+    small.resize(60, 0);                                    // ethernet padding - the stack on ST cuts it off
+    auto big = ethFrame(mac.data(), PEER_MAC, 0x0800, ipPacket(PEER_IP, STING_IP, 1480));
+    REQUIRE(big.size() == 1514);
+
+    EthernetMacraw::rxFrames.push_back(small);
+    EthernetMacraw::rxFrames.push_back(big);
+    stingNetProcess();
+
+    auto frames = recvFrames(icdCmd(RAWNET_CMD_RECV, 16, 1));
+    REQUIRE(frames.size() == 2);
+    CHECK(frames[0] == small);
+    CHECK(frames[1] == big);
+}
+
+TEST_CASE_FIXTURE(FirmwareFixture, "frame mode - SEND puts the frames on the wire as they are, without ARP") {
+    netStart(CFG_FRAMES_ON);
+    auto mac = stingMac();
+    uint8_t zero[6] = { 0 };
+
+    auto arp = ethFrame(BCAST_MAC, mac.data(), 0x0806, arpPayload(1, mac.data(), STING_IP, zero, PEER_IP));     // 42 B, even
+    auto ip  = ethFrame(PEER_MAC, mac.data(), 0x0800, ipPacket(STING_IP, PEER_IP, 31));                         // odd
+
+    auto b  = frameEntry(ip);
+    auto b2 = frameEntry(arp);
+    b.insert(b.end(), b2.begin(), b2.end());
+
+    CHECK((doSend(b, 1).status & 0x7f) == 0);
+
+    REQUIRE(EthernetMacraw::sent.size() == 2);
+    CHECK(EthernetMacraw::sent[0] == ip);
+    CHECK(EthernetMacraw::sent[1] == arp);
+
+    doSend(b, 1);                                           // retry of a transfer that went through already
+    CHECK(EthernetMacraw::sent.size() == 2);
+
+    doSend(b, 2);
+    CHECK(EthernetMacraw::sent.size() == 4);
+}
+
+TEST_CASE_FIXTURE(FirmwareFixture, "frame mode - SEND with bad frame length") {
+    netStart(CFG_FRAMES_ON);
+
+    std::vector<uint8_t> tooShort = { 0, 13 };              // smaller than ethernet header
+    tooShort.resize(16, 0);
+    CHECK((doSend(tooShort, 1).status & 0x7f) == 0x02);
+
+    std::vector<uint8_t> tooBig = { 0x05, 0xeb };           // 1515 B
+    tooBig.resize(1518, 0);
+    CHECK((doSend(tooBig, 2).status & 0x7f) == 0x02);
+
+    std::vector<uint8_t> overrun = { 0, 100 };              // more than the batch has
+    overrun.resize(40, 0);
+    CHECK((doSend(overrun, 3).status & 0x7f) == 0x02);
+
+    CHECK(EthernetMacraw::sent.empty());
+}
+
+TEST_CASE_FIXTURE(FirmwareFixture, "changing the mode drops what was queued in the other format") {
+    netStart();                                             // IP mode
+    auto mac = stingMac();
+
+    EthernetMacraw::rxFrames.push_back(ethFrame(mac.data(), PEER_MAC, 0x0800, ipPacket(PEER_IP, STING_IP, 10)));
+    stingNetProcess();
+
+    CHECK(icdCmd(RAWNET_CMD_CONFIG, CFG_FRAMES_ON).status == 0);
+    CHECK(icdCmd(RAWNET_CMD_RECV, 4, 1).status == 1);       // empty
+
+    // and frame mode is really on, without closing the socket in between
+    CHECK(EthernetMacraw::open);
+    auto frame = ethFrame(mac.data(), PEER_MAC, 0x0800, ipPacket(PEER_IP, STING_IP, 10));
+    EthernetMacraw::rxFrames.push_back(frame);
+    stingNetProcess();
+    auto frames = recvFrames(icdCmd(RAWNET_CMD_RECV, 4, 2));
+    REQUIRE(frames.size() == 1);
+    CHECK(frames[0] == frame);
+}
+
+TEST_CASE_FIXTURE(FirmwareFixture, "IP mode works as before after frame mode was used") {
+    netStart(CFG_FRAMES_ON);
+    netStart();
+    auto mac = stingMac();
+
+    uint8_t zero[6] = { 0 };
+    EthernetMacraw::rxFrames.push_back(ethFrame(BCAST_MAC, PEER_MAC, 0x0806, arpPayload(1, PEER_MAC, PEER_IP, zero, STING_IP)));
+    stingNetProcess();
+
+    REQUIRE(EthernetMacraw::sent.size() == 1);              // pico answers ARP again
+    CHECK(EthernetMacraw::sent[0][14 + 7] == 2);
+    CHECK(icdCmd(RAWNET_CMD_RECV, 4, 1).status == 1);       // and ARP doesn't go to ST
 }

@@ -4,6 +4,7 @@
 *.tos
 *.acc
 *.stx
+*.xif
 *.STX
 *.bs
 ce_dd_bootsectors/convertor
@@ -37,3 +38,4 @@ firmware/out/
 
 # local .env overrides (dev setup), see .env
 .env.local
+test_ce/netspeed/netspeed_host

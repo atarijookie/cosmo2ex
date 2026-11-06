@@ -26,6 +26,8 @@ connected to the host (the Atari doesn't see the drive till then).
 without the host. It sends / receives raw ethernet frames on W6100 socket 0 (MACRAW), with its own MAC address for STinG,
 and does ARP for it. The other sockets (HDD, IKBD, UDP) keep working as before. Protocol and details: [ce_sting_stx_driver/README.md](../ce_sting_stx_driver/README.md).
 
+The MiNTnet driver [CE_ETH.XIF](../ce_mintnet_xif_driver/README.md) uses the same commands in frame mode: whole ethernet frames, ARP is done by MiNT.
+
 ## Compiling under Linux
 
 - from the repo root: `make firmware` (or `firmware/build.sh ce_pico_hdd`), needs just docker - see firmware/README.md

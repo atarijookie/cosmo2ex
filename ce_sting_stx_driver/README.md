@@ -30,7 +30,9 @@ STinG connections either - STinG's own memory pool (`ALLOCMEM`) does, as with ev
 | `main.c` | STinG module: loading, `DRIVER` / `PORT`, the 4 driver functions |
 | `cenet.c`, `cenet.h` | the commands to the pico, through `../libacsiscsi` |
 | `sting.h` | the part of STinG's API this needs, rewritten for gcc |
-| `purec.s` | calling convention glue between gcc and STinG (Pure C), fast copy |
+| `purec.s` | entries for STinG (Pure C) into the gcc code |
+| `purecall.s`, `purecall.h` | calls from gcc into Pure C / `-mshort` code, fast copy - shared with `../ce_mintnet_xif_driver` |
+| `cetypes.h` | basic types, shared too (`cenet.c` as well) |
 | `startup.s` | program start |
 | `../ce_pico_hdd/sting_net.cpp` | the pico side |
 | `../ce_pico_tests/tests/hdd/test_sting_net.cpp` | host tests of the pico side |
@@ -48,7 +50,7 @@ return the result in `d0` (pointers too - STinG's own assembler port drivers rea
 `d0-d2/a0-a2`. This gcc (no `-mshort`, same as libacsiscsi) puts every argument on the stack as 4 bytes and expects `d2/a2`
 to survive. So:
 
-- every call into STinG goes through `pc_call_*()` in `purec.s` - see the macros in `sting.h` (`KRmalloc`, `IP_discard`, ...)
+- every call into STinG goes through `pc_call_*()` in `purecall.s` - see the macros in `sting.h` (`KRmalloc`, `IP_discard`, ...)
 - STinG calls `set_state()` and `cntrl()` with `int16` arguments, so they're entered through `pc_set_state` / `pc_cntrl`,
   which widen them. `send()` / `receive()` take just a pointer and are plain gcc functions.
 - `IP_HDR` in `sting.h` has plain bytes instead of STinG's bit fields, `_Static_assert`s check the structure layouts.
@@ -103,7 +105,7 @@ pico ignores that bit; the batch numbers below take care of repeated transfers.
 | func | Name | Form | Parameters | DMA | Status |
 |---|---|---|---|---|---|
 | 0x00 | IDENTIFY | SCSI(6) | - | read, 1 sector, 32 B | 0 |
-| 0x01 | CONFIG | ICD10 | [6] flags: bit 0 network on, bit 1 receive IP broadcasts; [7..10] STinG's IPv4 | none | 0, 4 = MACRAW socket couldn't be opened |
+| 0x01 | CONFIG | ICD10 | [6] flags: bit 0 network on, bit 1 receive IP broadcasts, bit 2 frame mode; [7..10] STinG's IPv4 (ignored in frame mode) | none | 0, 4 = MACRAW socket couldn't be opened |
 | 0x02 | SEND | ICD10 | [6..8] byte count (24 bit), [9] batch number, [10] packet count | write, `(count + 511) / 512` sectors | see below |
 | 0x03 | RECV | ICD10 | [6] max sectors the ST takes (1..255), [7] batch number | read, up to [6] sectors | 0 = packets, 1 = empty |
 | 0x04 | GET_STATS | SCSI(6) | - | read, 1 sector, 32 B | 0 |
@@ -118,10 +120,10 @@ stay in the DMA chip's FIFO and never reach RAM.
 | Offset | Size | What |
 |---|---|---|
 | 0 | 8 | `"CERAWNET"` |
-| 8 | 2 | protocol version (1) |
+| 8 | 2 | protocol version (2 - since frame mode) |
 | 10 | 6 | STinG's MAC address |
 | 16 | 1 | ethernet link: 1 up, 0 down |
-| 17 | 1 | bit 0: network on (CONFIG), bit 1: MACRAW socket open |
+| 17 | 1 | bit 0: network on (CONFIG), bit 1: MACRAW socket open, bit 2: frame mode |
 | 18 | 2 | max packet data in one SEND / RECV (16384) |
 | 20 | 4 | the pico's own IP (just for info) |
 | 24 | 8 | reserved (0) |
@@ -129,7 +131,8 @@ stay in the DMA chip's FIFO and never reach RAM.
 ### CONFIG
 
 Turning the network on opens W6100 socket 0 in MACRAW mode, empties the queues and sends a gratuitous ARP for STinG's IP.
-Turning it off closes the socket. CONFIG again while on just updates the IP / flags.
+Turning it off closes the socket. CONFIG again while on just updates the IP / flags. Changing the mode (bit 2) empties the
+queues, because they hold the other format.
 
 ### SEND data
 
@@ -178,6 +181,23 @@ of packet data); a single packet that would never fit is dropped.
 number gets the same batch again. The driver asks for the next number only after it got a batch fine (header 0xCE + its
 number), so a failed DMA transfer doesn't lose packets - the next poll asks for the same batch again.
 
+### Frame mode
+
+For stacks which do ARP and ethernet themselves (MiNTnet). CONFIG with flag bit 2 switches to it; firmware older than
+protocol version 2 ignores that flag, so a driver using it must check the version from IDENTIFY first.
+
+Differences from the IP mode described above:
+
+- SEND entries are `[len16][ethernet frame]` plus the padding to even length, without the next hop. The frame is at least
+  14 and at most 1514 bytes, without FCS, and goes on the wire as it is (short ones padded to 60 bytes). The driver must use
+  the MAC from IDENTIFY as the source.
+- RECV entries are `[len16][ethernet frame]`, whole frames for this MAC and for the broadcast address, ARP and anything
+  else included, with the ethernet padding of short frames left in. Multicast frames are not delivered.
+- The pico doesn't answer ARP, doesn't resolve MAC addresses and doesn't send a gratuitous ARP. The IP in CONFIG and flag
+  bit 1 have no effect.
+
+Everything else is the same: batch numbers, status bytes, header of RECV, padding to 16 bytes.
+
 ### GET_STATS data
 
 8 big endian 32 bit counters since the pico started: received frames (all), IP packets given to ST, IP packets dropped
@@ -186,7 +206,7 @@ sent, commands with bad parameters. Not used by the driver - for debugging.
 
 ### What the pico receives
 
-Frames for STinG's MAC or broadcast, then:
+Frames for STinG's MAC or broadcast, then (in IP mode):
 
 - ARP for STinG's IP: answered; the sender is remembered. ARP replies fill the ARP cache.
 - IPv4 to STinG's MAC: stored for RECV (32 KB ring, the ethernet padding of short frames cut off by the IP total length).

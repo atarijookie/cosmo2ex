@@ -30,7 +30,7 @@ AT_1 :=
 AT = $(AT_$(V))
 
 CSRC    = main.c cenet.c
-SSRC    = purec.s
+SSRC    = purec.s purecall.s
 STARTUP = startup.s
 
 DEPS = $(CSRC:.c=.d)

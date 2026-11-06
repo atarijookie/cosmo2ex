@@ -18,6 +18,7 @@ static uint8 cmdLong[11]  = { 0x1f, 0x20, 'C', 'E', HOSTMOD_RAW_NET, 0, 0, 0, 0,
 static uint8 cmdShort[6]  = { 0x00, 'C', 'E', HOSTMOD_RAW_NET, 0, 0 };
 
 static uint8 identBufMem[512 + 4];
+static uint8 *dmaBuffer;        // used instead of identBufMem when set
 
 static int doCmd(uint8 readNotWrite, uint8 *cmd, uint8 cmdLen, uint8 *buf, uint16 sectors)
 {
@@ -36,8 +37,17 @@ static int doCmd(uint8 readNotWrite, uint8 *cmd, uint8 cmdLen, uint8 *buf, uint1
     return hdIf.statusByte;
 }
 
+void netSetDmaBuffer(uint8 *buf)
+{
+    dmaBuffer = buf;
+}
+
 static uint8 *identBuf(void)
 {
+    if(dmaBuffer) {
+        return dmaBuffer;
+    }
+
     return (uint8 *) (((uint32) identBufMem + 3) & ~3UL);     // longword aligned - TT SCSI DMA
 }
 
@@ -152,6 +162,7 @@ int netIdentify(TNetInfo *info)
         return -1;
     }
 
+    info->version   = (buf[8] << 8) | buf[9];
     memcpy(info->mac, buf + 10, 6);
     info->link      = buf[16];
     info->maxBatch  = (buf[18] << 8) | buf[19];

@@ -5,25 +5,16 @@
 //
 // STinG and its modules are built with Pure C. Its cdecl functions take the arguments on stack with their real size
 // (int16 = 2 bytes), return in d0 (pointers too) and may destroy d0-d2/a0-a2. gcc puts every argument on stack as 4 bytes
-// and expects d2/a2 to survive, so all calls into STinG go through pc_call_*() in purec.s, and the two driver functions
-// STinG calls with int16 arguments (set_state, cntrl) are entered through pc_set_state / pc_cntrl there.
+// and expects d2/a2 to survive, so all calls into STinG go through pc_call_*() in purecall.s, and the two driver functions
+// STinG calls with int16 arguments (set_state, cntrl) are entered through pc_set_state / pc_cntrl in purec.s.
 // The structures have the same layout in both compilers (m68k: 16 bit ints, 2 byte alignment of longs and pointers),
 // except for bit fields - IP_HDR uses plain bytes here, checked by the asserts below.
 
-#include <stdint.h>
 #include <stddef.h>
 #include <mint/basepage.h>
 
-typedef int16_t     int16;
-typedef uint16_t    uint16;
-typedef int32_t     int32;
-typedef uint32_t    uint32;
-typedef uint8_t     uint8;
-
-#ifndef TRUE
-#define TRUE    1
-#define FALSE   0
-#endif
+#include "cetypes.h"
+#include "purecall.h"
 
 //--------------------------------------------------------------------------------
 // IP datagram
@@ -150,13 +141,7 @@ extern TPL *tpl;
 extern STX *stx;
 
 //--------------------------------------------------------------------------------
-// calls into Pure C code, see purec.s
-
-int32 pc_call_0  (void *fn);
-int32 pc_call_l  (void *fn, int32 a);                   // fn (long / pointer)
-int32 pc_call_w  (void *fn, int32 w);                   // fn (int16)
-int32 pc_call_lw (void *fn, int32 a, int32 w);          // fn (long / pointer, int16)
-int32 pc_call_lll(void *fn, int32 a, int32 b, int32 c); // fn (long / pointer, long / pointer, long / pointer)
+// calls into Pure C code, see purecall.h
 
 #define KRmalloc(len)           ((void *) pc_call_l(tpl->KRmalloc, (int32) (len)))
 #define KRfree(blk)             ((void) pc_call_l(tpl->KRfree, (int32) (blk)))
@@ -171,9 +156,6 @@ int32 pc_call_lll(void *fn, int32 a, int32 b, int32 c); // fn (long / pointer, l
 // entries for STinG with Pure C cdecl arguments, they call my_set_state() / my_cntrl()
 int16 pc_set_state(PORT *port, int16 enable);
 int16 pc_cntrl(PORT *port, uint32 arg, int16 code);
-
-// copy, fast when both addresses are even
-void fastCopy(void *dst, const void *src, uint32 len);
 
 //--------------------------------------------------------------------------------
 // error codes
