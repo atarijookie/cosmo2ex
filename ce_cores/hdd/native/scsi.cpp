@@ -61,9 +61,12 @@ void Scsi::findAttachedDisks(void)
         std::string settingName = std::string("PATH_RAW_") + std::to_string(i);
         std::string pathRaw = s.getPath(settingName.c_str(), "");
 
-        bool isBoot = (acsiIdInfo.ceddId == i);     // if this ID is used for CE_DD booting
-        bool isFile = (pathRaw.length() > 0) ? Utils::fileExists(pathRaw) : false;   // if it's a file, then it's an image
-        bool isDev = (pathRaw.length() > 0) ? Utils::devExists(pathRaw) : false;     // device is a device is a device is a device ;)
+        // PATH_RAW_x is kept in settings when the ID is switched to other type (so switching back to RAW restores it),
+        // but it may be served only on RAW ID - otherwise e.g. old image would be served instead of CE_DD boot media
+        bool isRaw  = (acsiIdInfo.acsiIDdevType[i] == DEVTYPE_RAW);
+        bool isBoot = (acsiIdInfo.ceddId == i);     // if this ID is used for CE_DD booting (never RAW, see loadAcsiIDs())
+        bool isFile = (isRaw && pathRaw.length() > 0) ? Utils::fileExists(pathRaw) : false;   // if it's a file, then it's an image
+        bool isDev = (isRaw && pathRaw.length() > 0) ? Utils::devExists(pathRaw) : false;     // device is a device is a device is a device ;)
 
         logHdd(LOG_DEBUG, "Scsi::findAttachedDisks() - ID %d - isBoot: %d, isFile: %d, isDev: %d", i, isBoot, isFile, isDev);
 
