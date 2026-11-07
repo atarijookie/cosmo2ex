@@ -89,8 +89,10 @@ void BIT_INVERT(int pin)
     gpio_put(pin, BIT_IS_H(pin) ? 0 : 1);
 }
 
+// Waits for the UART when its 32 byte FIFO is full (~87 us per char), so don't call this from IRQs or the floppy streaming.
 void debug(const char *fmt, ...)
 {
+#if DEBUG_STRINGS
     char buf[256];
     va_list args;
     va_start(args, fmt);
@@ -106,4 +108,5 @@ void debug(const char *fmt, ...)
             uart_putc_raw(uart0, buf[i]);
         }
     }
+#endif
 }

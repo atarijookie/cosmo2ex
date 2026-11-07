@@ -11,7 +11,7 @@ static const char* pageStart =
     "body{font-family:sans-serif;max-width:24em;margin:2em auto;padding:0 1em}"
     "input{width:100%;padding:.5em;margin:.3em 0 1em;box-sizing:border-box;font-size:1em}"
     "input[type=checkbox]{width:auto;margin:0 .5em 0 0}"
-    "button{padding:.6em 2em;font-size:1em}.err{color:#c00}"
+    "button{padding:.6em 2em;font-size:1em}.err{color:#c00}hr{margin:2em 0}"
     "</style></head><body><h2>Cosmo2ex FDD - setup</h2>";
 
 static const char* pageEnd = "</body></html>";
@@ -81,6 +81,14 @@ std::string portalFormPage(const Settings_t& settings, const std::vector<std::st
     page += ">Keyboard and mouse via the host (IKBD)</label></p>"
             "<button type='submit'>Save and connect</button></form>";
 
+    if(settings.ssid[0]) {      // something to go back to - leaving without saving
+        page += "<hr><p>You already have WiFi settings saved (<b>";
+        page += htmlEscape(settings.ssid);
+        page += "</b>). If you don't want to change them, just leave the setup - the FDD goes back to normal operation "
+                "with the saved settings.</p>"
+                "<form method='post' action='/quit'><button type='submit'>Quit WiFi setup without saving</button></form>";
+    }
+
     page += pageEnd;
     return page;
 }
@@ -91,6 +99,16 @@ std::string portalSavedPage(const char* ssid)
     page += "<p>Saved. The FDD now leaves this setup network and connects to <b>";
     page += htmlEscape(ssid);
     page += "</b> - see its display.</p>";
+    page += pageEnd;
+    return page;
+}
+
+std::string portalQuitPage(const char* ssid)
+{
+    std::string page = pageStart;
+    page += "<p>Nothing changed. The FDD now leaves this setup network and connects to <b>";
+    page += htmlEscape(ssid);
+    page += "</b> again - see its display.</p>";
     page += pageEnd;
     return page;
 }

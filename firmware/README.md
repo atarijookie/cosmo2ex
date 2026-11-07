@@ -24,7 +24,7 @@ Dockerfile  - the ce-pico-builder image: arduino-cli + arduino-pico core + U8g2 
 build.sh    - builds the image (docker layer cache makes it instant after the first time)
               and runs compile.sh in it, with the repo mounted read-only
 compile.sh  - the arduino-cli compile itself; the board settings (FQBN) match the Arduino
-              IDE settings in ce_pico_hdd_*/readme.md, ce_pico_fdd/readme.md and
+              IDE settings in ce_pico_hdd/readme.md, ce_pico_fdd/readme.md and
               ce_pico_display/readme.md - change them in both places.
               Compiles a copy of each project with the *.pio.h regenerated from the *.pio,
               and warns when the committed ones are not up to date

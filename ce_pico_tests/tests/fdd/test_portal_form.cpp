@@ -116,3 +116,17 @@ TEST_CASE("form page with an error, saved page")
 
     CHECK(contains(portalSavedPage("o&o"), "<b>o&amp;o</b>"));
 }
+
+TEST_CASE("form page - quit without saving offered only with a stored network, quit page")
+{
+    Settings_t s = storedSettings("my<net>", "secretpassword");
+    std::string page = portalFormPage(s, {}, nullptr);
+    CHECK(contains(page, "action='/quit'"));
+    CHECK(contains(page, "(<b>my&lt;net&gt;</b>)"));
+    CHECK(page.find("action='/save'") < page.find("action='/quit'"));     // below the save button
+
+    s.ssid[0] = 0;                              // first setup - nothing to go back to
+    CHECK_FALSE(contains(portalFormPage(s, {}, nullptr), "action='/quit'"));
+
+    CHECK(contains(portalQuitPage("o&o"), "<b>o&amp;o</b>"));
+}

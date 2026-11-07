@@ -1,5 +1,7 @@
 // Neopixel output via PIO. The pin is the WiFi setup button input (SIO) all the time, and becomes the PIO output only
-// for the ~30 us of a frame - the button reads H while pressed, the AND gate (IC6) shifts the level to 5V for LED2.
+// for the ~0.6 ms of a frame - the button reads H while pressed, the AND gate (IC6) shifts the level to 5V for LED2.
+// The frame works also with the button held: the output wins over its 1k to 3.3V, and the pin is held L for
+// the reset time before the frame (the LED saw the press as a long H) and after it (the LED shows the color only then).
 // PIO and not a cycle counted loop like on ce_pico_hdd: exact timing on the RP2350 too, without disabling the IRQs.
 
 #include "pico/stdlib.h"
@@ -11,6 +13,7 @@
 #include "neopixel.pio.h"
 
 #define FRAME_TIMEOUT_US    100     // 24 bits take 30 us
+#define RESET_US            300     // L for 280+ us: resets the LED before the frame, latches the color after it
 
 static PIO pioNeopixel;
 static uint smNeopixel;
@@ -37,6 +40,7 @@ void neopixelOutput(uint32_t grb)
     uint32_t stallMask = 1u << (PIO_FDEBUG_TXSTALL_LSB + smNeopixel);
 
     pio_gpio_init(pioNeopixel, PIN_NEOPIXEL);           // the pin to PIO, driven L by the stalled SM
+    busy_wait_us_32(RESET_US);
     pio_sm_put(pioNeopixel, smNeopixel, grb << 8);      // 24 bits, MSB first
 
     uint32_t start = time_us_32();
@@ -49,5 +53,6 @@ void neopixelOutput(uint32_t grb)
         tight_loop_contents();
     }
 
+    busy_wait_us_32(RESET_US);
     gpio_set_function(PIN_NEOPIXEL, GPIO_FUNC_SIO);     // back to the button input (SIO direction stays in)
 }

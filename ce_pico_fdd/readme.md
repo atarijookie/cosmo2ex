@@ -25,18 +25,19 @@
 - board: Raspberry Pi Pico 2W
 - CPU architecture: ARM
 - debug level: None
-- debug port: disabled
+- debug port: Disabled (this is only for the debug of the arduino core; debug strings don't use it, see Notes)
 - C++ exceptions: disabled
 - flash size: 4MB (no FS)
 - CPU speed: 150 MHz (the MFM stream timing (PWM divider) depends on it)
-- IP/Bluetooth stack: IPv4 only
-- optimize: Small (-Os)
+- IP/Bluetooth stack: IPv4 Only
+- optimize: Small (-Os) (standard)
 - Operating system: None (with FreeRTOS lwIP would run in its own task, and the cores would be shared)
 - Profiling: Disabled
 - RTTI: Disabled
-- Stack protection: Disabled
-- Upload method: Picoprobe / Debugprobe (CMSIS-DAP)
-- USB stack: Pico SDK (USB serial for the serial config mode)
+- Stack Protector: Disabled
+- Upload method: Picoprobe/Debugprobe (CMSIS-DAP)
+- USB stack: Pico SDK - not "No USB": the firmware doesn't use USB, but with "No USB" the WiFi connection to the host
+  stalls (the host gets almost nothing from the device and drops it after 15 s of silence), cause not found yet
 - WiFi region: Worldwide
 
 ## Front panel
@@ -44,8 +45,9 @@
 - the display and buttons are on a separate front panel (ce_pico_display, RP2040-Zero), connected over UART on GP16
   (TX) / GP17 (RX) - see ce_pico_display/protocol.md; panel.cpp has the panel logic, panel_uart.cpp the PIO UART
 - button on GP1 (to 3.3V through 1k, 4k7 pull-down - instead of the unused debug UART RX, the debug output on GP0
-  stays): long press (1 s) starts the captive portal (WiFi setup), the same as a long press of enter on the front
-  panel; another long press leaves it without saving
+  stays): hold it for 1 s until it beeps and the LED goes light blue, then release it - the release starts the captive
+  portal (WiFi setup), or leaves it without saving; a shorter press does nothing. A long press of enter on the front
+  panel does the same right at the long press. Not while the portal is scanning the networks, it can't be left then
 - browsing the images (image_browser.cpp): left / right on the front panel show the previous / next floppy image in the
   folder of the current one (wraps around at the ends), with its index (`< 123/3720 >`); enter inserts it, 15 s without
   a key goes back to the current image. Same list and order as the prev / next in the web UI: only .st / .msa, sorted
@@ -58,10 +60,11 @@
 ## Status LED (neopixel)
 
 - LED2 (WS2812C-2020) on the same GP1 as the button, through the AND gate IC6 (74AHCT1G08, 3.3V -> 5V levels); the
-  pin is the button input all the time and the PIO output only for the ~30 us of a frame (neopixel_pio.cpp)
+  pin is the button input all the time and the PIO output only for the ~0.6 ms of a frame (neopixel_pio.cpp) - that
+  works also while the button is held
 - the same colors as ce_pico_hdd: orange during init, brighter with each step (setup, core 1 running, joining WiFi,
   looking for the host, connecting to it); green when connected with an image, dim white when connected without one;
-  blue while the captive portal runs
+  blue while the captive portal runs; light blue while the button is held long enough to release it
 - red blinks on error, the count of blinks is the code, then a pause: 1 = PSRAM not working (halted), 2 = no WiFi
   settings and the WiFi setup failed to start (retried every 10 s), 3 = can't join the WiFi (keeps retrying)
 - the color is sent only when it changes, on core 0 - nothing while it stays the same, so the floppy streaming
@@ -73,7 +76,7 @@
 - on GP27 (H = on), a buzzer with its own generator - the firmware only switches it on / off, it's on the FDD board
   (not on the front panel), so it works without a panel too
 - a 2 ms click on every head step (from the STEP ISR, only with the motor on), 50 ms when an image is loaded, 100 ms
-  when the host connects, 400 ms when it's lost
+  when the host connects, 200 ms on a long press of the button, 400 ms when the host is lost
 - beeper.cpp - core 1 owns the pin and ends all the beeps in its loop, core 0 only asks for them
 
 ## IKBD (keyboard + mouse)
@@ -92,7 +95,8 @@
   the setup page opens by itself (every DNS name and URL leads to it), or open http://192.168.42.1
 - the page has the WiFi name (with the scanned networks offered) and password; an empty password keeps the stored one
   for the same WiFi name, otherwise it means an open network; both max 31 chars, the password at least 8 (WPA2);
-  and a checkbox for IKBD (keyboard and mouse via the host)
+  and a checkbox for IKBD (keyboard and mouse via the host); with WiFi settings already stored, the page also has
+  'Quit WiFi setup without saving' - back to normal operation with the stored settings
 - Save stores them to EEPROM (the floppy streaming pauses for the flash write), then the FDD goes back to the normal
   mode and connects with them right away
 - without a page request for 5 minutes, the portal ends with the old settings
@@ -105,11 +109,15 @@
 
 ## Notes
 
-- the PIO headers (mfm_write.pio.h, uart_rx.pio.h) are generated by pioasm and committed, arduino doesn't run pioasm -
-  after changing a .pio file, regenerate its header, e.g. with the pioasm from the ce-pico-builder image:
-  `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/ce_pico_fdd":/fdd ce-pico-builder sh -c 'cd /fdd && /opt/arduino/packages/rp2040/tools/pqt-pioasm/*/pioasm -o c-sdk mfm_write.pio mfm_write.pio.h'`
-- settings are stored with the EEPROM library (flash sector before the last one), settings stored by the older
-  (Pico SDK / VS Code) firmware in the last flash sector are moved there on the first start
+- debug strings: debug() writes directly to uart0 on GP0 (TX0), 115200 baud. They're on by default, DEBUG_STRINGS 0 in
+  defs.h turns them off. Once the 32 byte UART FIFO is full debug() waits (~87 us per char), so don't call it from IRQs
+  or the floppy streaming
+- crash / reset diagnostics (diag.cpp) on the same UART: at boot the boot count since power on and the reset reasons;
+  on a hard fault (also a panic() without a debugger) the core, pc / lr and the fault status, then that core stops -
+  find the pc in the .elf of the same build, e.g. arm-none-eabi-addr2line -f -C -e ce_pico_fdd.ino.elf <pc>
+- the PIO headers (mfm_write.pio.h, neopixel.pio.h, uart_rx.pio.h) are generated by pioasm and committed, arduino
+  doesn't run pioasm - after changing a .pio file, regenerate them with `firmware/pioasm.sh ce_pico_fdd`
+- settings are stored with the EEPROM library (flash sector before the last one)
 - connecting to WiFi and to the host blocks the core 0 main loop for a few seconds at most - core 1 (floppy) is not affected
 
 ## License

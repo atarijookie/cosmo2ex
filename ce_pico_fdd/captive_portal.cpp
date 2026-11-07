@@ -20,10 +20,13 @@ static const IPAddress apIp(192, 168, 42, 1);
 static DNSServer dnsServer;
 static WebServer webServer(80);
 
-static bool active;
+static bool active;                     // from the start of the network scan
+static bool scanning;
+static uint32_t scanStart;
 static uint32_t lastRequest;
 static bool saved;
-static uint32_t savedTime;
+static bool leaving;                    // saved or quit - the portal stops PORTAL_LEAVE_MS after leaveTime
+static uint32_t leaveTime;
 static std::vector<std::string> networks;     // from the scan before the AP starts, strongest first
 
 static bool noWifiSettings(void)
@@ -39,12 +42,13 @@ static void showOnPanel(void)
     panelSetLine(3, PANEL_LEFT, 0, "http://192.168.42.1");
 }
 
-// the AP can't scan, so the networks for the form are scanned before it starts
-static void scanNetworks(void)
+// the AP can't scan, so the networks for the form are scanned before it starts - in the background, the main loop
+// keeps running (the button, the LED, the keyboard)
+static void collectScannedNetworks(void)
 {
     networks.clear();
 
-    int count = WiFi.scanNetworks();
+    int count = WiFi.scanComplete();
     if(count <= 0) {
         debug("captive portal - no networks found (%d)\n", count);
         return;
@@ -109,7 +113,25 @@ static void handleSave(void)
 
     displayMessage("wifi setup saved", "connecting to:", Settings.ssid);
     saved = true;
-    savedTime = millis();
+    leaving = true;
+    leaveTime = millis();
+}
+
+// leave without saving - only with WiFi settings stored (the button is shown only then), otherwise back to the form
+static void handleQuit(void)
+{
+    lastRequest = millis();
+
+    if(noWifiSettings()) {
+        sendPage(portalFormPage(Settings, networks, "No WiFi settings saved yet - please enter them."));
+        return;
+    }
+
+    debug("captive portal - quit without saving\n");
+    sendPage(portalQuitPage(Settings.ssid));
+
+    leaving = true;
+    leaveTime = millis();
 }
 
 // any other URL (also the phones' checks for internet, e.g. /generate_204, /hotspot-detect.html) - to the form,
@@ -121,6 +143,15 @@ static void handleOther(void)
     webServer.send(302, "text/plain", "redirect");
 }
 
+// softAPConfig() switches the interface to a static IP, and that stays after WiFi.end() - back to DHCP, otherwise the
+// station joins the WiFi with the AP address (192.168.42.1) and never asks for its own. Needs the interface stopped.
+static void wifiBackToStation(void)
+{
+    WiFi.end();
+    WiFi.config(IPAddress());
+    WiFi.mode(WIFI_STA);
+}
+
 void startCaptivePortal(void)
 {
     if(active) {
@@ -130,17 +161,24 @@ void startCaptivePortal(void)
     debug("captive portal - starting\n");
     displayMessage("WIFI SETUP", "scanning networks...");
     ledSetCaptivePortal();
-    neopixelProcess();          // now - the scan takes a few seconds
 
     connectionStop();           // no host while in AP mode
-    scanNetworks();
 
+    WiFi.scanNetworks(true);
+    scanning = true;
+    scanStart = millis();
+    active = true;
+}
+
+static void startAccessPoint(void)
+{
     WiFi.mode(WIFI_AP);
     WiFi.softAPConfig(apIp, apIp, IPAddress(255, 255, 255, 0));
     if(!WiFi.softAP(PORTAL_AP_NAME)) {
         debug("captive portal - AP start failed\n");
         displayMessage("WIFI SETUP", "AP start failed");
-        WiFi.mode(WIFI_STA);
+        wifiBackToStation();
+        active = false;
         connectionRestart();
         return;
     }
@@ -153,12 +191,13 @@ void startCaptivePortal(void)
         handlersSet = true;
         webServer.on("/", HTTP_GET, handleRoot);
         webServer.on("/save", HTTP_POST, handleSave);
+        webServer.on("/quit", HTTP_POST, handleQuit);
         webServer.onNotFound(handleOther);
     }
     webServer.begin();
 
-    active = true;
     saved = false;
+    leaving = false;
     lastRequest = millis();
     showOnPanel();
     debug("captive portal - AP %s on %s\n", PORTAL_AP_NAME, apIp.toString().c_str());
@@ -175,8 +214,7 @@ void stopCaptivePortal(void)
     webServer.stop();
     dnsServer.stop();
     WiFi.softAPdisconnect();
-    WiFi.end();
-    WiFi.mode(WIFI_STA);
+    wifiBackToStation();
 
     active = false;
 
@@ -186,10 +224,15 @@ void stopCaptivePortal(void)
     connectionRestart();        // connect with the stored settings right away
 }
 
+bool captivePortalCanToggle(void)
+{
+    return !scanning && !(active && noWifiSettings());
+}
+
 void toggleCaptivePortal(void)
 {
-    if(active && noWifiSettings()) {     // nothing to go back to
-        debug("captive portal - no WiFi settings stored, staying in it\n");
+    if(!captivePortalCanToggle()) {
+        debug("captive portal - can't leave it now\n");
         return;
     }
 
@@ -207,17 +250,28 @@ bool captivePortalActive(void)
 
 void captivePortalLoop(void)
 {
+    if(scanning) {
+        if(WiFi.scanComplete() < 0 && (millis() - scanStart) < PORTAL_SCAN_MS) {
+            return;
+        }
+
+        scanning = false;
+        collectScannedNetworks();
+        startAccessPoint();
+        return;
+    }
+
     dnsServer.processNextRequest();
     webServer.handleClient();
 
     uint32_t now = millis();
 
-    if(saved && (now - savedTime) >= PORTAL_SAVED_MS) {
+    if(leaving && (now - leaveTime) >= PORTAL_LEAVE_MS) {
         stopCaptivePortal();
         return;
     }
 
-    if(!saved && !noWifiSettings() && (now - lastRequest) >= PORTAL_TIMEOUT_MS) {
+    if(!leaving && !noWifiSettings() && (now - lastRequest) >= PORTAL_TIMEOUT_MS) {
         debug("captive portal - timeout\n");
         stopCaptivePortal();
     }

@@ -11,6 +11,7 @@ static volatile uint8_t ledState = LED_STATE_INIT;
 static volatile uint8_t ledInitStep = 0;
 static volatile uint8_t ledErrorCode = 0;
 static volatile bool ledImageLoaded = false;
+static volatile bool ledButtonArmed = false;
 static volatile bool resendWanted = false;
 
 // colors at full brightness of the status - the WS2812C-2020 is bright, so these are far from 255 (as on ce_pico_hdd)
@@ -20,6 +21,8 @@ static volatile bool resendWanted = false;
 #define RED_R               64
 #define NO_IMAGE_RGB        6       // dim white - connected, no image yet
 #define PORTAL_B            64
+#define ARMED_G             32      // light blue
+#define ARMED_B             64
 
 // error blinking: code x (on + off), then pause
 #define ERR_BLINK_ON_MS     250
@@ -52,6 +55,11 @@ void ledSetCaptivePortal(void)
     ledState = LED_STATE_PORTAL;
 }
 
+void ledSetButtonArmed(bool armed)
+{
+    ledButtonArmed = armed;
+}
+
 void ledSetFromConnection(bool ssidStored, bool wifiFailed, bool wifiConnected, bool hostFound, bool hostConnected,
                           bool imageLoaded)
 {
@@ -79,6 +87,10 @@ static uint32_t toGrb(uint8_t r, uint8_t g, uint8_t b)
 
 static uint32_t currentColor(uint32_t now)
 {
+    if(ledButtonArmed) {
+        return toGrb(0, ARMED_G, ARMED_B);
+    }
+
     switch(ledState) {
         case LED_STATE_RUNNING:
             return ledImageLoaded ? toGrb(0, GREEN_G, 0) : toGrb(NO_IMAGE_RGB, NO_IMAGE_RGB, NO_IMAGE_RGB);
@@ -110,6 +122,7 @@ void neopixelInit(void)
     lastColor = 0xffffffff;         // not a color - the first neopixelProcess() sends
     lastSentTime = millis() - NEOPIXEL_GAP_MS;
     resendWanted = false;
+    ledButtonArmed = false;
 
     neopixelOutputInit();
 }

@@ -51,6 +51,7 @@ inline void gpio_init(uint) {}
 inline void gpio_set_function(uint, int) {}
 inline void gpio_set_dir(uint, bool) {}
 inline void gpio_pull_up(uint) {}
+inline void gpio_disable_pulls(uint) {}
 void gpio_set_irq_enabled_with_callback(uint gpio, uint32_t event_mask, bool enabled, gpio_irq_callback_t callback);  // one callback for all pins
 void gpio_set_irq_enabled(uint gpio, uint32_t event_mask, bool enabled);
 
@@ -71,17 +72,6 @@ inline void __dmb(void) {}                      // memory barrier - the tests ru
 void restore_interrupts(uint32_t status);
 
 typedef struct { int dummy; } critical_section_t;
-
-//--------------------------------------------------------
-// multicore, flash
-inline void flash_safe_execute_core_init(void) {}
-inline int  flash_safe_execute(void (*func)(void *), void *param, uint32_t) { func(param); return PICO_OK; }
-inline void flash_range_erase(uint32_t, size_t) {}
-inline void flash_range_program(uint32_t, const uint8_t *, size_t) {}
-
-#define PICO_FLASH_SIZE_BYTES   (4 * 1024 * 1024)
-#define FLASH_SECTOR_SIZE       4096
-#define XIP_BASE                ((uintptr_t) 0x10000000)
 
 //--------------------------------------------------------
 // pico util/queue - same semantics as the sdk one (fixed element size, fixed capacity, non-blocking try_* calls)

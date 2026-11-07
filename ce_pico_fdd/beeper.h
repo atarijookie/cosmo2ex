@@ -11,6 +11,7 @@
 #define BEEP_STEP_MS            2       // a click per head step, the sound of a real drive
 #define BEEP_IMAGE_LOADED_MS    50
 #define BEEP_HOST_CONNECTED_MS  100
+#define BEEP_BUTTON_MS          200     // long press reached - the button can be released
 #define BEEP_HOST_LOST_MS       400
 
 void beeperInit(void);              // core 0, with the other pins - before core 1 runs

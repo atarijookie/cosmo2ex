@@ -14,7 +14,6 @@
 #include "defs.h"
 #include "utils.h"
 #include "settings.h"
-#include "serial_config.h"
 #include "ipc.h"
 #include "written_sectors.h"
 #include "host_receive.h"
@@ -23,6 +22,7 @@
 #include "captive_portal.h"
 #include "beeper.h"
 #include "neopixel.h"
+#include "diag.h"
 
 // Core 1 (setup1() + loop1()) does the floppy streaming and write capture, core 0 (setup() + loop()) the rest.
 // The WiFi chip and lwIP are started by the arduino core before setup(), they run in the background (IRQ) on core 0.
@@ -58,14 +58,6 @@ bool diskChangeActive = false;  // pins inverted for the disk change now
 uint32_t diskChangeStart;
 
 
-/*
-    Notes on serial output via USB + UART
-
-    The USB serial (Serial) is used only for the serial config mode, debug strings go to UART0 (debug()).
-    Writing to the USB serial may wait when USB is connected but nobody reads it, so only the config mode uses it -
-    debug strings through the UART never block for long.
-*/
-
 void waitForCore1Running(void)
 {
     int loops = 0;
@@ -93,6 +85,7 @@ void setup(void)
     gpio_set_function(PIN_TXD_DEBUG, UART_FUNCSEL_NUM(uart0, PIN_TXD_DEBUG));
 
     debug("\n\nsetup() starting\n");
+    diagPrintBootInfo();
 
     #define INPUTS_COUNT 6
     int inputs[INPUTS_COUNT] = {PIN_DRIVE_SEL, PIN_MOT_EN, PIN_DIR, PIN_STEP, PIN_WGATE, PIN_SIDE1};
@@ -145,6 +138,7 @@ void setup1(void)
         tight_loop_contents();
     }
 
+    debug("core 1 starting\n");
     core1Setup();
 }
 
@@ -178,22 +172,10 @@ void loop(void)
 {
     uint32_t now = millis();
     lastSendFwTime = now;
-    uint32_t lastInputCheck = now;
 
     while(1)
     {
         now = millis();
-
-        if((now - lastInputCheck) > 250) {
-            lastInputCheck = now;
-
-            // if(Serial) {                // USB serial connected?
-            //     int key = Serial.read();
-            //     if(key == '\n' || key == '\r' || strlen(Settings.ssid) == 0) {
-            //         serialConfigLoop();
-            //     }
-            // }
-        }
 
         // no WiFi settings stored? WiFi setup until there are some
         captivePortalAutoStart();

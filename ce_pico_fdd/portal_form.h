@@ -16,5 +16,6 @@ const char* portalApplyForm(const char* ssid, const char* password, bool ikbdEna
 
 std::string portalFormPage(const Settings_t& settings, const std::vector<std::string>& networks, const char* error);
 std::string portalSavedPage(const char* ssid);
+std::string portalQuitPage(const char* ssid);      // left without saving, back to the stored network
 
 #endif

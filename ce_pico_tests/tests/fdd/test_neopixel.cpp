@@ -55,6 +55,30 @@ struct NeopixelFixture {
 
 TEST_SUITE("fdd neopixel") {
 
+TEST_CASE_FIXTURE(NeopixelFixture, "button armed - light blue over any status, then back to that status") {
+    ledSetCaptivePortal();
+    run(10);
+    uint32_t portal = last();
+
+    ledSetButtonArmed(true);
+    run(10);
+    uint32_t armed = last();
+    CHECK(armed != portal);
+    CHECK(red(armed) == 0);
+    CHECK(green(armed) > 0);
+    CHECK(blue(armed) > green(armed));
+
+    ledSetError(LED_ERR_NO_WIFI);           // no blinking under it
+    size_t frames = fakeNeopixelFrames.size();
+    run(3000);
+    CHECK(fakeNeopixelFrames.size() == frames);
+
+    ledSetCaptivePortal();
+    ledSetButtonArmed(false);
+    run(10);
+    CHECK(last() == portal);
+}
+
 TEST_CASE_FIXTURE(NeopixelFixture, "init - orange, brighter with each step, each step sent once") {
     uint32_t prev = 0;
     for (int step = LED_STEP_SETUP; step <= LED_STEP_COUNT; step++) {

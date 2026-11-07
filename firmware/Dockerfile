@@ -1,4 +1,4 @@
-# Builder image for the Pico firmwares (ce_pico_hdd_acsi, ce_pico_hdd_scsi, ce_pico_fdd, ce_pico_display):
+# Builder image for the Pico firmwares (ce_pico_hdd, ce_pico_fdd, ce_pico_display):
 # arduino-cli + the arduino-pico core (earlephilhower) + U8g2 (Arduino library manager), no sources inside - those
 # are mounted at run time, see firmware/build.sh.
 #
@@ -8,7 +8,7 @@
 FROM debian:bookworm-slim
 
 ARG ARDUINO_CLI_VERSION=1.5.1
-# the version the firmwares were developed with, see ce_pico_hdd_acsi/readme.md
+# the version the firmwares were developed with, see ce_pico_hdd/readme.md
 ARG ARDUINO_PICO_VERSION=5.4.2
 # display library of ce_pico_display
 ARG U8G2_VERSION=2.36.19

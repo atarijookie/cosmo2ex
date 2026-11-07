@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-// Settings stored in flash (EEPROM library - the last flash sector, same place and layout as before the arduino port).
+// Settings stored in flash (EEPROM library - the flash sector before the last one).
 
 #define SETTINGS_VALID  0xCAFE
 

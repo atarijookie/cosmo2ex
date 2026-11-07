@@ -7,6 +7,7 @@
 // - orange during init, brighter with each step (LED_STEP_*)
 // - green when connected to the host and an image is loaded, dim white when connected without an image
 // - blue while the captive portal (WiFi setup) runs
+// - light blue while the button is held long enough, over any other status
 // - red blinks with the error code (count of blinks, then a longer pause) on error (LED_ERR_*)
 // The color is sent only when it changes - nothing is sent while the state stays the same (and the blinks only while
 // there is an error). All on core 0, so the floppy streaming on core 1 doesn't lose any cycles to it.
@@ -29,6 +30,7 @@ void ledSetInitStep(uint8_t step);      // also clears the error
 void ledSetError(uint8_t code);
 void ledSetRunning(bool imageLoaded);
 void ledSetCaptivePortal(void);
+void ledSetButtonArmed(bool armed);     // light blue, until armed again false - the status stays as it was under it
 
 // the status from the connection state - called from the core 0 main loop, outside of the captive portal
 void ledSetFromConnection(bool ssidStored, bool wifiFailed, bool wifiConnected, bool hostFound, bool hostConnected,

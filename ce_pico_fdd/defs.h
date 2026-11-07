@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-#define LOG_MORE    1
+#define DEBUG_STRINGS   1       // debug() on GP0 (TX0), 115200 baud; 0 = no output, see debug() in utils.cpp
 
 #ifndef TRUE
     #define TRUE 1
