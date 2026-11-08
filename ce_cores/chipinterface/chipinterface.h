@@ -16,6 +16,8 @@ typedef struct {
     uint32_t    ipAddr;             // client's IP addr
     uint8_t     mac[6];             // client's mac addr
     uint8_t     features;           // DEV_FEATURE_ bits
+    int         deviceSettings;     // DEV_SETTING_* bits from the last FW report, -1 = not reported (older firmware)
+    int         deviceSettingsSeen; // deviceSettings already handled by fdd_syncDeviceSettings(), -1 = none since connect
     int         floppySlotIndex;    // which floppy slot this IP is using
     uint32_t    lastMs;             // value of getCurrentMs() when was last time anything was received from this client
 
@@ -23,6 +25,11 @@ typedef struct {
 } ClientInfo;
 
 #define RECV_FROM_CLIENT_TIMEOUT_MS     3000    // max time to receive one block of data from client
+
+// per-device settings of the FDD device, shared with the webserver (webserver/fdd.go)
+#define FDD_SETTING_IKBD_ENABLED        "FDD_IKBD_ENABLED"
+#define FDD_SETTING_BEEP_ON_STEP        "FDD_BEEP_ON_STEP"
+#define FDD_SETTING_PENDING             "FDD_SETTINGS_PENDING"     // 1 = changed in the web UI, not sent to the device yet
 
 class ChipInterface
 {
@@ -53,6 +60,11 @@ public:
     uint8_t getFWversion(ClientInfo* ci, bool hddNotFdd);
     uint8_t getFWversionHdd(ClientInfo* ci);
     bool getFWversionFdd(ClientInfo* ci);
+
+    // FDD device settings (beep on step, device IKBD): the device keeps them (EEPROM, its captive portal), the web UI
+    // changes them in the per-device settings (FDD_SETTING_* keys) and asks the FDD core to send them to the device.
+    void fdd_syncDeviceSettings(ClientInfo* ci);    // after a FW report: store the device's settings when they changed there
+    bool fdd_sendDeviceSettings(ClientInfo* ci);    // send the stored settings to the device, clears the pending flag
 
     //----------------
     // HDD: READ/WRITE functions for large (>1 MB) block transfers (Scsi::readSectors(), Scsi::writeSectors()) and also by the convenient functions above

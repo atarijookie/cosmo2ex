@@ -304,11 +304,54 @@
             }
           });
 
+          // device setting - stored on the device too (sent by the core now, or when the device connects)
+          function loadFddSettings() {
+            var mac = getURLParameter('mac');
+            var box = document.getElementById('beep-on-step');
+            if (!mac || !box) return;
+            fetch('/fdd/' + encodeURIComponent(mac) + '/settings', { method: 'GET' })
+              .then(function(res) {
+                if (!res.ok) { throw new Error('GET failed ' + res.status); }
+                return res.json();
+              })
+              .then(function(data) {
+                box.checked = (data.beep_on_step === 1);
+                box.disabled = false;
+              })
+              .catch(function(err) {
+                console.log('Error loading floppy settings:', err);
+              });
+          }
+
+          function saveBeepOnStep() {
+            var mac = getURLParameter('mac');
+            var box = document.getElementById('beep-on-step');
+            var saved = document.getElementById('beep-saved');
+            if (!mac || !box) return;
+            saved.style.display = 'none';
+            fetch('/fdd/' + encodeURIComponent(mac) + '/settings', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ beep_on_step: box.checked ? 1 : 0 })
+            }).then(function(res) {
+              if (!res.ok) { throw new Error('PUT failed ' + res.status); }
+              saved.style.display = 'inline';
+              setTimeout(function() { saved.style.display = 'none'; }, 2000);
+            }).catch(function(err) {
+              box.checked = !box.checked;       // not saved - show what's stored
+              console.log('Error saving floppy settings:', err);
+              alert('Error saving setting: ' + err);
+            });
+          }
+
           window.onload = function() {
             $("[name=file-selector]").hide();
             var overlay = document.getElementsByClassName('container-file-selector')[0];
             if (overlay) { overlay.style.display = 'none'; }
             loadCurrentImage();
+            loadFddSettings();
+            var beepBox = document.getElementById('beep-on-step');
+            if (beepBox) { beepBox.onchange = saveBeepOnStep; }
           }
 
           // Logout function
@@ -538,6 +581,16 @@
                 <button id="eject-image" style="padding: 10px 18px; font-size: 16px; min-width: 90px;">Eject</button>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 30px; display: flex; flex-direction: column; align-items: center;">
+          <div style="display: flex; flex-direction: column; align-items: flex-start; max-width: 600px; width: 100%;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 16px; cursor: pointer;">
+              <input type="checkbox" id="beep-on-step" disabled>
+              Beep on every floppy head step
+              <span id="beep-saved" style="display: none; color: #3baf16; font-weight: bold;">saved</span>
+            </label>
           </div>
         </div>
 

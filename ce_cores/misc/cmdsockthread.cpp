@@ -350,6 +350,8 @@ void handleFloppyAction(std::string& action, json& data)
         fddAction = FDD_ACTION_INSERT;
     } else if(action == "eject") {              // for 'eject' action
         fddAction = FDD_ACTION_EJECT;
+    } else if(action == "settings") {           // device settings changed in the web UI
+        fddAction = FDD_ACTION_SETTINGS;
     } else {
         logFdd(LOG_WARNING, "handleFloppyAction: unknown action '%s', ignoring message!", action.c_str());
         return;

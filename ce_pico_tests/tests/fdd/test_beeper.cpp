@@ -1,6 +1,6 @@
-// beeper.cpp - buzzer with its own generator on PIN_BEEPER, on core 1: a click on every head step (from the STEP ISR),
-// the beeps asked for by core 0 start in the core 1 loop, and every beep ends there after its length - a shorter one
-// never cuts a longer one short.
+// beeper.cpp - buzzer with its own generator on PIN_BEEPER, on core 1: a short click on every head step (from the STEP
+// ISR, ended by an alarm after BEEP_STEP_US - a seek is a hum of clicks, not one long tone), the beeps asked for by core 0
+// start in the core 1 loop and end there after their length - a click never cuts a longer beep short.
 
 #include <cstdint>
 
@@ -21,6 +21,7 @@ struct BeeperFixture {
         fakeNowMs += 100;                   // away from the last step, not a glitch
         fakeGpioLevel[PIN_MOT_EN] = false;  // motor on
         beeperInit();
+        beeperCore1Init();
     }
 };
 
@@ -55,11 +56,34 @@ TEST_CASE_FIXTURE(BeeperFixture, "off after init") {
     CHECK(runLoop(10) == 0);
 }
 
-TEST_CASE_FIXTURE(BeeperFixture, "a step clicks right in the ISR, the loop ends the click") {
+TEST_CASE_FIXTURE(BeeperFixture, "a step clicks right in the ISR, the alarm ends the click after BEEP_STEP_US") {
     step();
     CHECK(beeping());
-    CHECK(runLoop(10) == BEEP_STEP_MS);
+    CHECK(runLoop(10) == 1);                // on only until the clock passes BEEP_STEP_US (the fake clock counts ms)
     CHECK_FALSE(beeping());
+}
+
+TEST_CASE_FIXTURE(BeeperFixture, "a seek - each step is its own short click, the beeper is off between them") {
+    for (int i = 0; i < 20; i++) {
+        step();                             // steps 2 ms apart - the fastest ST step rate
+        CHECK(beeping());
+        CHECK(runLoop(2) == 1);
+        CHECK_FALSE(beeping());
+    }
+}
+
+TEST_CASE_FIXTURE(BeeperFixture, "no click on a step with beep on step switched off, the other beeps still work") {
+    beeperSetStepClick(false);
+    step();
+    CHECK_FALSE(beeping());
+    CHECK(runLoop(10) == 0);
+
+    beep(BEEP_IMAGE_LOADED_MS);
+    CHECK(runLoop(100) == BEEP_IMAGE_LOADED_MS);
+
+    beeperSetStepClick(true);
+    step();
+    CHECK(beeping());
 }
 
 TEST_CASE_FIXTURE(BeeperFixture, "no click on a step with the motor off - the head doesn't move") {

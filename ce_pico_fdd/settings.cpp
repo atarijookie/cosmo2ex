@@ -4,6 +4,7 @@
 #include "defs.h"
 #include "utils.h"
 #include "settings.h"
+#include "beeper.h"
 
 #define EEPROM_SIZE     256     // must hold Settings_t
 
@@ -19,12 +20,45 @@ void loadSettingsFromEeprom(void)
         pSettings[i] = EEPROM.read(i);
     }
 
-    if(Settings.isValid == SETTINGS_VALID) {
+    if(Settings.isValid != SETTINGS_VALID) {
+        memset(&Settings, 0, sizeof(Settings));     // nothing stored - the defaults
+        Settings.ikbdEnabled = 1;
+    }
+
+    if(Settings.layout != SETTINGS_LAYOUT) {        // stored by older firmware, or the defaults - the newer fields too
+        Settings.layout = SETTINGS_LAYOUT;
+        Settings.beepOnStep = 1;
+    }
+
+    applySettings();
+}
+
+void applySettings(void)
+{
+    beeperSetStepClick(Settings.beepOnStep != 0);
+}
+
+uint8_t deviceSettingsFlags(void)
+{
+    return (Settings.ikbdEnabled ? DEV_SETTING_IKBD : 0) | (Settings.beepOnStep ? DEV_SETTING_BEEP_ON_STEP : 0);
+}
+
+// From the host (web UI). Stored only when something changed - the flash write pauses the floppy streaming.
+void deviceSettingsReceived(uint8_t flags)
+{
+    uint8_t ikbd = (flags & DEV_SETTING_IKBD) ? 1 : 0;
+    uint8_t beep = (flags & DEV_SETTING_BEEP_ON_STEP) ? 1 : 0;
+
+    if(Settings.ikbdEnabled == ikbd && Settings.beepOnStep == beep) {
         return;
     }
 
-    memset(&Settings, 0, sizeof(Settings));     // nothing stored - the defaults
-    Settings.ikbdEnabled = 1;
+    Settings.ikbdEnabled = ikbd;
+    Settings.beepOnStep = beep;
+    saveSettingsToEeprom();
+    applySettings();
+
+    debug("settings from host - ikbd: %d, beep on step: %d\n", ikbd, beep);
 }
 
 // EEPROM.commit() stops core 1 while the flash is written (core 1 is started via setup1() / loop1(), so the arduino

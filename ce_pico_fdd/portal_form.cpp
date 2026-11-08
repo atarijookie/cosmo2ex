@@ -32,7 +32,7 @@ std::string htmlEscape(const char* text)
     return out;
 }
 
-const char* portalApplyForm(const char* ssid, const char* password, bool ikbdEnabled, Settings_t& settings)
+const char* portalApplyForm(const char* ssid, const char* password, bool ikbdEnabled, bool beepOnStep, Settings_t& settings)
 {
     size_t ssidLen = ssid ? strlen(ssid) : 0;
     size_t pswdLen = password ? strlen(password) : 0;
@@ -55,6 +55,7 @@ const char* portalApplyForm(const char* ssid, const char* password, bool ikbdEna
 
     strcpy(settings.ssid, ssid);
     settings.ikbdEnabled = ikbdEnabled ? 1 : 0;
+    settings.beepOnStep = beepOnStep ? 1 : 0;
     return NULL;
 }
 
@@ -79,6 +80,9 @@ std::string portalFormPage(const Settings_t& settings, const std::vector<std::st
             "<p><label><input name='ikbd' type='checkbox' value='1'";
     page += settings.ikbdEnabled ? " checked" : "";
     page += ">Keyboard and mouse via the host (IKBD)</label></p>"
+            "<p><label><input name='beep' type='checkbox' value='1'";
+    page += settings.beepOnStep ? " checked" : "";
+    page += ">Beep on every floppy head step</label></p>"
             "<button type='submit'>Save and connect</button></form>";
 
     if(settings.ssid[0]) {      // something to go back to - leaving without saving

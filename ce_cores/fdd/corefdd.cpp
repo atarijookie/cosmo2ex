@@ -273,6 +273,8 @@ void CoreFdd::handleFwVersion_franz(ClientInfo* ci)
     if(macChanged) {
         loadLastImageIntoSlot(ci);
     }
+
+    ciFdd->fdd_syncDeviceSettings(ci);      // settings changed on the device (captive portal)? store them for the web UI
 }
 
 void CoreFdd::handleSendTrack(ClientInfo* ci)
@@ -550,6 +552,11 @@ void CoreFdd::handleFddAction(int fddAction, const std::string& fddMac)
     if(fddAction == FDD_ACTION_EJECT) {
         logFdd(LOG_DEBUG, "ejecting slot %d", client->floppySlotIndex);
         imageSilo->remove(client->floppySlotIndex);
+        return;
+    }
+
+    if(fddAction == FDD_ACTION_SETTINGS) {
+        ciFdd->fdd_sendDeviceSettings(client);
         return;
     }
 

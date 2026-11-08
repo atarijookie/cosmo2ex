@@ -11,6 +11,7 @@
 #include "ipc.h"
 #include "host_receive.h"
 #include "image_browser.h"
+#include "settings.h"
 
 THeader fddHeader;      // keep the header global to preserve syncTag between calls
 static bool headerPending = false;  // header received, but its data not handled yet - no free buffer for it until now
@@ -230,6 +231,15 @@ void handleInsertImageReceived(void)
     }
 }
 
+void handleDeviceSettingsReceived(void)
+{
+    uint8_t flags = 0;
+
+    if(readMessageData(&flags, 1, fddHeader.len) && fddHeader.len >= 1) {
+        deviceSettingsReceived(flags);
+    }
+}
+
 void handleIncommingData(void)
 {
     if(!hostConnected()) {          // not connected? forget the message we were in, the next connection starts from scratch
@@ -265,6 +275,11 @@ void handleIncommingData(void)
 
         case ATN_INSERT_IMAGE:
             handleInsertImageReceived();
+            headerPending = false;
+            break;
+
+        case ATN_DEVICE_SETTINGS:
+            handleDeviceSettingsReceived();
             headerPending = false;
             break;
 

@@ -37,6 +37,12 @@
                                                     //   device: gen, index (4 B each), name len (1 B), name
                                                     //   host: status (1 B) - INSERT_IMAGE_*
 
+#define ATN_DEVICE_SETTINGS             0x08        // host -> device only: settings flags (1 B, DEV_SETTING_*) changed in the web UI;
+                                                    //   the device reports its flags in the FW report (byte 12 of the data)
+
+#define DEV_SETTING_IKBD                0x01        // device IKBD (keyboard / mouse via the host) enabled
+#define DEV_SETTING_BEEP_ON_STEP        0x02        // beeper clicks on every head step
+
 #define INSERT_IMAGE_OK                 0           // found, loading - the image follows as on ATN_SEND_WHOLE_IMAGE
 #define INSERT_IMAGE_NOT_FOUND          1           // no such image in the folder (anymore)
 #define INSERT_IMAGE_FAILED             2           // bad request, or the current image can't be browsed (no image, special image)

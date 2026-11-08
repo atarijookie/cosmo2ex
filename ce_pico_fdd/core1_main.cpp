@@ -145,10 +145,17 @@ void __isr dmaHandlerMfm(void)
     // Clear the interrupt
     dma_hw->ints0 = 1u << dmaChannel;
 
-    halfDone = !halfDone;   // Flip half flag
     mfmHalfCount++;
 
-    fillWhat = halfDone ? FILL_LOWER : FILL_UPPER;
+    // Fill the half the DMA isn't reading now - taken from its read address, not by flipping a flag on each IRQ: when
+    // the IRQs are blocked for longer than one half (core 1 idled for a flash write, e.g. EEPROM.commit() on a settings
+    // change), several of them merge into one, and a flag would then stay on the wrong half - filling the half being
+    // played out, for good.
+    uintptr_t readOffset = (uintptr_t) dma_hw->ch[dmaChannel].read_addr - (uintptr_t) mfmBuffer;
+    bool readingUpper = (readOffset % sizeof(mfmBuffer)) >= (MFM_BUFFER_HALF_SIZE * sizeof(mfmBuffer[0]));
+    halfDone = readingUpper;    // the lower half was played out last
+
+    fillWhat = readingUpper ? FILL_LOWER : FILL_UPPER;
 
     if(state == STATE_STREAMING) {
         fillHalfMfmBuffer(fillWhat);
@@ -553,6 +560,7 @@ void core1Setup(void)
 
     clearMfmBuffer();
     trackRotationSetup();
+    beeperCore1Init();                  // before the STEP IRQ - the step clicks need its alarm
 
     gpio_set_irq_enabled_with_callback(PIN_STEP, GPIO_IRQ_EDGE_FALL, true, gpioIsrCore1);
 

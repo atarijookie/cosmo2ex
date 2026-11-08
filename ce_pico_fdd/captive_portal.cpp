@@ -96,9 +96,10 @@ static void handleSave(void)
     String ssid = webServer.arg("ssid");
     String password = webServer.arg("password");
     bool ikbd = webServer.hasArg("ikbd");      // an unchecked checkbox isn't sent at all
+    bool beep = webServer.hasArg("beep");
 
     Settings_t newSettings = Settings;
-    const char* error = portalApplyForm(ssid.c_str(), password.c_str(), ikbd, newSettings);
+    const char* error = portalApplyForm(ssid.c_str(), password.c_str(), ikbd, beep, newSettings);
 
     if(error) {
         sendPage(portalFormPage(Settings, networks, error));
@@ -107,7 +108,8 @@ static void handleSave(void)
 
     Settings = newSettings;
     saveSettingsToEeprom();
-    debug("captive portal - saved, ssid: %s, ikbd: %d\n", Settings.ssid, Settings.ikbdEnabled);
+    applySettings();
+    debug("captive portal - saved, ssid: %s, ikbd: %d, beep on step: %d\n", Settings.ssid, Settings.ikbdEnabled, Settings.beepOnStep);
 
     sendPage(portalSavedPage(Settings.ssid));
 

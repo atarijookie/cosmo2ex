@@ -288,6 +288,9 @@ uint8_t ChipInterface::getFWversion(ClientInfo* ci, bool hddNotFdd)
     snprintf(fwVerStr, sizeof(fwVerStr), "%d-%02d-%02d", year, month, day);
     StatusReport::storeIpAndFwVer(ci->mac, ci->ipAddr, fwVerStr, bfr[4]);
 
+    // device settings flags - only from firmware that sends them (14 bytes instead of 12)
+    ci->deviceSettings = (readCnt >= 13) ? bfr[12] : -1;
+
     // features changed? store it to settings
     if(ci->features != bfr[4]) {
         ci->features = bfr[4];
@@ -298,6 +301,53 @@ uint8_t ChipInterface::getFWversion(ClientInfo* ci, bool hddNotFdd)
 
     // for hdd return xilinx info, for fdd return if mac changed
     return hddNotFdd ? bfr[5] : macChanged;
+}
+
+// The device's settings are the truth on connect, and when they change there (captive portal). A change in the web UI
+// is sent to the device, which then reports it back - a report still carrying the old value (sent before the device
+// got the change) doesn't overwrite the new setting, as it's not a change from what was reported before.
+// Changed in the web UI while the device wasn't connected (pending)? Then the web UI wins - sent on connect.
+void ChipInterface::fdd_syncDeviceSettings(ClientInfo* ci)
+{
+    if(ci->deviceSettings < 0 || ci->deviceSettings == ci->deviceSettingsSeen) {   // not reported, or no change
+        return;
+    }
+
+    bool firstSinceConnect = (ci->deviceSettingsSeen < 0);
+    ci->deviceSettingsSeen = ci->deviceSettings;
+
+    Settings s(ci->mac);
+
+    if(firstSinceConnect && s.getBool(FDD_SETTING_PENDING, false)) {
+        Debug::out(whichLog, LOG_DEBUG, "fdd_syncDeviceSettings - settings changed in the web UI while the device was away, sending them");
+        fdd_sendDeviceSettings(ci);
+        return;
+    }
+
+    bool ikbd = (ci->deviceSettings & DEV_SETTING_IKBD) != 0;
+    bool beep = (ci->deviceSettings & DEV_SETTING_BEEP_ON_STEP) != 0;
+    s.setBool(FDD_SETTING_IKBD_ENABLED, ikbd);
+    s.setBool(FDD_SETTING_BEEP_ON_STEP, beep);
+
+    Debug::out(whichLog, LOG_DEBUG, "fdd_syncDeviceSettings - device settings stored: ikbd: %d, beep on step: %d", ikbd, beep);
+}
+
+bool ChipInterface::fdd_sendDeviceSettings(ClientInfo* ci)
+{
+    Settings s(ci->mac);
+    bool ikbd = s.getBool(FDD_SETTING_IKBD_ENABLED, true);
+    bool beep = s.getBool(FDD_SETTING_BEEP_ON_STEP, true);
+
+    uint8_t flags = (ikbd ? DEV_SETTING_IKBD : 0) | (beep ? DEV_SETTING_BEEP_ON_STEP : 0);
+
+    if(!sendHeaderAndDataToChip(ci->fdClient, ATN_DEVICE_SETTINGS, &flags, 1)) {
+        Debug::out(whichLog, LOG_WARNING, "fdd_sendDeviceSettings - failed to send, will be sent on next connect");
+        return false;
+    }
+
+    s.setBool(FDD_SETTING_PENDING, false);
+    Debug::out(whichLog, LOG_DEBUG, "fdd_sendDeviceSettings - sent: ikbd: %d, beep on step: %d", ikbd, beep);
+    return true;
 }
 
 void ChipInterface::storeDeviceFeatures(uint8_t* mac, uint8_t featureBits)
@@ -765,6 +815,8 @@ void ChipInterface::clientsClearOne(ClientInfo* info)
     info->floppySlotIndex = FD_EMPTY;
     info->lastMs = 0;
     info->features = 0;
+    info->deviceSettings = -1;
+    info->deviceSettingsSeen = -1;
     info->bufReader.reset();    // drop any partial header / remaining data size from previous connection
 }
 
@@ -863,6 +915,8 @@ void ChipInterface::clientsStoreOne(ClientInfo* info, int newSock, uint32_t ipAd
     info->lastMs = Utils::getCurrentMs();
     info->ipAddr = ipAddr;
     memcpy(info->mac, mac, 6);
+    info->deviceSettings = -1;          // the new connection reports them again - and they're the truth then
+    info->deviceSettingsSeen = -1;
 
     if(isFdd) {         // floppy: reconnected device keeps its slot, new device gets a free one
         info->floppySlotIndex = (oldFloppySlot != FD_EMPTY) ? oldFloppySlot : clientsGetFreeFloppySlot();

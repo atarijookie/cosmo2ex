@@ -217,6 +217,8 @@ func newServer() *Server {
 		protected.Delete("/fdd/{mac}/image", s.handleDeleteFDDImage)
 		protected.Get("/fdd/{mac}/image/next", s.handleGetFDDImageNext)
 		protected.Get("/fdd/{mac}/image/prev", s.handleGetFDDImagePrev)
+		protected.Get("/fdd/{mac}/settings", s.handleGetFDDSettings)
+		protected.Put("/fdd/{mac}/settings", s.handlePutFDDSettings)
 		protected.Get("/ikbd/{mac}", s.handleGetIKBD)
 		protected.Put("/ikbd/{mac}", s.handlePutIKBD)
 		protected.Post("/hid/mouse", s.handlePostHIDMouse)

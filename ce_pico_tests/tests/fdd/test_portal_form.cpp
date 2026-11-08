@@ -19,6 +19,8 @@ Settings_t storedSettings(const char* ssid, const char* password)
     strcpy(s.ssid, ssid);
     strcpy(s.password, password);
     s.ikbdEnabled = 1;
+    s.layout = SETTINGS_LAYOUT;
+    s.beepOnStep = 1;
     return s;
 }
 
@@ -32,7 +34,7 @@ bool contains(const std::string& text, const std::string& part)
 TEST_CASE("new network with a password")
 {
     Settings_t s = storedSettings("home", "oldpassword");
-    CHECK(portalApplyForm("office", "newpassword", true, s) == nullptr);
+    CHECK(portalApplyForm("office", "newpassword", true, true, s) == nullptr);
     CHECK(std::string(s.ssid) == "office");
     CHECK(std::string(s.password) == "newpassword");
     CHECK(s.ikbdEnabled == 1);                  // the other settings stay
@@ -41,10 +43,10 @@ TEST_CASE("new network with a password")
 TEST_CASE("empty password - kept for the same network, open network for another one")
 {
     Settings_t s = storedSettings("home", "oldpassword");
-    CHECK(portalApplyForm("home", "", true, s) == nullptr);
+    CHECK(portalApplyForm("home", "", true, true, s) == nullptr);
     CHECK(std::string(s.password) == "oldpassword");
 
-    CHECK(portalApplyForm("cafe", "", true, s) == nullptr);
+    CHECK(portalApplyForm("cafe", "", true, true, s) == nullptr);
     CHECK(std::string(s.ssid) == "cafe");
     CHECK(std::string(s.password) == "");
 }
@@ -53,29 +55,29 @@ TEST_CASE("wrong values are rejected, the settings stay as they were")
 {
     Settings_t s = storedSettings("home", "oldpassword");
 
-    CHECK(portalApplyForm("", "newpassword", true, s) != nullptr);
-    CHECK(portalApplyForm(nullptr, "newpassword", true, s) != nullptr);
-    CHECK(portalApplyForm(std::string(32, 'x').c_str(), "newpassword", true, s) != nullptr);   // max 31
-    CHECK(portalApplyForm("office", "short", true, s) != nullptr);                             // WPA2: min 8
-    CHECK(portalApplyForm("office", std::string(32, 'p').c_str(), true, s) != nullptr);
+    CHECK(portalApplyForm("", "newpassword", true, true, s) != nullptr);
+    CHECK(portalApplyForm(nullptr, "newpassword", true, true, s) != nullptr);
+    CHECK(portalApplyForm(std::string(32, 'x').c_str(), "newpassword", true, true, s) != nullptr);   // max 31
+    CHECK(portalApplyForm("office", "short", true, true, s) != nullptr);                             // WPA2: min 8
+    CHECK(portalApplyForm("office", std::string(32, 'p').c_str(), true, true, s) != nullptr);
 
     CHECK(std::string(s.ssid) == "home");
     CHECK(std::string(s.password) == "oldpassword");
 
-    CHECK(portalApplyForm(std::string(31, 'x').c_str(), std::string(31, 'p').c_str(), true, s) == nullptr);
+    CHECK(portalApplyForm(std::string(31, 'x').c_str(), std::string(31, 'p').c_str(), true, true, s) == nullptr);
     CHECK(std::string(s.ssid) == std::string(31, 'x'));
 }
 
 TEST_CASE("ikbd checkbox - saved with valid values, unchanged with an error")
 {
     Settings_t s = storedSettings("home", "oldpassword");     // ikbd enabled
-    CHECK(portalApplyForm("home", "", false, s) == nullptr);
+    CHECK(portalApplyForm("home", "", false, true, s) == nullptr);
     CHECK(s.ikbdEnabled == 0);
 
-    CHECK(portalApplyForm("", "", true, s) != nullptr);       // bad ssid - nothing changes
+    CHECK(portalApplyForm("", "", true, true, s) != nullptr);       // bad ssid - nothing changes
     CHECK(s.ikbdEnabled == 0);
 
-    CHECK(portalApplyForm("home", "", true, s) == nullptr);
+    CHECK(portalApplyForm("home", "", true, true, s) == nullptr);
     CHECK(s.ikbdEnabled == 1);
 }
 
@@ -129,4 +131,21 @@ TEST_CASE("form page - quit without saving offered only with a stored network, q
     CHECK_FALSE(contains(portalFormPage(s, {}, nullptr), "action='/quit'"));
 
     CHECK(contains(portalQuitPage("o&o"), "<b>o&amp;o</b>"));
+}
+
+TEST_CASE("beep on step checkbox - saved with valid values, unchanged with an error, shown as stored")
+{
+    Settings_t s = storedSettings("home", "oldpassword");     // beep on step enabled
+    CHECK(contains(portalFormPage(s, {}, nullptr), "name='beep' type='checkbox' value='1' checked>"));
+
+    CHECK(portalApplyForm("home", "", true, false, s) == nullptr);
+    CHECK(s.beepOnStep == 0);
+    CHECK(s.ikbdEnabled == 1);                  // independent of the ikbd one
+    CHECK(contains(portalFormPage(s, {}, nullptr), "name='beep' type='checkbox' value='1'>"));
+
+    CHECK(portalApplyForm("", "", true, true, s) != nullptr);  // bad ssid - nothing changes
+    CHECK(s.beepOnStep == 0);
+
+    CHECK(portalApplyForm("home", "", true, true, s) == nullptr);
+    CHECK(s.beepOnStep == 1);
 }

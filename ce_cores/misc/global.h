@@ -103,6 +103,7 @@ extern int logLevel;
 #define FDD_ACTION_NONE     0
 #define FDD_ACTION_INSERT   1
 #define FDD_ACTION_EJECT    2
+#define FDD_ACTION_SETTINGS 3       // device settings changed in the web UI - send them to the device
 
 typedef struct {
     volatile bool screenShotVblEnabled;

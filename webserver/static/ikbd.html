@@ -208,6 +208,15 @@
           <h2>Cosmo2ex</h2>
           <h3>Keyboard and joystick mapping</h3>
 
+          <div id="device-ikbd-row" style="display: none; margin: 10px 0 20px 0;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 16px; cursor: pointer;">
+              <input type="checkbox" id="device-ikbd" disabled>
+              Use keyboard and mouse via the host on this device (IKBD)
+              <span id="device-ikbd-saved" style="display: none; color: #3baf16; font-weight: bold;">saved</span>
+            </label>
+            <div style="font-size: 13px; color: #555; margin-left: 26px;">Off: the ST's own keyboard goes straight to the ST, nothing from the host. Stored on the device.</div>
+          </div>
+
           <table class="ikbd-single-column">
             <tr><td><label><input type="checkbox" id="first-joy">First Joy is 0</label></td></tr>
             <tr><td><label><input type="checkbox" id="mouse-wheel-keys">Mouse wheel as keys</label></td></tr>
@@ -528,7 +537,52 @@
         }
       }
 
+      // Device IKBD on / off - a setting of the FDD device (stored on it, sent by the core now, or when the device
+      // connects), shown only for devices with the floppy feature. The host's IKBD settings above are not affected.
+      async function loadDeviceIkbd() {
+        if (!mac) return;
+        try {
+          const feat = await fetch('/device/' + encodeURIComponent(mac) + '/features', { method: 'GET' });
+          if (!feat.ok) throw new Error('GET features failed: ' + feat.status);
+          const features = await feat.json();
+          if (!features.fdd) return;
+
+          const res = await fetch('/fdd/' + encodeURIComponent(mac) + '/settings', { method: 'GET' });
+          if (!res.ok) throw new Error('GET failed: ' + res.status);
+          const data = await res.json();
+
+          const box = document.getElementById('device-ikbd');
+          box.checked = (data.ikbd_enabled === 1);
+          box.disabled = false;
+          document.getElementById('device-ikbd-row').style.display = 'block';
+        } catch (e) {
+          console.log('Error loading device IKBD setting:', e);
+        }
+      }
+
+      async function saveDeviceIkbd() {
+        const box = document.getElementById('device-ikbd');
+        const saved = document.getElementById('device-ikbd-saved');
+        saved.style.display = 'none';
+        try {
+          const res = await fetch('/fdd/' + encodeURIComponent(mac) + '/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ikbd_enabled: box.checked ? 1 : 0 })
+          });
+          if (!res.ok) throw new Error('PUT failed: ' + res.status);
+          saved.style.display = 'inline';
+          setTimeout(function() { saved.style.display = 'none'; }, 2000);
+        } catch (e) {
+          box.checked = !box.checked;           // not saved - show what's stored
+          console.log('Error saving device IKBD setting:', e);
+          alert('Error saving setting');
+        }
+      }
+
       // Wire up page behavior
+      document.getElementById('device-ikbd').onchange = function() { saveDeviceIkbd(); };
+      loadDeviceIkbd();
       document.getElementById('save-ikbd').onclick = function() { saveIkbdSettings(); };
       attachAllKeyCaptures();
       loadIkbdSettings();

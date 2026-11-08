@@ -273,3 +273,102 @@ func (s *Server) handleDeleteFDDImage(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// FDD device settings (beep on step, device IKBD) - stored per device, the FDD core sends them to the device, and
+// stores the device's own changes (its captive portal) into the same files. The names must match FDD_SETTING_* in
+// ce_cores/chipinterface/chipinterface.h.
+const (
+	fddSettingIkbdEnabled = "FDD_IKBD_ENABLED"
+	fddSettingBeepOnStep  = "FDD_BEEP_ON_STEP"
+	fddSettingPending     = "FDD_SETTINGS_PENDING" // 1 = changed here, not sent to the device yet (core sends it on connect)
+)
+
+// FDDSettings - a PUT may contain just some of them, the others stay as they are
+type FDDSettings struct {
+	BeepOnStep  *int `json:"beep_on_step,omitempty"`
+	IkbdEnabled *int `json:"ikbd_enabled,omitempty"`
+}
+
+// readSettingIntDefault - 0 / 1 from the settings file, def when it doesn't exist (device never reported it) or isn't valid
+func readSettingIntDefault(deviceDir, fileName string, def int) int {
+	content, err := os.ReadFile(filepath.Join(deviceDir, fileName))
+	if err != nil {
+		return def
+	}
+	switch strings.TrimSpace(string(content)) {
+	case "0":
+		return 0
+	case "1":
+		return 1
+	}
+	return def
+}
+
+func (s *Server) handleGetFDDSettings(w http.ResponseWriter, r *http.Request) {
+	logDebugf("handleGetFDDSettings %s %s", r.Method, r.URL.Path)
+
+	deviceDir := filepath.Join(getSettingsDir(), stripMACColons(chi.URLParam(r, "mac")))
+
+	writeJSON(w, http.StatusOK, map[string]int{ // both on by default, as on the device
+		"beep_on_step": readSettingIntDefault(deviceDir, fddSettingBeepOnStep, 1),
+		"ikbd_enabled": readSettingIntDefault(deviceDir, fddSettingIkbdEnabled, 1),
+	})
+}
+
+func (s *Server) handlePutFDDSettings(w http.ResponseWriter, r *http.Request) {
+	logDebugf("handlePutFDDSettings %s %s", r.Method, r.URL.Path)
+
+	mac := stripMACColons(chi.URLParam(r, "mac"))
+
+	var payload FDDSettings
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	values := map[string]*int{fddSettingBeepOnStep: payload.BeepOnStep, fddSettingIkbdEnabled: payload.IkbdEnabled}
+	given := 0
+	for _, v := range values {
+		if v == nil {
+			continue
+		}
+		if !isZeroOrOne(*v) {
+			http.Error(w, "values must be 0 or 1", http.StatusBadRequest)
+			return
+		}
+		given++
+	}
+	if given == 0 {
+		http.Error(w, "no setting given", http.StatusBadRequest)
+		return
+	}
+
+	deviceDir := filepath.Join(getSettingsDir(), mac)
+	if err := os.MkdirAll(deviceDir, 0o755); err != nil {
+		logErrorf("handlePutFDDSettings - error creating directory %s: %v", deviceDir, err)
+		http.Error(w, "cannot create device directory", http.StatusInternalServerError)
+		return
+	}
+
+	for name, v := range values {
+		if v == nil {
+			continue
+		}
+		if err := writeSettingInt(deviceDir, name, *v); err != nil {
+			http.Error(w, "cannot write setting", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// pending until the core sent it - if the device isn't connected now, the core sends it when it connects
+	if err := writeSettingInt(deviceDir, fddSettingPending, 1); err != nil {
+		http.Error(w, "cannot write setting", http.StatusInternalServerError)
+		return
+	}
+
+	if err := handleFloppyAction("settings", mac); err != nil {
+		logErrorf("handlePutFDDSettings - failed to send to core: %v", err)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

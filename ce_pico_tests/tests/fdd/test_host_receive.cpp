@@ -20,6 +20,14 @@ extern int imageState;
 extern char imageFileName[32];
 extern uint8_t imgTracks, imgSides, imgSectorsPerTrack;
 
+// settings.cpp (EEPROM) isn't in the tests - record what host_receive.cpp passes to it
+static std::vector<uint8_t> receivedSettings;
+
+void deviceSettingsReceived(uint8_t flags)
+{
+    receivedSettings.push_back(flags);
+}
+
 namespace {
 
 std::vector<uint8_t> message(uint16_t cmd, const std::vector<uint8_t>& data, uint32_t len)
@@ -248,6 +256,26 @@ TEST_CASE_FIXTURE(HostReceiveFixture, "track with a bad track or side number is 
     CHECK(t.track == 6);
     CHECK(ipcGetBufferFromFifo(1) == NULL);
     CHECK(freeCore1Buffers() == freeBefore);
+    CHECK(fakeHostRx.empty());
+}
+
+TEST_CASE_FIXTURE(HostReceiveFixture, "device settings from the host are applied, the next message is found right after them") {
+    receivedSettings.clear();
+    fakeHostReceive(message(ATN_DEVICE_SETTINGS, { 0x02 }, 1));
+    fakeHostReceive(message(ATN_SEND_WHOLE_IMAGE, imageData(false, "GAME.ST"), imageData(false, "GAME.ST").size()));
+    mainLoop(2);
+
+    CHECK(receivedSettings == std::vector<uint8_t>{ 0x02 });
+    CHECK(std::string(imageFileName) == "GAME.ST");
+    CHECK(fakeHostRx.empty());
+}
+
+TEST_CASE_FIXTURE(HostReceiveFixture, "device settings message without data is ignored") {
+    receivedSettings.clear();
+    fakeHostReceive(message(ATN_DEVICE_SETTINGS, {}, 0));
+    mainLoop();
+
+    CHECK(receivedSettings.empty());
     CHECK(fakeHostRx.empty());
 }
 

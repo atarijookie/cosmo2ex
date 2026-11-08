@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -129,5 +130,81 @@ func TestFDDImageStep(t *testing.T) {
 	}
 	if code, _ := step(gone, +1); code != http.StatusNotFound {
 		t.Errorf("folder gone, no FLOPPY_IMAGES_DIR: %d, want 404", code)
+	}
+}
+
+func TestFDDSettings(t *testing.T) {
+	settings := t.TempDir()
+	t.Setenv("SETTINGS_DIR", settings)
+	t.Setenv("CMD_UDP_PORT", "") // don't send to a running core
+
+	s := &Server{}
+	const mac = "2c:cf:67:c4:b1:e5"
+	deviceDir := filepath.Join(settings, "2ccf67c4b1e5")
+
+	call := func(method, body string) (int, map[string]int) {
+		t.Helper()
+		rc := chi.NewRouteContext()
+		rc.URLParams.Add("mac", mac)
+		r := httptest.NewRequest(method, "/fdd/"+mac+"/settings", strings.NewReader(body))
+		r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rc))
+		w := httptest.NewRecorder()
+		if method == http.MethodGet {
+			s.handleGetFDDSettings(w, r)
+		} else {
+			s.handlePutFDDSettings(w, r)
+		}
+		var resp map[string]int
+		if method == http.MethodGet {
+			if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return w.Code, resp
+	}
+	file := func(name string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(deviceDir, name))
+		if err != nil {
+			return "<missing>"
+		}
+		return strings.TrimSpace(string(b))
+	}
+
+	// nothing stored yet - both on, as the device defaults
+	if code, got := call(http.MethodGet, ""); code != http.StatusOK || got["beep_on_step"] != 1 || got["ikbd_enabled"] != 1 {
+		t.Fatalf("defaults: %d %v", code, got)
+	}
+
+	// one setting changed - the other one isn't touched, marked pending for the core
+	if code, _ := call(http.MethodPut, `{"beep_on_step":0}`); code != http.StatusNoContent {
+		t.Fatalf("put beep: %d", code)
+	}
+	if file(fddSettingBeepOnStep) != "0" || file(fddSettingIkbdEnabled) != "<missing>" || file(fddSettingPending) != "1" {
+		t.Errorf("after put beep: beep %s, ikbd %s, pending %s", file(fddSettingBeepOnStep), file(fddSettingIkbdEnabled), file(fddSettingPending))
+	}
+	if _, got := call(http.MethodGet, ""); got["beep_on_step"] != 0 || got["ikbd_enabled"] != 1 {
+		t.Errorf("get after put beep: %v", got)
+	}
+
+	if code, _ := call(http.MethodPut, `{"ikbd_enabled":0}`); code != http.StatusNoContent {
+		t.Fatalf("put ikbd: %d", code)
+	}
+	if _, got := call(http.MethodGet, ""); got["beep_on_step"] != 0 || got["ikbd_enabled"] != 0 {
+		t.Errorf("get after put ikbd: %v", got)
+	}
+
+	// the core writes 0 / 1 with a newline
+	if err := os.WriteFile(filepath.Join(deviceDir, fddSettingBeepOnStep), []byte("1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, got := call(http.MethodGet, ""); got["beep_on_step"] != 1 {
+		t.Errorf("value written by the core: %v", got)
+	}
+
+	for _, bad := range []string{`{}`, `{"beep_on_step":2}`, `{"ikbd_enabled":-1}`, `not json`} {
+		if code, _ := call(http.MethodPut, bad); code != http.StatusBadRequest {
+			t.Errorf("put %s: %d, want 400", bad, code)
+		}
 	}
 }

@@ -75,8 +75,11 @@
 
 - on GP27 (H = on), a buzzer with its own generator - the firmware only switches it on / off, it's on the FDD board
   (not on the front panel), so it works without a panel too
-- a 2 ms click on every head step (from the STEP ISR, only with the motor on), 50 ms when an image is loaded, 100 ms
+- a 100 us click on every head step (`BEEP_STEP_US` - started in the STEP ISR, only with the motor on, ended by a timer
+  alarm on core 1, so a seek is a hum of separate clicks like a real drive, not one long tone), 50 ms when an image is loaded, 100 ms
   when the host connects, 200 ms on a long press of the button, 400 ms when the host is lost
+- the click on head step can be switched off (`beepOnStep` in the settings, on by default): the checkbox on the WiFi
+  setup page, or 'Beep on every floppy head step' on the floppy page of the web UI - see Device settings below
 - beeper.cpp - core 1 owns the pin and ends all the beeps in its loop, core 0 only asks for them
 
 ## IKBD (keyboard + mouse)
@@ -85,7 +88,8 @@
   uart1, KEYB_RX (GP18, the ST's commands to the keyboard, only listened to) on a PIO receiver - all 7812 baud
 - IKBD disabled, or no connection to the host: the uart IRQ passes the keyboard data straight to the ST (at most ~4 ms
   later), even while the main loop is busy (joining the WiFi, connecting)
-- IKBD enabled (`ikbdEnabled` in the settings - on by default, the checkbox on the WiFi setup page) and connected to the host's ikbd port: the keyboard data and the ST
+- IKBD enabled (`ikbdEnabled` in the settings - on by default, the checkbox on the WiFi setup page, or on the IKBD page
+  of the web UI - see Device settings below) and connected to the host's ikbd port: the keyboard data and the ST
   commands go to the host, tagged (0xBB / 0xAA, keep alive 0xEE once a second), what the host sends goes to the ST
 - ikbd.cpp, the same protocol as ce_pico_hdd
 
@@ -95,7 +99,7 @@
   the setup page opens by itself (every DNS name and URL leads to it), or open http://192.168.42.1
 - the page has the WiFi name (with the scanned networks offered) and password; an empty password keeps the stored one
   for the same WiFi name, otherwise it means an open network; both max 31 chars, the password at least 8 (WPA2);
-  and a checkbox for IKBD (keyboard and mouse via the host); with WiFi settings already stored, the page also has
+  and checkboxes for IKBD (keyboard and mouse via the host) and the beep on head step; with WiFi settings already stored, the page also has
   'Quit WiFi setup without saving' - back to normal operation with the stored settings
 - Save stores them to EEPROM (the floppy streaming pauses for the flash write), then the FDD goes back to the normal
   mode and connects with them right away
@@ -106,6 +110,17 @@
   streaming the current image
 - captive_portal.cpp - AP, DNS and web server (arduino-pico WiFi, DNSServer, WebServer); portal_form.cpp - the pages
   and the checks of the entered values (tested on the host)
+
+## Device settings (IKBD, beep on step)
+
+- stored on the device (EEPROM, `Settings_t` - the fields after `ikbdEnabled` get their defaults when stored by older
+  firmware, see `SETTINGS_LAYOUT`), changed on the WiFi setup page or in the web UI
+- the device reports them in every FW report (heartbeat, byte 12 of its data: DEV_SETTING_* flags), the host (ce_cores)
+  stores them as FDD_IKBD_ENABLED / FDD_BEEP_ON_STEP in the device's settings - when they change on the device, and on
+  connect (the device's settings are the truth then)
+- the web UI writes those settings and asks the core to send them: ATN_DEVICE_SETTINGS (0x08) with the flags; changed
+  while the device wasn't connected (FDD_SETTINGS_PENDING) - sent when it connects, the web UI wins then
+- the device stores them only when they changed - the flash write pauses the floppy streaming for a moment
 
 ## Notes
 

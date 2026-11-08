@@ -165,6 +165,7 @@ uint32_t lastSendFwTime;
 void sendFwReport(uint32_t now)
 {
     lastSendFwTime = now;
+    atnSendFwVersion[TX_HEADER_SIZE + 12] = deviceSettingsFlags();     // the current settings - may be changed in the captive portal
     sendHeaderAndDataToHost(atnSendFwVersion, ATN_SENDFWVERSION_LEN_TX - TX_HEADER_SIZE);
 }
 
