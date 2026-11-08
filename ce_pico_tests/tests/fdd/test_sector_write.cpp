@@ -502,20 +502,56 @@ TEST_CASE_FIXTURE(WriteFixture, "write end stores the partial last byte, padded 
     CHECK(takeWrittenData() == expected);
 }
 
-TEST_CASE_FIXTURE(WriteFixture, "pulses handled before the write start was noticed don't shift the byte packing of the write") {
-    // core1 polls WGATE, so the first pulses of a write can be processed by the IRQ while wrBuffer is still NULL - they are
-    // lost (they're the 00 preamble), but the bytes after them must stay aligned
-    pioPushPulse(PIO_TICKS_GAP);                // 4 pulses = one DMA block, the IRQ handles it with no wrBuffer
+TEST_CASE_FIXTURE(WriteFixture, "pulses that came before the write start was noticed are kept - the 00 preamble isn't lost") {
+    // the WGATE IRQ can come late (e.g. while the read stream refill IRQ runs) - the write DMA IRQ already handled the
+    // first pulses of the write with no wrBuffer; they're the 00 preamble, which the read back of the patched sector needs
+    pioPushPulse(PIO_TICKS_GAP);                // the first pulse of the write: the interval since the previous write
+    captureBytes({0x55, 0x55, 0x55});           // 12 pulses of 4 us - 3 DMA blocks, the IRQ handles them with no wrBuffer
     pioPushSymbol(MFM_4US);
     pioPushSymbol(MFM_4US);
     pioPushSymbol(MFM_4US);
     REQUIRE(wrBuffer == NULL);
 
     writeGateLow();
+    pioPushSymbol(MFM_4US);
     captureBytes(WRITTEN);
     writeEnd();
 
-    CHECK(takeWrittenData() == WRITTEN);
+    std::vector<uint8_t> expected = {0x55, 0x55, 0x55, 0x55};  // the gap skipped, 16 pulses of 4 us from the write start
+    expected.insert(expected.end(), WRITTEN.begin(), WRITTEN.end());
+    CHECK(takeWrittenData() == expected);
+}
+
+TEST_CASE_FIXTURE(WriteFixture, "write start noticed late - pulses before its gap pulse (e.g. other drive's write) aren't taken") {
+    pioPushPulse(PIO_TICKS_GAP);                // some earlier pulses not belonging to this write
+    captureBytes({0xe7, 0x9d});
+    pioPushPulse(PIO_TICKS_GAP);                // this write starts here
+    captureBytes({0x55, 0x55});
+    REQUIRE(wrBuffer == NULL);
+
+    writeGateLow();
+    captureBytes(WRITTEN);
+    writeEnd();
+
+    std::vector<uint8_t> expected = {0x55, 0x55};
+    expected.insert(expected.end(), WRITTEN.begin(), WRITTEN.end());
+    CHECK(takeWrittenData() == expected);
+}
+
+TEST_CASE_FIXTURE(WriteFixture, "between writes only the newest pulses are kept - a long run of them doesn't overrun the ring") {
+    pioPushPulse(PIO_TICKS_GAP);
+    captureBytes(std::vector<uint8_t>(400, 0xe7));     // 1600 pulses with no write captured - the ring wraps many times
+    pioPushPulse(PIO_TICKS_GAP);                // the write's first pulse
+    captureBytes({0x55});
+    REQUIRE(wrBuffer == NULL);
+
+    writeGateLow();
+    captureBytes(WRITTEN);
+    writeEnd();
+
+    std::vector<uint8_t> expected = {0x55};
+    expected.insert(expected.end(), WRITTEN.begin(), WRITTEN.end());
+    CHECK(takeWrittenData() == expected);
 }
 
 TEST_CASE_FIXTURE(WriteFixture, "nothing of one write leaks into the next one") {

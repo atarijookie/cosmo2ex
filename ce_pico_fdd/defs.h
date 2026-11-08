@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #define DEBUG_STRINGS   1       // debug() on GP0 (TX0), 115200 baud; 0 = no output, see debug() in utils.cpp
+#define FDD_STATUS_LOG  0       // 1 = floppy status in the debug log once a second while the ST uses the drive, see core1StatusReport()
 
 #ifndef TRUE
     #define TRUE 1

@@ -172,6 +172,7 @@ void loop(void)
 {
     uint32_t now = millis();
     lastSendFwTime = now;
+    uint32_t lastStatusTime = now;
 
     while(1)
     {
@@ -192,6 +193,13 @@ void loop(void)
 
         // browsing the images on the front panel - page requests, timeout, display
         browserLoop();
+
+        // floppy status to the debug log, once a second while the ST uses the drive
+        if (FDD_STATUS_LOG && (now - lastStatusTime) >= 1000)
+        {
+            lastStatusTime = now;
+            core1StatusReport(imageState);
+        }
 
         // send heartbeat (fw version) once a second
         if (connectedToHost && (now - lastSendFwTime) >= 1000)

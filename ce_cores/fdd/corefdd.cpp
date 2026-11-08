@@ -489,6 +489,19 @@ void CoreFdd::handleSectorWritten(ClientInfo* ci)
 
     // Debug::outBfr(LOGFILE_FDD, writtenSector, byteCount);
 
+    // Debug: how many 4 us symbols the write starts with - the 00 preamble before the A1 sync, 95 when the device captured
+    // the write from its first pulse. Much less: the device missed the start of the write, which the decoder here doesn't
+    // mind, but the device's own copy of the sector may then not be readable by the FDC.
+    // int preamble = 0;
+    // for(int i = 0; i < byteCount * 4; i++) {
+    //     uint8_t symbol = (writtenSector[i / 4] >> (6 - 2 * (i % 4))) & 3;   // 4 symbols per byte, highest bits first
+    //     if(symbol != MFM_4US) {
+    //         break;
+    //     }
+    //     preamble++;
+    // }
+    // logFdd(LOG_DEBUG, "handleSectorWritten -- track %d, side %d, sector %d, size %d, preamble %d", track, side, sector, byteCount, preamble);
+
     logFdd(LOG_DEBUG, "handleSectorWritten -- track %d, side %d, sector %d", track, side, sector);
     floppyEncoder_decodeMfmWrittenSector(ci->floppySlotIndex, track, side, sector, writtenSector, byteCount); // let floppy encoder handle decoding, reencoding, saving
 }

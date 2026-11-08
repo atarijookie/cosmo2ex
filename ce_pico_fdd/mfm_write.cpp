@@ -25,10 +25,16 @@ static uint dma_channel_rx;
 
 // DMA ring for captured pulse lengths. The IRQ comes every MFM_WRITE_IRQ_EVERY pulses, but the handler processes everything
 // from wrProcessedIdx up to the current DMA write position, so a late IRQ (several DMA blocks done) loses nothing as long as
-// it comes before the ring wraps - 64 pulses = 250-500 us of slack.
-#define MFM_WRITE_BUFFER_SIZE   64                              // in uint32_t items, must be power of 2
-#define MFM_WRITE_RING_BITS     8                               // log2(MFM_WRITE_BUFFER_SIZE * 4 bytes)
+// it comes before the ring wraps.
+// Between writes the pulses aren't dropped, the newest MFM_WRITE_KEEP_IDLE stay in the ring: the WGATE IRQ can come late
+// (e.g. while the read stream refill IRQ runs), and the pulses of the write before it was noticed are the 00 preamble -
+// without it the sector the device patches into its own track copy can't be read back (the FDC can't sync on the data).
+// On write start the capture begins at the last 'gap' pulse in the ring - the interval since the previous write, too long
+// for a symbol - which is the first pulse of this write. 192 pulses = 0.8 - 1.5 ms of write start latency covered.
+#define MFM_WRITE_BUFFER_SIZE   256                             // in uint32_t items, must be power of 2
+#define MFM_WRITE_RING_BITS     10                              // log2(MFM_WRITE_BUFFER_SIZE * 4 bytes)
 #define MFM_WRITE_IRQ_EVERY     4                               // DMA transfer count - IRQ after this many pulses
+#define MFM_WRITE_KEEP_IDLE     192                             // pulses kept in the ring while no write is captured
 
 __attribute__((aligned(MFM_WRITE_BUFFER_SIZE * 4))) uint32_t mfmBufferWrite[MFM_WRITE_BUFFER_SIZE]; // must align for ring mode to work correctly
 
@@ -41,10 +47,15 @@ extern volatile IPCbuffer* wrBuffer;
 extern uint8_t trackData0[READTRACKDATA_SIZE_BYTES];
 extern uint8_t trackData1[READTRACKDATA_SIZE_BYTES];
 
+static inline uint32_t pulseDuration(uint32_t capturedStamp)
+{
+    return 0xffffffff - capturedStamp;      // calculate the change from start value of X register
+}
+
 // take one captured value and turn it into symbol duration
 void updateWriteDataDirect(uint32_t capturedStamp)
 {
-    uint32_t capturedDuration = 0xffffffff - capturedStamp;  // calculate the change from start value of X register
+    uint32_t capturedDuration = pulseDuration(capturedStamp);
 
     uint8_t newTime = 0;
 
@@ -74,11 +85,29 @@ void updateWriteDataDirect(uint32_t capturedStamp)
     }
 }
 
+// index in mfmBufferWrite the DMA writes next
+static uint32_t dmaRingIndex(void)
+{
+    uintptr_t dmaWriteAddr = (uintptr_t) dma_hw->ch[dma_channel_rx].write_addr;      // next address the DMA will write
+    return ((dmaWriteAddr - (uintptr_t) mfmBufferWrite) / sizeof(uint32_t)) % MFM_WRITE_BUFFER_SIZE;
+}
+
+// No write captured now: drop only the pulses older than the newest MFM_WRITE_KEEP_IDLE - a write start noticed late
+// takes the rest. Call from the DMA IRQ or with interrupts disabled.
+static void trimIdlePulses(void)
+{
+    uint32_t dmaIdx = dmaRingIndex();
+    uint32_t pending = (dmaIdx - wrProcessedIdx) % MFM_WRITE_BUFFER_SIZE;
+
+    if(pending > MFM_WRITE_KEEP_IDLE) {
+        wrProcessedIdx = (dmaIdx - MFM_WRITE_KEEP_IDLE) % MFM_WRITE_BUFFER_SIZE;
+    }
+}
+
 // Process all pulses the DMA stored in the ring since the last call. Call from the DMA IRQ or with interrupts disabled.
 static void processCapturedPulses(void)
 {
-    uintptr_t dmaWriteAddr = (uintptr_t) dma_hw->ch[dma_channel_rx].write_addr;      // next address the DMA will write
-    uint32_t dmaIdx = ((dmaWriteAddr - (uintptr_t) mfmBufferWrite) / sizeof(uint32_t)) % MFM_WRITE_BUFFER_SIZE;
+    uint32_t dmaIdx = dmaRingIndex();
 
     while(wrProcessedIdx != dmaIdx) {
         updateWriteDataDirect(mfmBufferWrite[wrProcessedIdx]);
@@ -91,15 +120,31 @@ static void dmaHandlerMfmWrite(void)
 {
     if (dma_irqn_get_channel_status(DMA_IRQ_TO_USE, dma_channel_rx)) {
         dma_irqn_acknowledge_channel(DMA_IRQ_TO_USE, dma_channel_rx);
-        processCapturedPulses();
+
+        if(wrBuffer != NULL) {      // capturing a write
+            processCapturedPulses();
+        } else {                    // between writes - keep the newest pulses for a write start noticed late
+            trimIdlePulses();
+        }
     }
 }
 
 // On write start, call with interrupts disabled before setting wrBuffer.
-// Symbols collected so far (noise, or the start of this write the IRQ already dropped) must not shift the byte packing
-// of this write. Pulses still waiting in the ring belong to this write - the ring is emptied on every write end.
+// The capture starts at the last 'gap' pulse kept in the ring (too long for a symbol - the interval since the previous
+// write, pushed by the first pulse of this one), so the pulses that came before the WGATE IRQ (the 00 preamble) belong
+// to the write, and anything older (e.g. a write to the other drive) doesn't. No gap pulse kept (started too long ago)?
+// Then everything kept is taken. The byte packing starts from scratch.
 void mfmWriteCaptureStart(void)
 {
+    trimIdlePulses();
+
+    uint32_t dmaIdx = dmaRingIndex();
+    for(uint32_t i = wrProcessedIdx; i != dmaIdx; i = (i + 1) % MFM_WRITE_BUFFER_SIZE) {
+        if(pulseDuration(mfmBufferWrite[i]) >= PULSE_8US) {     // gap - this write starts here (the gap itself is skipped)
+            wrProcessedIdx = i;
+        }
+    }
+
     wrStreamByte = 0;
     wrBits = 0;
 }

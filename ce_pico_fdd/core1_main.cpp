@@ -39,6 +39,8 @@ extern uint8_t trackData0[READTRACKDATA_SIZE_BYTES];
 extern uint8_t trackData1[READTRACKDATA_SIZE_BYTES];
 uint32_t dataIndexInTrack = STREAM_START_OFFSET;
 volatile uint32_t lastStepTime = 0;
+volatile uint32_t stepCount = 0;          // STEP pulses taken (motor on) - for the status in the debug log
+volatile uint32_t mfmHalfCount = 0;       // MFM buffer halves streamed (DMA IRQs) - for the status in the debug log
 volatile uint32_t timeTrackStart;
 
 extern TDrivePosition posStreamed, hwPosition;
@@ -76,6 +78,7 @@ void __isr floppyStepISR(uint gpio, uint32_t event_mask)
     }
 
     beeperStepClick();
+    stepCount++;
 
     if(BIT_IS_H(PIN_DIR)) {  // direction is High? track--
         if(hwPosition.track > 0) {
@@ -143,6 +146,7 @@ void __isr dmaHandlerMfm(void)
     dma_hw->ints0 = 1u << dmaChannel;
 
     halfDone = !halfDone;   // Flip half flag
+    mfmHalfCount++;
 
     fillWhat = halfDone ? FILL_LOWER : FILL_UPPER;
 
@@ -329,6 +333,8 @@ static IPCbuffer* volatile wrBuffersReady[WRITE_BUFFERS_READY];
 static IPCbuffer* volatile wrBuffersFinished[WRITE_BUFFERS_FINISHED];
 static volatile int wrFinishedCount = 0;
 volatile uint32_t wrWritesDropped = 0;     // writes not captured - no prepared buffer, or too many finished ones not handled yet
+volatile uint32_t wrWritesCaptured = 0;    // writes captured and passed to core0 - for the status in the debug log
+volatile uint32_t wrWritesEmpty = 0;       // WGATE toggled, but no data captured - for the status in the debug log
 
 // on WGATE falling edge, from IRQ
 void onWriteStart(void)
@@ -464,6 +470,8 @@ void handleWriteBuffers(void)
         IPCbuffer* bfr = finished[i];
 
         if(bfr->length <= 12) {         // WGATE toggled, but nothing was captured? storing it would clear the sector, host ignores it anyway
+            wrWritesEmpty++;
+            debug("write t %d s %d sec %d: WGATE toggled, but nothing captured - dropped\n", bfr->trackNo, bfr->sideNo, bfr->sectorNo);
             ipcBufferRelease(bfr);
             continue;
         }
@@ -471,6 +479,7 @@ void handleWriteBuffers(void)
         // use the position captured on write start, not the current posStreamed (see onWriteStart)
         storeWrittenSectorDataToTrackLocally(bfr->sideNo, bfr->trackNo, bfr->sectorNo, bfr->data + 12, bfr->length - 12);
         ipcSetBufferAndPutToFifo(bfr, 0, CMD_SEND_WRITTEN_SECTOR, bfr->length);     // store data to buffer, add buffer index to queue
+        wrWritesCaptured++;
     }
 
     // prepare buffers for the next writes - without waiting, if core0 has them all, try again on next loop run
@@ -556,6 +565,30 @@ void core1Setup(void)
     streamOutputEnableSetup();
 
     prevSideNo = BIT_IS_H(PIN_SIDE1) ? 0 : 1;
+}
+
+// Floppy status for the debug log - from core 0, about once a second while the ST uses the drive (selected or motor
+// on), and once more after it stopped: the drive lines from the ST, the output enable, where the head is, which sector
+// is being streamed, the stream state (0 streaming, 1 stepping, 2 loading), how many steps / MFM buffer halves so far,
+// writes captured / dropped / empty (WGATE toggled without data) so far.
+void core1StatusReport(int imageState)
+{
+    static bool wasActive = false;
+
+    bool sel = BIT_IS_L(PIN_DRIVE_SEL);
+    bool mot = BIT_IS_L(PIN_MOT_EN);
+    bool active = sel || mot;
+
+    if(!active && !wasActive) {
+        return;
+    }
+    wasActive = active;
+
+    debug("fdd: sel %d mot %d oe %d wg %d | head t %d s %d | stream t %d s %d sec %d | state %d | steps %u halves %u | wr %u drop %u empty %u | img %d %dx%dx%d\n",
+          sel, mot, BIT_IS_L(PIN_FLCC_OE), BIT_IS_L(PIN_WGATE),
+          hwPosition.track, hwPosition.side, posStreamed.track, posStreamed.side, posStreamed.sector, (int) state,
+          (unsigned) stepCount, (unsigned) mfmHalfCount, (unsigned) wrWritesCaptured, (unsigned) wrWritesDropped, (unsigned) wrWritesEmpty,
+          imageState, imgTracks, imgSides, imgSectorsPerTrack);
 }
 
 // One pass of the core 1 main loop - loop1() calls it again and again.

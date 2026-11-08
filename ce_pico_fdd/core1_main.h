@@ -15,6 +15,8 @@ void fillHalfMfmBuffer(void);
 struct IPCbuffer;
 void storeReceivedTrack(IPCbuffer* bfr);
 
+void core1StatusReport(int imageState);    // core 0 - floppy status to the debug log, see FDD_STATUS_LOG
+
 void writeCaptureSetup(void);       // start write capture: PIO + DMA, write buffers, WGATE IRQ
 void handleWriteBuffers(void);      // core1 main loop part: store finished writes, prepare buffers for next ones
 void onWriteStart(void);            // from WGATE IRQ
