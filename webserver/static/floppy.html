@@ -40,7 +40,10 @@
             return { dir: d, name: name };
           }
 
+          var displayChanges = 0;   // see pollCurrentImage()
+
           function updateDisplay(path) {
+            displayChanges++;
             currentImagePath = path || "";
             var info = splitPath(currentImagePath);
             document.getElementById('image-name').textContent = 'File: ' + (info.name || 'No image selected');
@@ -64,6 +67,31 @@
                 console.log('Error fetching image:', err);
                 updateDisplay("");
               });
+          }
+
+          // The image can change elsewhere (Android app, buttons on the device), so keep asking while the page is visible.
+          // Next request only after the previous one has finished. An answer to a request sent before a button on this page
+          // has changed the image is old, so it's ignored. Failed request: keep what's shown, server_check.js tells the user.
+          function pollCurrentImage() {
+            var mac = getURLParameter('mac');
+            if (!mac || document.hidden) {
+              setTimeout(pollCurrentImage, 1000);
+              return;
+            }
+            var changesAtStart = displayChanges;
+            fetch('/fdd/' + encodeURIComponent(mac) + '/image', { method: 'GET', redirect: 'error' })
+              .then(function(res) {
+                if (!res.ok) { throw new Error('GET failed ' + res.status); }
+                return res.json();
+              })
+              .then(function(data) {
+                var image = data.image || "";
+                if (changesAtStart === displayChanges && image !== currentImagePath) {
+                  updateDisplay(image);
+                }
+              })
+              .catch(function() {})
+              .then(function() { setTimeout(pollCurrentImage, 1000); });
           }
 
           var dirRequestNo = 0;   // only the answer to the last request is shown - typing in search sends many
@@ -440,6 +468,7 @@
             var overlay = document.getElementsByClassName('container-file-selector')[0];
             if (overlay) { overlay.style.display = 'none'; }
             loadCurrentImage();
+            setTimeout(pollCurrentImage, 1000);
             loadFddSettings();
             var beepBox = document.getElementById('beep-on-step');
             if (beepBox) { beepBox.onchange = saveBeepOnStep; }

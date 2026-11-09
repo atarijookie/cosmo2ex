@@ -1,2 +1,5 @@
 # shown on the ST (TOS needs CR LF) - stored with LF, checked out with CR LF
 ce_cores/configdrive/readme.txt text eol=crlf
+
+# signing key of the Android app, see android/build.sh
+*.keystore binary

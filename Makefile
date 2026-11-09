@@ -2,15 +2,16 @@
 # the same steps as .github/workflows/ci.yml
 
 
-.PHONY: default test atari firmware docker release clean
+.PHONY: default test atari firmware android docker release clean
 
 default:
-	@echo "usage :  make <test|atari|firmware|docker|release|clean>"
+	@echo "usage :  make <test|atari|firmware|android|docker|release|clean>"
 	@echo "  test     - libdospath + ce_cores + Pico firmware (host) unit tests, webserver vet + tests"
 	@echo "  atari    - drivers (ce_dd, ce_eth.stx, ce_eth.xif, ce_sting.prg, ce_brows.prg, ce_video.ttp, ce_audio.ttp, ce_doom.prg), boot sectors and ce_tests.tos (needs m68k-atari-mint-gcc)"
 	@echo "  firmware - Pico firmwares (.uf2) into firmware/out/, see firmware/build.sh (needs docker)"
-	@echo "  docker   - docker images for all platforms, see docker/build_all.sh"
-	@echo "  release  - release tarballs, see release/build.sh"
+	@echo "  android  - Android floppy app into webserver/static/app/, see android/build.sh (needs docker)"
+	@echo "  docker   - docker images for all platforms with the Android app, see docker/build_all.sh"
+	@echo "  release  - release tarballs with the Android app, see release/build.sh"
 
 test:
 	$(MAKE) -C libdospath test
@@ -26,6 +27,9 @@ atari:
 
 firmware:
 	firmware/build.sh
+
+android:
+	android/build.sh
 
 docker:
 	docker/build_all.sh
@@ -48,3 +52,4 @@ clean:
 	$(MAKE) -C third_party/doomgeneric clean
 	$(MAKE) -C test_ce clean
 	rm -rf firmware/out
+	rm -rf webserver/static/app android/.gradle-cache

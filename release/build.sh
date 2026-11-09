@@ -8,10 +8,13 @@
 # in the WINDOWS_BIN env var, e.g. WINDOWS_BIN=/tmp/windows-bin release/build.sh windows
 # macos: the same for the macOS zip, from the output of builder/build_macos.sh (run on a Mac) in MACOS_BIN
 #
+# The Android app (android/build.sh) goes into all of them. ANDROID_APK env var: use this APK, instead of building it.
+#
 # Needs:
 #   - m68k-atari-mint-gcc toolchain, for the Atari programs on the config drive (these are
 #     the same for every architecture, so they are built once, on this machine)
-#   - docker (not for --native) - ce_cores, webserver, ce_media, ce_browser and ce_doomgeneric are built in the toolchain stage of docker/Dockerfile
+#   - docker (not for --native) - ce_cores, webserver, ce_media, ce_browser and ce_doomgeneric are built in the toolchain stage of docker/Dockerfile,
+#     the Android app in its own image; --native without docker takes the app already in webserver/static/app/, if there is one
 #   - g++, make, go, libudev-dev, libevdev-dev (only for --native)
 #   - python3 (only for windows / macos - makes the zip)
 #
@@ -71,7 +74,7 @@ if [ "$NATIVE" -eq 1 ]; then
     for tool in make g++ go; do
         command -v $tool >/dev/null || missing="$missing $tool"
     done
-elif [ -n "$ARCHS" ]; then
+elif [ -n "$ARCHS" ] || [ -z "${ANDROID_APK:-}" ]; then
     command -v docker >/dev/null || missing="$missing docker"
 fi
 if [ "$WINDOWS" -eq 1 ] || [ "$MACOS" -eq 1 ]; then
@@ -100,6 +103,11 @@ if [ "$MACOS" -eq 1 ]; then
     done
 fi
 
+if [ -n "${ANDROID_APK:-}" ] && [ ! -f "$ANDROID_APK" ]; then
+    echo "ANDROID_APK: '$ANDROID_APK' not found" >&2
+    exit 1
+fi
+
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 
@@ -116,12 +124,28 @@ make -C "$ROOT/ce_media_prg"                # ce_video.ttp, ce_audio.ttp - playe
 make -C "$ROOT/test_ce"
 
 #-------------
+# Android app - the same for all architectures too. The webserver serves it from static/app/.
+if [ -z "${ANDROID_APK:-}" ] && command -v docker >/dev/null; then
+    echo "Building Android app"
+    VERSION="$VERSION" "$ROOT/android/build.sh"
+    ANDROID_APK="$ROOT/webserver/static/app/ce_floppy.apk"
+fi
+
+#-------------
 # files common to all architectures - this is what ends up in BIN_DIR (/opt/ce/bin)
 COMMON="$STAGE/common"
 mkdir -p "$COMMON"
 
 cp "$ROOT/.env"                         "$COMMON/.env"
 cp -r "$ROOT/webserver/static"          "$COMMON/static"
+if [ -n "${ANDROID_APK:-}" ]; then
+    mkdir -p "$COMMON/static/app"
+    cp "$ANDROID_APK"                   "$COMMON/static/app/ce_floppy.apk"
+elif [ -f "$COMMON/static/app/ce_floppy.apk" ]; then
+    echo "warning: no docker, so the Android app is not built - using the one in webserver/static/app/, which can be old" >&2
+else
+    echo "warning: no docker, so the Android app is not built - this release will be without it" >&2
+fi
 cp "$ROOT/ce_cores/ce_logo.bin"         "$COMMON/"
 cp "$ROOT/ce_cores/core/fdd_test.st"    "$COMMON/"
 cp "$RELEASE_DIR/files/ce_run.sh"       "$COMMON/"

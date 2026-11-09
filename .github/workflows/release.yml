@@ -8,7 +8,8 @@
 #   - the docker image for all platforms, pushed to ghcr.io/<owner>/cosmo2ex as :1.2.3 and :latest
 #   - the Pico firmwares (firmware/build.sh), in the ghcr.io/<owner>/ce-pico-builder image - that one is
 #     tagged with the hash of firmware/Dockerfile, and built + pushed only when that file changed
-# and finally creates the GitHub release with the tarballs and firmwares attached. If the release already exists
+#   - the Android app (android/build.sh), once - before the tarballs, zips and images, which all have it inside
+# and finally creates the GitHub release with the tarballs, firmwares and the Android app attached. If the release already exists
 # (made on the GitHub page, which also creates the tag), the files are uploaded to it instead.
 #
 # The macOS zip is optional: when the macOS job fails or gets no runner, the release is made without it (re-run that
@@ -87,13 +88,34 @@ jobs:
           path: out/macos/
           if-no-files-found: error
 
-  tarballs:
-    needs: [ci, windows, macos]
-    # also when macOS failed / was cancelled - then without the macOS zip
-    if: ${{ !cancelled() && needs.ci.result == 'success' && needs.windows.result == 'success' }}
+  android:
+    # the Android floppy app, the same APK goes into the tarballs, zips and docker images
+    needs: ci
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+
+      - name: Build Android app
+        run: VERSION="${GITHUB_REF_NAME#v}" android/build.sh
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-app
+          path: webserver/static/app/ce_floppy.apk
+          if-no-files-found: error
+
+  tarballs:
+    needs: [ci, windows, macos, android]
+    # also when macOS failed / was cancelled - then without the macOS zip
+    if: ${{ !cancelled() && needs.ci.result == 'success' && needs.windows.result == 'success' && needs.android.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8        # served by the webserver, so it goes in with its static files
+        with:
+          name: android-app
+          path: webserver/static/app
 
       - uses: actions/download-artifact@v8
         with:
@@ -114,6 +136,7 @@ jobs:
       - name: Build release tarballs + Windows and macOS zips
         env:
           MACOS_RESULT: ${{ needs.macos.result }}
+          ANDROID_APK: webserver/static/app/ce_floppy.apk
         run: |
           targets="amd64 arm64 armhf i386 windows"
           if [ "$MACOS_RESULT" = "success" ]; then
@@ -131,13 +154,18 @@ jobs:
           if-no-files-found: error
 
   images:
-    needs: ci
+    needs: [ci, android]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8        # served by the webserver, so it goes in with its static files
+        with:
+          name: android-app
+          path: webserver/static/app
 
       - name: Install m68k-atari-mint toolchain
         run: |
@@ -279,9 +307,9 @@ jobs:
           if-no-files-found: error
 
   github-release:
-    needs: [tarballs, images, firmware]
+    needs: [tarballs, images, firmware, android]
     # tarballs may have run without the macOS zip (see there), the rest must be fine
-    if: ${{ !cancelled() && needs.tarballs.result == 'success' && needs.images.result == 'success' && needs.firmware.result == 'success' }}
+    if: ${{ !cancelled() && needs.tarballs.result == 'success' && needs.images.result == 'success' && needs.firmware.result == 'success' && needs.android.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -296,6 +324,11 @@ jobs:
           name: firmware
           path: out
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: android-app
+          path: out
+
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -304,7 +337,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           prerelease=""
           case "$version" in *-*) prerelease="--prerelease" ;; esac
-          (cd out && sha256sum ce-*.tar.gz ce-*.zip install.sh *.uf2 > SHA256SUMS)
+          (cd out && sha256sum ce-*.tar.gz ce-*.zip install.sh *.uf2 *.apk > SHA256SUMS)
 
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             # made on the GitHub page (or by an earlier run) - keep its title and notes, add / replace the files

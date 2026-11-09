@@ -10,6 +10,8 @@ cp ce_dd_bootsectors/ce_dd.bs ce_dd_bootsectors/ce_dd_l2.bs ce_dd_prg/ce_dd.prg 
 
 To build docker image (from the repo root):
 docker build -f docker/Dockerfile -t cosmo2ex .
+(The Android app gets in only if it was built before, with android/build.sh. Otherwise the image works, and the
+webserver says the app is not included. docker/build_all.sh builds the app itself.)
 
 To build the image for all platforms on one machine (also builds the drivers
 above when m68k-atari-mint-gcc is installed):

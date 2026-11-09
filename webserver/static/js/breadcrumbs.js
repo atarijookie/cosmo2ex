@@ -94,8 +94,10 @@ function getCurrentPageName(path) {
         '/ikbd': 'IKBD', // Handle both with and without .html
         '/status.html': 'Status',
         '/remote.html': 'ScreenCast',
+        '/remote_input.html': 'Remote Input',
         '/credits.html': 'Credits',
         '/settings.html': 'Settings',
+        '/android_app.html': 'Android App',
         '/printouts.html': 'Printouts',
         '/login.html': 'Login'
     };

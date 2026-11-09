@@ -140,6 +140,28 @@ func TestHIDMouseGoesToInputSocket(t *testing.T) {
 	}
 }
 
+func TestHIDJoystickGoesToInputSocket(t *testing.T) {
+	f := newFakeInputSocket(t, "tok")
+	s := &Server{input: &inputClient{}}
+
+	postHID(s, s.handlePostHIDJoystick, `{"type":"axis","joy":0,"axis":0,"value":-32767}`)
+	postHID(s, s.handlePostHIDJoystick, `{"type":"axis","joy":1,"axis":1,"value":32767}`)
+	postHID(s, s.handlePostHIDJoystick, `{"type":"button","joy":1,"button":0,"state":"down"}`)
+	postHID(s, s.handlePostHIDJoystick, `{"type":"button","joy":1,"button":0,"state":"up"}`)
+
+	want := [][]byte{
+		inputEvent(inputEvJoyAxis, 0, 0, -32767),
+		inputEvent(inputEvJoyAxis, 1, 1, 32767),
+		inputEvent(inputEvJoyButton, 1, 0, 1),
+		inputEvent(inputEvJoyButton, 1, 0, 0),
+	}
+	for i, w := range want {
+		if got := f.nextEvent(t); !bytes.Equal(got, w) {
+			t.Fatalf("event %d: got % x, want % x", i, got, w)
+		}
+	}
+}
+
 func TestHIDInvalidPayloadIsRejected(t *testing.T) {
 	f := newFakeInputSocket(t, "tok")
 	s := &Server{input: &inputClient{}}
@@ -155,6 +177,12 @@ func TestHIDInvalidPayloadIsRejected(t *testing.T) {
 		{s.handlePostHIDMouse, `{"type":"relative","x":"1","y":2}`},
 		{s.handlePostHIDMouse, `{"type":"buttonmiddle","state":"down"}`},
 		{s.handlePostHIDMouse, `not json`},
+		{s.handlePostHIDJoystick, `{"type":"axis","joy":2,"axis":0,"value":0}`},
+		{s.handlePostHIDJoystick, `{"type":"axis","joy":0,"axis":8,"value":0}`},
+		{s.handlePostHIDJoystick, `{"type":"axis","joy":0,"axis":0,"value":32768}`},
+		{s.handlePostHIDJoystick, `{"type":"button","joy":0,"button":12,"state":"down"}`},
+		{s.handlePostHIDJoystick, `{"type":"button","joy":0,"button":0,"state":"pressed"}`},
+		{s.handlePostHIDJoystick, `{"type":"hat","joy":0}`},
 	}
 	for _, b := range bad {
 		if code := postHID(s, b.handler, b.body); code != http.StatusBadRequest {

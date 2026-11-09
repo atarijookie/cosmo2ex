@@ -170,6 +170,9 @@
             <button id="floppy-button" class="device-action-button" style="padding: 15px 25px; font-size: 16px; cursor: pointer; background-color: #3baf16; color: white; border: none; border-radius: 4px; text-align: center;">
                 Floppy
             </button>
+            <button id="remote-input-button" class="device-action-button" style="display: none; padding: 15px 25px; font-size: 16px; cursor: pointer; background-color: #3baf16; color: white; border: none; border-radius: 4px; text-align: center;">
+                Remote Input
+            </button>
             <button id="ikbd-button" class="device-action-button" style="padding: 15px 25px; font-size: 16px; cursor: pointer; background-color: #3baf16; color: white; border: none; border-radius: 4px; text-align: center;">
                 IKBD
             </button>
@@ -347,6 +350,12 @@
                         ikbdButton.style.display = features.ikbd ? 'block' : 'none';
                     }
 
+                    // Show Remote Input only for floppy + IKBD devices - with HDD the ScreenCast page does this and shows the screen too
+                    var remoteInputButton = document.getElementById('remote-input-button');
+                    if (remoteInputButton) {
+                        remoteInputButton.style.display = (features.ikbd && features.fdd && !showAcsiButtons) ? 'block' : 'none';
+                    }
+
                     // Status button is always shown (no change needed)
                 })
                 .catch(function(err) {
@@ -401,6 +410,10 @@
 
         document.getElementById('floppy-button').onclick = function() {
             window.location.href = buildDeviceUrl('/floppy.html');
+        };
+
+        document.getElementById('remote-input-button').onclick = function() {
+            window.location.href = buildDeviceUrl('/remote_input.html');
         };
 
         document.getElementById('ikbd-button').onclick = function() {

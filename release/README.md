@@ -33,6 +33,10 @@ Needed on the build machine:
   the architectures (no QEMU needed)
 - for `--native` instead of docker: `make`, `g++`, `go`, `libudev-dev`, `libevdev-dev`
 
+The Android app (`android/`) goes into every tarball and zip, in `static/app/`, built by `android/build.sh` in docker. `--native` without
+docker can't build it, so it takes the one already in `webserver/static/app/`, with a warning. `ANDROID_APK=<file>` uses that APK instead of
+building it, that's how the release workflow avoids building it twice.
+
 The builder image is Debian bullseye, so the binaries need glibc 2.28 or newer: Raspberry Pi OS / Debian 10+,
 Ubuntu 20.04+ and most other current distros. `libstdc++` is linked in statically, the webserver is a static Go binary.
 `armhf` is ARMv6+VFP, same as Raspbian - it runs on every Pi with a 32-bit OS, including Pi 1 / Zero.

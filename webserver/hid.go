@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-// HID-related handlers - mouse and keyboard of the web UI go to the input socket of ce_cores.
+// HID-related handlers - mouse, keyboard and joysticks of the web UI go to the input socket of ce_cores.
 
 func (s *Server) handlePostHIDMouse(w http.ResponseWriter, r *http.Request) {
 	logDebugf("handlePostHIDMouse %s %s", r.Method, r.URL.Path)
@@ -15,6 +15,11 @@ func (s *Server) handlePostHIDMouse(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePostHIDKeyboard(w http.ResponseWriter, r *http.Request) {
 	logDebugf("handlePostHIDKeyboard %s %s", r.Method, r.URL.Path)
 	s.handleHID(w, r, keyboardPayloadToEvents)
+}
+
+func (s *Server) handlePostHIDJoystick(w http.ResponseWriter, r *http.Request) {
+	logDebugf("handlePostHIDJoystick %s %s", r.Method, r.URL.Path)
+	s.handleHID(w, r, joystickPayloadToEvents)
 }
 
 func (s *Server) handleHID(w http.ResponseWriter, r *http.Request, toEvents func(map[string]interface{}) ([]byte, error)) {

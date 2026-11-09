@@ -56,6 +56,10 @@ if [ "$CLEAN" -eq 1 ]; then
     docker volume rm -f "$BUILD_VOLUME" >/dev/null
 fi
 
+if [ ! -f "$ROOT/webserver/static/app/ce_floppy.apk" ]; then
+    echo "warning: no Android app in webserver/static/app/, the output will be without it (android/build.sh builds it)" >&2
+fi
+
 # the repo is mounted read-only; the container runs as root (the volumes are root's), so the results are handed over
 # to the calling user at the end
 docker run --rm \

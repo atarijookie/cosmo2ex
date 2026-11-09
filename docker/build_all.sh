@@ -47,6 +47,9 @@ else
     echo "m68k-atari-mint-gcc not found, using the drivers already in ce_cores/configdrive/drivers/"
 fi
 
+# Android app - served by the webserver, so it goes in with webserver/static/
+"$ROOT/android/build.sh"
+
 echo "Building $IMAGE for: $PLATFORMS"
 docker build --platform "$(echo $PLATFORMS | tr ' ' ',')" -f "$ROOT/docker/Dockerfile" --target "$TARGET" -t "$IMAGE" "$ROOT"
 

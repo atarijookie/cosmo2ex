@@ -195,7 +195,7 @@ func (m *certManager) refresh() error {
 	}
 
 	tlsCert := &tls.Certificate{
-		Certificate: [][]byte{cert.Raw},
+		Certificate: [][]byte{cert.Raw, m.ca.Raw}, // with the CA, as the Android app checks it against its fingerprint
 		PrivateKey:  key,
 		Leaf:        cert,
 	}

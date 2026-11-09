@@ -196,6 +196,14 @@ func newServer() *Server {
 		http.Redirect(w, r, "/login.html", http.StatusFound)
 	})
 
+	// The Android app: only its own token works here, and that one works nowhere else.
+	r.Group(func(app chi.Router) {
+		app.Use(appAuthMiddleware)
+		app.Get("/app/v1/state", s.handleGetAppState)
+		app.Get("/app/v1/images", s.handleGetAppImages)
+		app.Post("/app/v1/insert", s.handlePostAppInsert)
+	})
+
 	r.Group(func(protected chi.Router) {
 		// Log all requests first
 		protected.Use(func(next http.Handler) http.Handler {
@@ -218,12 +226,16 @@ func newServer() *Server {
 		protected.Post("/fdd/{mac}/image/new", s.handlePostFDDImageNew)
 		protected.Get("/fdd/{mac}/image/next", s.handleGetFDDImageNext)
 		protected.Get("/fdd/{mac}/image/prev", s.handleGetFDDImagePrev)
+		protected.Get("/app/pair", s.handleGetAppPair)
+		protected.Get("/app/pair/qr.png", s.handleGetAppPairQR)
+		protected.Post("/app/pair/reset", s.handlePostAppPairReset)
 		protected.Get("/fdd/{mac}/settings", s.handleGetFDDSettings)
 		protected.Put("/fdd/{mac}/settings", s.handlePutFDDSettings)
 		protected.Get("/ikbd/{mac}", s.handleGetIKBD)
 		protected.Put("/ikbd/{mac}", s.handlePutIKBD)
 		protected.Post("/hid/mouse", s.handlePostHIDMouse)
 		protected.Post("/hid/keyboard", s.handlePostHIDKeyboard)
+		protected.Post("/hid/joystick", s.handlePostHIDJoystick)
 		protected.Get("/status/{mac}", s.handleGetStatus)
 		protected.Get("/device/{mac}/name", s.handleGetDeviceName)
 		protected.Put("/device/{mac}/name", s.handlePutDeviceName)
@@ -297,6 +309,9 @@ func newServer() *Server {
 				w.Header().Set("Content-Type", "image/jpeg")
 			} else if strings.HasSuffix(filePath, ".gif") {
 				w.Header().Set("Content-Type", "image/gif")
+			} else if strings.HasSuffix(filePath, ".apk") {
+				// not left to ServeContent: without /etc/mime.types (slim images) it would be sent as a zip
+				w.Header().Set("Content-Type", "application/vnd.android.package-archive")
 			}
 
 			http.ServeContent(w, r, info.Name(), info.ModTime(), file)

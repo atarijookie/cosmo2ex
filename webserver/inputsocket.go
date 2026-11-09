@@ -22,11 +22,17 @@ const (
 	inputEvKey         = 1
 	inputEvMouseMove   = 2
 	inputEvMouseButton = 3
+	inputEvJoyAxis     = 4
+	inputEvJoyButton   = 5
 
 	inputRelX = 0 // REL_X
 	inputRelY = 1 // REL_Y
 
-	inputKeyCount = 1024 // INPUT_KEY_COUNT in ce_cores
+	inputKeyCount   = 1024 // INPUT_KEY_COUNT in ce_cores
+	inputJoyCount   = 2    // INPUT_JOY_COUNT in ce_cores
+	inputJoyAxes    = 8    // INPUT_JOY_AXES in ce_cores
+	inputJoyButtons = 12   // INPUT_JOY_BUTTONS in ce_cores
+	inputJoyAxisMax = 32767
 )
 
 // inputEvent encodes one event for the input socket.
@@ -193,4 +199,41 @@ func keyboardPayloadToEvents(payload map[string]interface{}) ([]byte, error) {
 	}
 
 	return inputEvent(inputEvKey, 0, code, state), nil
+}
+
+// joystickPayloadToEvents converts web UI joystick payload to input socket event:
+//
+//	{"type":"axis", "joy": 0, "axis": 0, "value": -32767}       - axis 0 X, 1 Y; - = left / up
+//	{"type":"button", "joy": 0, "button": 0, "state":"down" / "up"}
+func joystickPayloadToEvents(payload map[string]interface{}) ([]byte, error) {
+	joy, ok := jsonInt(payload, "joy")
+	if !ok || joy < 0 || joy >= inputJoyCount {
+		return nil, fmt.Errorf("joystick needs integer 'joy' 0 .. %d", inputJoyCount-1)
+	}
+
+	switch payload["type"] {
+	case "axis":
+		axis, ok := jsonInt(payload, "axis")
+		if !ok || axis < 0 || axis >= inputJoyAxes {
+			return nil, fmt.Errorf("joystick axis needs integer 'axis' 0 .. %d", inputJoyAxes-1)
+		}
+		value, ok := jsonInt(payload, "value")
+		if !ok || value < -inputJoyAxisMax || value > inputJoyAxisMax {
+			return nil, fmt.Errorf("joystick axis needs integer 'value' -%d .. %d", inputJoyAxisMax, inputJoyAxisMax)
+		}
+		return inputEvent(inputEvJoyAxis, joy, axis, int32(value)), nil
+
+	case "button":
+		button, ok := jsonInt(payload, "button")
+		if !ok || button < 0 || button >= inputJoyButtons {
+			return nil, fmt.Errorf("joystick button needs integer 'button' 0 .. %d", inputJoyButtons-1)
+		}
+		state, ok := jsonUpDown(payload)
+		if !ok {
+			return nil, fmt.Errorf("joystick button needs 'state' down / up")
+		}
+		return inputEvent(inputEvJoyButton, joy, button, state), nil
+	}
+
+	return nil, fmt.Errorf("unknown joystick 'type': %v", payload["type"])
 }

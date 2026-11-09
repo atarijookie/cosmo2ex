@@ -8,6 +8,7 @@ Open design, non-commercial license - see [License](#license).
 - ce_cores - this is the network server to which the device connects to
 - ce_dd_bootsectors	- ACSI/SCSI boot sectors
 - ce_dd_prg	- driver for translated/network drives, date setting and screenshots
+- android - Android app for switching floppy images from a phone, with a home screen widget
 - docker - build and run scripts for ce_cores and webserver running in docker container
 - release - builds tarballs + install script for installing directly on a Linux machine (systemd service)
 - webserver - a configuration interface via browser
@@ -23,6 +24,11 @@ Open design, non-commercial license - see [License](#license).
   - test_ikbd	- Atari IKBD injection chain tester
   - test_manual, test_manual2	- Atari another ACSI/SCSI transfer testers
   - test_rw, test_rw_user	- Atari ACSI write/read verification testers
+
+# Android floppy app
+
+`android/` is an app for switching floppy images from a phone, with a home screen widget. `android/build.sh` builds it in
+docker into `webserver/static/app/`; users get it and connect it on the webserver's Settings → Android app. See `android/README.md`.
 
 # Unit tests
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -56,6 +57,30 @@ func connectedMACs() map[string]bool {
 func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
 	logDebugf("handleListDevices %s %s", r.Method, r.URL.Path)
 
+	devices, err := readDevices()
+	if err != nil {
+		logErrorf("handleListDevices - %v", err)
+		http.Error(w, "cannot read settings directory", http.StatusInternalServerError)
+		return
+	}
+
+	// Handle connected filter if requested
+	connectedOnly := strings.EqualFold(r.URL.Query().Get("connected"), "true")
+	if connectedOnly {
+		filtered := make([]Device, 0)
+		for _, d := range devices {
+			if d.Connected {
+				filtered = append(filtered, d)
+			}
+		}
+		devices = filtered
+	}
+
+	writeJSON(w, http.StatusOK, devices)
+}
+
+// readDevices returns the devices which have a settings dir (SETTINGS_DIR/{mac}).
+func readDevices() ([]Device, error) {
 	// Get SETTINGS_DIR from environment, default to current directory if not set
 	settingsDir := os.Getenv("SETTINGS_DIR")
 	if settingsDir == "" {
@@ -65,9 +90,7 @@ func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
 	// Read directory entries
 	entries, err := os.ReadDir(settingsDir)
 	if err != nil {
-		logErrorf("handleListDevices - error reading directory %s: %v", settingsDir, err)
-		http.Error(w, "cannot read settings directory", http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("error reading directory %s: %w", settingsDir, err)
 	}
 
 	connected := connectedMACs()
@@ -108,19 +131,7 @@ func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Handle connected filter if requested
-	connectedOnly := strings.EqualFold(r.URL.Query().Get("connected"), "true")
-	if connectedOnly {
-		filtered := make([]Device, 0)
-		for _, d := range devices {
-			if d.Connected {
-				filtered = append(filtered, d)
-			}
-		}
-		devices = filtered
-	}
-
-	writeJSON(w, http.StatusOK, devices)
+	return devices, nil
 }
 
 func (s *Server) handleGetDeviceName(w http.ResponseWriter, r *http.Request) {
@@ -206,6 +217,11 @@ func (s *Server) handleGetDeviceFeatures(w http.ResponseWriter, r *http.Request)
 	// Strip colons from MAC for file path (MAC in URL might have colons)
 	macWithoutColons := stripMACColons(mac)
 
+	writeJSON(w, http.StatusOK, deviceFeatures(macWithoutColons))
+}
+
+// deviceFeatures returns the features of the device, mac is without colons.
+func deviceFeatures(mac string) map[string]bool {
 	// Get SETTINGS_DIR from environment, default to current directory if not set
 	settingsDir := os.Getenv("SETTINGS_DIR")
 	if settingsDir == "" {
@@ -213,34 +229,30 @@ func (s *Server) handleGetDeviceFeatures(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Build path to features file: SETTINGS_DIR/{mac}/features
-	deviceDir := filepath.Join(settingsDir, macWithoutColons)
+	deviceDir := filepath.Join(settingsDir, mac)
 	featuresFile := filepath.Join(deviceDir, "features")
 
 	// Read features file
 	content, err := os.ReadFile(featuresFile)
 	if err != nil || len(strings.TrimSpace(string(content))) == 0 {
 		// File doesn't exist or is empty - return all features as true
-		response := map[string]bool{
+		return map[string]bool{
 			"acsi": true,
 			"scsi": true,
 			"fdd":  true,
 			"ikbd": true,
 		}
-		writeJSON(w, http.StatusOK, response)
-		return
 	}
 
 	// Parse content to check for feature letters (case-insensitive)
 	contentStr := strings.ToUpper(strings.TrimSpace(string(content)))
 
-	response := map[string]bool{
+	return map[string]bool{
 		"acsi": strings.Contains(contentStr, "A"),
 		"scsi": strings.Contains(contentStr, "S"),
 		"fdd":  strings.Contains(contentStr, "F"),
 		"ikbd": strings.Contains(contentStr, "I"),
 	}
-
-	writeJSON(w, http.StatusOK, response)
 }
 
 // handleDeleteDevice removes the whole settings dir of the device (SETTINGS_DIR/{mac}), but only when the device is not

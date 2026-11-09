@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CE Floppy</string>
+    <string name="widget_name">Floppy switcher</string>
+    <string name="prev">Previous image</string>
+    <string name="next">Next image</string>
+    <string name="insert">Insert</string>
+    <string name="browse">Browse images</string>
+    <string name="device">Device</string>
+    <string name="not_paired_title">Not connected yet</string>
+    <string name="not_paired_text">In the webserver, open Settings → Android app, and scan the QR code with the phone\'s camera or tap \"Open in the app\".</string>
+    <string name="no_image">No image</string>
+    <string name="in_drive">In drive</string>
+    <string name="in_drive_other">In drive: %1$s</string>
+    <string name="drive_empty">Drive is empty</string>
+    <string name="not_inserted_note">Press Insert to load it</string>
+    <string name="no_devices">No devices with a floppy drive found</string>
+    <string name="offline_suffix">%1$s (not connected)</string>
+    <string name="err_unreachable">Can\'t reach the server. Are you on the same Wi-Fi? If its IP changed, scan the QR code again.</string>
+    <string name="err_unpaired">The connection is no longer valid, scan the QR code again.</string>
+    <string name="err_unreachable_short">Can\'t reach the server</string>
+    <string name="err_unpaired_short">Scan the QR code again</string>
+    <string name="err_no_images">No images in this folder</string>
+    <string name="err_nothing_selected">No image selected</string>
+    <string name="pair_invalid">This pairing link is not valid.</string>
+    <string name="pair_connecting">Connecting…</string>
+    <string name="pair_ok">Connected to the server</string>
+    <string name="pair_failed">Couldn\'t connect to the server, keeping the previous settings. Are you on the same Wi-Fi?</string>
+    <string name="pair_replace_title">Connect to a different server?</string>
+    <string name="pair_replace_text">This app is connected to another server. Replace it with the one at %1$s?</string>
+    <string name="replace">Replace</string>
+    <string name="cancel">Cancel</string>
+    <string name="up">..</string>
+    <string name="choose_device">Choose the device for this widget</string>
+    <string name="inserted">Inserted %1$s</string>
+</resources>

@@ -168,6 +168,22 @@ jobs:
           cache-from: type=gha,scope=ce
           cache-to: type=gha,scope=ce,mode=max
 
+  android:
+    # Android floppy app - it's built in docker, the same way as for a release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build Android app
+        run: android/build.sh
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-ci                      # not "android-app" - release.yml runs this in the same run
+          path: webserver/static/app/ce_floppy.apk
+          if-no-files-found: error
+          retention-days: 14
+
   firmware:
     # Pico firmwares - in the ce-pico-builder image from ghcr.io when release.yml already pushed the one
     # for the current firmware/Dockerfile, otherwise the image is built here (e.g. when the Dockerfile changed)
