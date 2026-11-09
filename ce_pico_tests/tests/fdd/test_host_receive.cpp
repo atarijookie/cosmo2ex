@@ -19,6 +19,7 @@ extern IPCbuffer buffersForCore1[IPC_BUFFER_LARGE_COUNT];  // ipc.cpp
 extern int imageState;
 extern char imageFileName[32];
 extern uint8_t imgTracks, imgSides, imgSectorsPerTrack;
+extern bool imgReadOnly;
 
 // settings.cpp (EEPROM) isn't in the tests - record what host_receive.cpp passes to it
 static std::vector<uint8_t> receivedSettings;
@@ -290,6 +291,20 @@ TEST_CASE_FIXTURE(HostReceiveFixture, "image start and end") {
     CHECK(imageState == IMAGE_LOADED);
     CHECK(imgTracks == 80);
     CHECK(imgSectorsPerTrack == 9);
+}
+
+TEST_CASE_FIXTURE(HostReceiveFixture, "read only flag of the image (STX): the ST sees write protected disk") {
+    std::vector<uint8_t> data = imageData(true, "GAME.STX");
+    data.resize(4 + 32 + 1, 0);
+    data[4 + 32] = 1;
+    fakeHostReceive(message(ATN_SEND_WHOLE_IMAGE, data, data.size()));
+    mainLoop();
+    CHECK(imgReadOnly);
+
+    data[4 + 32] = 0;
+    fakeHostReceive(message(ATN_SEND_WHOLE_IMAGE, data, data.size()));
+    mainLoop();
+    CHECK_FALSE(imgReadOnly);
 }
 
 TEST_CASE_FIXTURE(HostReceiveFixture, "loaded image beeps, the start doesn't") {

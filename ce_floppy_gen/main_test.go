@@ -235,6 +235,63 @@ func TestStxStructure(t *testing.T) {
 	}
 }
 
+func TestStxProtectionTricks(t *testing.T) {
+	s := Spec{Tracks: 2, Sides: 1, Spt: 9, Data: "trsise", Timing: true, Fuzzy: true, Long: true}
+	file, err := generate("stx", s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := file[16:]
+	if fuzzySize := binary.LittleEndian.Uint32(p[4:]); fuzzySize != 512 {
+		t.Fatalf("fuzzy size %d", fuzzySize)
+	}
+	if size := binary.LittleEndian.Uint16(p[12:]); size != 6500 {
+		t.Fatalf("track size %d", size)
+	}
+
+	descriptors := p[16:]
+	if descriptors[14] != 0x01 || descriptors[8*16+14] != 0x89 {
+		t.Fatalf("status % x % x", descriptors[14], descriptors[8*16+14])
+	}
+
+	fuzzy := descriptors[9*16:]
+	if fuzzy[0] != 0xff || fuzzy[255] != 0xff || fuzzy[256] != 0xf0 || fuzzy[511] != 0xf0 {
+		t.Fatal("bad fuzzy mask")
+	}
+
+	data := fuzzy[512:]
+	if !bytes.Equal(data[8*512:8*512+512], s.sectorData(0, 0, 9)) {
+		t.Fatal("bad sector data")
+	}
+
+	timing := data[9*512:]
+	if binary.LittleEndian.Uint16(timing) != 5 || binary.LittleEndian.Uint16(timing[2:]) != 4+9*64 {
+		t.Fatalf("bad timing header % x", timing[:4])
+	}
+	if timing[4] != 0 || timing[5] != 0x7f || timing[4+16] != 0 || timing[5+16] != 0x85 || timing[5+32] != 0x79 {
+		t.Fatalf("bad timing data % x", timing[4:40])
+	}
+
+	blockSize := int(binary.LittleEndian.Uint32(p))
+	if blockSize != 16+9*16+512+9*512+4+9*64 {
+		t.Fatalf("block size %d", blockSize)
+	}
+	if len(file) != 16+2*blockSize {
+		t.Fatalf("file size %d", len(file))
+	}
+
+	for _, format := range []string{"st", "msa"} {
+		if _, err := generate(format, s); err == nil {
+			t.Errorf("%s accepted the tricks", format)
+		}
+	}
+
+	if name := s.fileName("stx"); name != "2t_9spt_1s_trsise_timing_fuzzy_long.stx" {
+		t.Errorf("name %s", name)
+	}
+}
+
 func TestIdFieldCrcOfKnownValue(t *testing.T) {
 	// track 0, side 0, sector 1, 512 B - CRC of this ID field on every standard ST floppy
 	if crc := idFieldCrc([]byte{0, 0, 1, 2}); crc != 0xCA6F {

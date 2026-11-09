@@ -6,6 +6,7 @@
 TDrivePosition posStreamed, hwPosition;
 
 uint8_t trackData0[READTRACKDATA_SIZE_BYTES];
+bool imgReadOnly = false;
 uint8_t trackData1[READTRACKDATA_SIZE_BYTES];
 
 uint8_t imgTracks = 80, imgSides = 2, imgSectorsPerTrack = 9;

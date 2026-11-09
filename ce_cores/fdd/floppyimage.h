@@ -10,6 +10,8 @@
 
 #include "../misc/global.h"
 
+class MfmTrackBuilder;
+
 class FloppyImage
 {
 public:
@@ -32,6 +34,11 @@ public:
     virtual bool readSector(int track, int side, int sectorNo, uint8_t *buffer);
     virtual bool writeSector(int track, int side, int sectorNo, uint8_t *buffer);
     virtual bool readNotWriteSector(bool readNotWrite, int track, int side, int sectorNo, uint8_t *buffer);
+
+    virtual bool isReadOnly(void) { return false; }     // true: the ST gets a write protected disk, writes are dropped
+
+    // Images with their own track layout build the track here. false = the image is just sectors, use the standard layout.
+    virtual bool buildTrack(MfmTrackBuilder &builder, int track, int side) { return false; }
 
     // write whole file so that a crash / power loss during save never leaves a half-written image:
     // write to temp file next to it, fsync, then rename over the original

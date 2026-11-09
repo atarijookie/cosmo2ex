@@ -97,13 +97,14 @@ Page page(const ImageList& list, uint32_t start, uint32_t count, uint32_t curren
 
 }   // namespace
 
-TEST_CASE("image list: only .st / .msa names, any case")
+TEST_CASE("image list: only .st / .msa / .stx names, any case")
 {
     CHECK(ImageList::isImageName("game.st"));
     CHECK(ImageList::isImageName("GAME.ST"));
     CHECK(ImageList::isImageName("disk 1.Msa"));
     CHECK(ImageList::isImageName("a.b.st"));
-    CHECK_FALSE(ImageList::isImageName("game.stx"));
+    CHECK(ImageList::isImageName("game.stx"));
+    CHECK(ImageList::isImageName("GAME.STX"));
     CHECK_FALSE(ImageList::isImageName("game.zip"));
     CHECK_FALSE(ImageList::isImageName("readme"));
     CHECK_FALSE(ImageList::isImageName(".st"));

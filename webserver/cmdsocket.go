@@ -12,6 +12,12 @@ import (
 // Every datagram starts with the token from CMD_TOKEN_FILE (written by ce_cores on start): "<token>\n<msg>".
 // Both values are expected to be loaded from .env (with ${VAR} expansion handled by loadEnvFromDotFile).
 func writeToCmdSocket(msg string) (net.Conn, error) {
+	return writeToCmdSocketWithBuffer(msg, 0)
+}
+
+// writeToCmdSocketWithBuffer is writeToCmdSocket for a big reply: the receive buffer (0: default size) is set before the
+// message goes out, as the reply can start coming right after it. The kernel may give less than asked for (net.core.rmem_max).
+func writeToCmdSocketWithBuffer(msg string, receiveBuffer int) (net.Conn, error) {
 	port := os.Getenv("CMD_UDP_PORT")
 	if port == "" {
 		return nil, fmt.Errorf("CMD_UDP_PORT is not set")
@@ -32,6 +38,12 @@ func writeToCmdSocket(msg string) (net.Conn, error) {
 	conn, err := net.Dial("udp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("dial udp %q: %w", addr, err)
+	}
+
+	if receiveBuffer > 0 {
+		if err := conn.(*net.UDPConn).SetReadBuffer(receiveBuffer); err != nil {
+			logErrorf("writeToCmdSocket - cannot set receive buffer: %v", err)
+		}
 	}
 
 	if _, err := conn.Write([]byte(strings.TrimSpace(string(token)) + "\n" + msg)); err != nil {

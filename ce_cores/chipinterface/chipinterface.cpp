@@ -555,7 +555,7 @@ void ChipInterface::fdd_sendTrackToChip(int& fdClient, int byteCount, uint8_t *e
     sendHeaderAndDataToChip(fdClient, ATN_SEND_TRACK, encodedTrack, byteCount);
 }
 
-void ChipInterface::fdd_sendImageParamsToChip(int& fdClient, bool finished, int imgTracks, int imgSides, int imgSectorsPerTrack, std::string fileName)
+void ChipInterface::fdd_sendImageParamsToChip(int& fdClient, bool finished, int imgTracks, int imgSides, int imgSectorsPerTrack, std::string fileName, bool readOnly)
 {
     uint8_t bfr[64];
     memset(bfr, 0, 64);
@@ -567,9 +567,10 @@ void ChipInterface::fdd_sendImageParamsToChip(int& fdClient, bool finished, int 
 
     int fnameLen = MIN(fileName.length(), 31);
     memcpy(bfr + 4, fileName.c_str(), fnameLen);    // filename, max 31 chars + zero terminator
+    bfr[4 + 32] = readOnly ? 1 : 0;                 // the ST should see a write protected disk
 
     Debug::out(whichLog, LOG_DEBUG, "fdd_sendImageParamsToChip -- finished: %d, tracks: %d, sides: %d, spt: %d, filename: %s", bfr[0], bfr[1], bfr[2], bfr[3], bfr + 4);
-    sendHeaderAndDataToChip(fdClient, ATN_SEND_WHOLE_IMAGE, bfr, 4 + 32);   // 4 bytes param, 32 bytes filename
+    sendHeaderAndDataToChip(fdClient, ATN_SEND_WHOLE_IMAGE, bfr, 4 + 32 + 1);   // 4 bytes param, 32 bytes filename, read only flag
 }
 
 uint8_t* ChipInterface::fdd_sectorWritten(ClientInfo* ci, int &side, int &track, int &sector, int &byteCount)

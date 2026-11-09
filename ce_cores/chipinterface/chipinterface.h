@@ -87,7 +87,7 @@ public:
     // FDD: all you need for handling the floppy interface
     void fdd_sendTrackToChip(int& fdClient, int byteCount, uint8_t *encodedTrack);    // send encodedTrack to chip for MFM streaming
     uint8_t* fdd_sectorWritten(ClientInfo* ci, int &side, int &track, int &sector, int &byteCount);
-    void fdd_sendImageParamsToChip(int& fdClient, bool finished, int imgTracks, int imgSides, int imgSectorsPerTrack, std::string fileName);
+    void fdd_sendImageParamsToChip(int& fdClient, bool finished, int imgTracks, int imgSides, int imgSectorsPerTrack, std::string fileName, bool readOnly);
 
     void setFDDconfig(bool setFloppyConfig, FloppyConfig* fddConfig, bool setDiskChanged, bool diskChanged);
 

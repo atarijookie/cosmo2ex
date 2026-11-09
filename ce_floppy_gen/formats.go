@@ -1,6 +1,9 @@
 package main
 
-import "encoding/binary"
+import (
+	"bytes"
+	"encoding/binary"
+)
 
 //----------------------------------------------------------------------------
 // .st - just the sectors
@@ -62,8 +65,8 @@ func msaCompress(data []byte) []byte {
 }
 
 //----------------------------------------------------------------------------
-// .stx - Pasti image, the format as Hatari reads it (src/floppies/stx.c). Plain sectors: no track image, timings or fuzzy
-// bits, each sector with its descriptor. All little endian, only the ID field CRC is big endian.
+// .stx - Pasti image, the format as Hatari reads it (src/floppies/stx.c). No track image, each sector with its descriptor,
+// timing and fuzzy data only when asked for. All little endian, except of the ID field CRC and the timing data.
 
 const (
 	stxBlockSize        = 16
@@ -91,7 +94,30 @@ func (l stxLayout) sectorBytes() int {
 	return l.gapBeforeSync + 3 + 1 + 6 + 22 + 12 + 3 + 1 + sectorSize + 2 + l.gapAfterSector
 }
 
-const stxTrackBytes = 6250 // 200 ms of a rotation
+const (
+	stxTrackBytes     = 6250 // 200 ms of a rotation
+	stxLongTrackBytes = 6500 // 4 % more, about what the mastered long tracks have
+
+	stxSectorVariable = 0x01
+	stxSectorCrcError = 0x08
+	stxSectorFuzzy    = 0x80
+)
+
+// The same as the old Pasti images use for Macrodos: 2 B for each 16 bytes of the sector, +- 4.7 % around the standard.
+func stxTimingData() []byte {
+	data := []byte{}
+	for block := 0; block < sectorSize/16; block++ {
+		value := byte(0x7f)
+		switch block / 8 {
+		case 1:
+			value = 0x85
+		case 2:
+			value = 0x79
+		}
+		data = append(data, 0, value)
+	}
+	return data
+}
 
 func generateSTX(s Spec) []byte {
 	image := []byte("RSY\x00")
@@ -104,13 +130,35 @@ func generateSTX(s Spec) []byte {
 	layout := layoutFor(s.Spt)
 
 	s.forEachTrack(func(track, side int) {
-		blockSize := stxBlockSize + s.Spt*stxBlockSize + s.Spt*sectorSize
+		fuzzy := []byte{}
+		if s.Fuzzy { // the upper half of the sector is unstable: 0 in the mask, low nibble of each byte
+			fuzzy = bytes.Repeat([]byte{0xff}, sectorSize)
+			for i := sectorSize / 2; i < sectorSize; i++ {
+				fuzzy[i] = 0xf0
+			}
+		}
+
+		timing := []byte{} // 4 B: flags, size, then the data of all the variable sectors
+		if s.Timing {
+			timing = binary.LittleEndian.AppendUint16(timing, 5)
+			timing = binary.LittleEndian.AppendUint16(timing, uint16(4+s.Spt*sectorSize/16*2))
+			for sector := 1; sector <= s.Spt; sector++ {
+				timing = append(timing, stxTimingData()...)
+			}
+		}
+
+		trackBytes := stxTrackBytes
+		if s.Long {
+			trackBytes = stxLongTrackBytes
+		}
+
+		blockSize := stxBlockSize + s.Spt*stxBlockSize + len(fuzzy) + s.Spt*sectorSize + len(timing)
 
 		image = binary.LittleEndian.AppendUint32(image, uint32(blockSize))
-		image = binary.LittleEndian.AppendUint32(image, 0) // fuzzy mask size
+		image = binary.LittleEndian.AppendUint32(image, uint32(len(fuzzy)))
 		image = binary.LittleEndian.AppendUint16(image, uint16(s.Spt))
 		image = binary.LittleEndian.AppendUint16(image, stxTrackFlagSectors)
-		image = binary.LittleEndian.AppendUint16(image, stxTrackBytes)
+		image = binary.LittleEndian.AppendUint16(image, uint16(trackBytes))
 		image = append(image, byte(track)|byte(side)<<7, 0) // track number + side, record type
 
 		for sector := 1; sector <= s.Spt; sector++ {
@@ -124,10 +172,20 @@ func generateSTX(s Spec) []byte {
 			id := []byte{byte(track), byte(side), byte(sector), 2} // 2: 512 B
 			image = append(image, id...)
 			image = binary.BigEndian.AppendUint16(image, idFieldCrc(id))
-			image = append(image, 0, 0) // FDC status, reserved
+
+			status := byte(0)
+			if s.Timing {
+				status |= stxSectorVariable
+			}
+			if s.Fuzzy && sector == s.Spt {
+				status |= stxSectorFuzzy | stxSectorCrcError
+			}
+			image = append(image, status, 0) // FDC status, reserved
 		}
 
+		image = append(image, fuzzy...)
 		image = append(image, s.trackData(track, side)...)
+		image = append(image, timing...)
 	})
 	return image
 }

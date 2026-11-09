@@ -55,6 +55,7 @@ const uint16_t crcTable[256] = {
 MfmCachedImage::MfmCachedImage()
 {
     gotImage = false;
+    readOnly = false;
     slotNo = 0;
 
     // allocate tracks
@@ -87,6 +88,7 @@ void MfmCachedImage::clearWholeCachedImage(void)    // go and memset() all the c
 {
     nextIndex = 0;                      // start encoding from track 0
     gotImage = false;
+    readOnly = false;
 
     // forget previous image completely - if the new one fails to load, nothing must still look valid / waiting for encoding
     params.tracks       = 0;
@@ -118,6 +120,7 @@ void MfmCachedImage::storeImageParams(FloppyImage *img, int slotNo)
 
     // read the floppy image params
     img->getParams(params.tracks, params.sides, params.spt);
+    readOnly = img->isReadOnly();
 
     // calculate how many tracks we need to process
     tracksToBeEncoded = params.tracks * params.sides;
@@ -227,7 +230,9 @@ bool MfmCachedImage::findNotReadyTrackAndEncodeIt(FloppyImage *img, int &track, 
 
     builder.begin(tracks[index].mfmStream + MFM_STREAM_PREFIX_SIZE, MFM_STREAM_MAX_BYTES);
 
-    encodeSingleTrack(img, s, t, params.spt);   // encode single track
+    if(!img->buildTrack(builder, t, s)) {       // image with own track layout builds it itself
+        encodeSingleTrack(img, s, t, params.spt);   // encode single track
+    }
 
     tracks[index].bytesInStream = MFM_STREAM_PREFIX_SIZE + builder.finish();    // what to send: track + side prefix and the whole stream (with the end mark)
 
@@ -481,6 +486,11 @@ void MfmCachedImage::updateCrcSlow(uint8_t data)
 void MfmCachedImage::updateCrcFast(uint8_t data)
 {
     crc = crcTable[data ^ (uint8_t)(crc >> (16 - 8))] ^ (crc << 8);
+}
+
+bool MfmCachedImage::isReadOnly(void)
+{
+    return readOnly;
 }
 
 bool MfmCachedImage::getParams(int &tracks, int &sides, int &sectorsPerTrack)

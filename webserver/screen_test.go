@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -158,6 +159,40 @@ func TestRequestScreenFrameTT(t *testing.T) {
 	}
 	if seq != testFrameSeq {
 		t.Fatalf("frame seq %x, want %x", seq, testFrameSeq)
+	}
+}
+
+// The whole frame comes before anything reads it, as when the reader gets to run late - this used to lose chunks sometimes
+func TestRequestScreenFrameTTReadLate(t *testing.T) {
+	frame := testFrameOfSize(screenFrameMaxSize)
+	sent := make(chan struct{})
+	fakeCore(t, frame, 8000, func(n int) []int {
+		offs := []int{}
+		for i := 0; i < n; i++ {
+			offs = append(offs, i*8000)
+		}
+		defer close(sent)
+		return offs
+	})
+
+	conn, err := sendScreenFrameRequest(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	<-sent // the fake core has the offsets, and sends them in a moment
+	time.Sleep(50 * time.Millisecond)
+
+	if err := conn.SetReadDeadline(time.Now().Add(screenFrameTimeout)); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := readScreenFrame(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, frame) {
+		t.Fatal("reassembled frame differs")
 	}
 }
 

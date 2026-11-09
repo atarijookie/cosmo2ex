@@ -9,7 +9,7 @@
 
 // Sorted list of the floppy images in one folder - for browsing the images on the device (prev / next / insert).
 // Must be the same list as in the web UI (webserver/fdd.go - floppyImageNames()), so that both step through the images
-// in the same order: only .st and .msa files (any case), regular files (symlinks followed), names up to 255 bytes,
+// in the same order: only .st, .msa and .stx files (any case), regular files (symlinks followed), names up to 255 bytes,
 // sorted case insensitive (ASCII only), names which differ only in case by their bytes.
 
 #define IMAGE_LIST_NONE         0xffffffff  // no such index / current image not in the list / page around the current image
@@ -45,7 +45,7 @@ public:
     // list has enough names.
     uint32_t storePage(uint8_t* bfr, uint32_t start, uint32_t pageCount, uint32_t currentIndex) const;
 
-    static bool isImageName(const char* name);              // .st / .msa, any case
+    static bool isImageName(const char* name);              // .st / .msa / .stx, any case
     static bool nameLess(const std::string& a, const std::string& b);   // the sort order
 
 private:

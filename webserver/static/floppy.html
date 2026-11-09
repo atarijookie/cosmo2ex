@@ -84,9 +84,9 @@
             searchTimer = setTimeout(function() { getDirContent(dir); }, 250);
           }
 
-          // .st / .msa, any case - like isFloppyImageName() in fdd.go
+          // .st / .msa / .stx, any case - like isFloppyImageName() in fdd.go
           function isFloppyImageName(name) {
-            return /^.+\.(st|msa)$/i.test(name);
+            return /^.+\.(st|msa|stx)$/i.test(name);
           }
 
           function getDirContent(new_path) {
@@ -235,8 +235,8 @@
               return;
             }
             var ext = selectedFile.split('.').pop().toLowerCase();
-            if(ext != 'msa' && ext != 'st') {
-              alert("File extension '" + ext + "' is not supported floppy image format - .msa / .st");
+            if(ext != 'msa' && ext != 'st' && ext != 'stx') {
+              alert("File extension '" + ext + "' is not supported floppy image format - .msa / .st / .stx");
               return;
             }
             saveImage(selectedFile);
@@ -706,7 +706,7 @@
                 <div style="display: flex; flex-direction: column; align-items: flex-start; max-width: 600px; width: 100%;">
                   <h2 style="margin: 0; align-self: flex-start;">Cosmo2ex</h2>
                   <h3 style="margin: 0; align-self: flex-start;">Floppy</h3>
-                  <p style="margin: 0; align-self: flex-start;">Select a disk image (*.ST, *.MSA) and upload it to your Cosmo2ex. </p>
+                  <p style="margin: 0; align-self: flex-start;">Select a disk image (*.ST, *.MSA, *.STX) and upload it to your Cosmo2ex. </p>
                 </div>
             </div>
         </div>

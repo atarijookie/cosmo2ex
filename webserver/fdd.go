@@ -174,7 +174,7 @@ func (s *Server) handleGetFDDImageStep(w http.ResponseWriter, r *http.Request, s
 }
 
 // floppyImageNames returns the floppy images in dir, in the order the device browses them - must stay the same as
-// ImageList in ce_cores/fdd/imagelist.cpp: only .st / .msa (any case), regular files (symlinks followed), names up to
+// ImageList in ce_cores/fdd/imagelist.cpp: only .st / .msa / .stx (any case), regular files (symlinks followed), names up to
 // 255 bytes, sorted by the ASCII lower case bytes, names which differ only in case by their bytes.
 func floppyImageNames(dir string, entries []os.DirEntry) []string {
 	names := make([]string, 0, len(entries))
@@ -207,7 +207,7 @@ func isFloppyImageName(name string) bool {
 	for i := range ext {
 		ext[i] = lowerASCII(ext[i])
 	}
-	return string(ext) == ".st" || string(ext) == ".msa"
+	return string(ext) == ".st" || string(ext) == ".msa" || string(ext) == ".stx"
 }
 
 func lowerASCII(c byte) byte {

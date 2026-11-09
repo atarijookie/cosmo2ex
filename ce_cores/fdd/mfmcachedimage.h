@@ -46,6 +46,7 @@ public:
     uint8_t *getEncodedTrack(int track, int side, int &bytesInBuffer);
     bool copyEncodedTrackIfReady(int track, int side, uint8_t *dest, int &bytesInBuffer);  // copy whole track (MFM_STREAM_SIZE) to dest under mutex, if ready
     bool getParams(int &tracks, int &sides, int &sectorsPerTrack);
+    bool isReadOnly(void);                      // the current image can't be written
 
     bool decodeMfmBuffer(uint8_t *inBfr, int inCnt, uint8_t *outBfr);     // decode single MFM encoded sector
     bool lastBufferWasFormatTrack(void);    // get if last decodeMfmBuffer() was sector write or format track
@@ -60,6 +61,7 @@ private:
     int nextIndex;      // set this to force encoding of some track sooner than would go
 
     bool gotImage;
+    volatile bool readOnly;
 
     struct {
         int tracks;

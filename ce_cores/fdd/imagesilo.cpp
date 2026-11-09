@@ -246,6 +246,15 @@ uint8_t *ImageSilo::getEncodedTrack(int floppySlotIndex, int track, int side, in
     return getEmptyTrack(track, side, bytesInBuffer);   // not ready in time - return empty track
 }
 
+bool ImageSilo::isReadOnly(int floppySlotIndex)
+{
+    if(floppySlotIndex < 0 || floppySlotIndex >= SLOT_COUNT) {
+        return false;
+    }
+
+    return slots[floppySlotIndex].encImage.isReadOnly();
+}
+
 bool ImageSilo::getParams(int floppySlotIndex, int &tracks, int &sides, int &sectorsPerTrack)
 {
     if(floppySlotIndex < 0 || floppySlotIndex >= SLOT_COUNT) {

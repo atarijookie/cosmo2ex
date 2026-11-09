@@ -1,5 +1,6 @@
 // ce_floppy_gen generates floppy test images with chosen geometry and known content, to test the floppy path on an
-// Atari ST: .st, .msa and .stx (plain, without any protection), 8 to 11 sectors per track, 1 or 2 sides.
+// Atari ST: .st, .msa and .stx, 8 to 11 sectors per track, 1 or 2 sides. The .stx images are plain, or with some of the
+// tricks of copy protections: variable bit rate, fuzzy bits, long tracks.
 //
 // Sector data is either TrSiSe - the bytes test_ce/test_floppy expects from its test image: byte N of the sector has
 // value N, except of bytes 0, 1, 2, which hold the track, side and sector - or random, which is reproducible with the
@@ -24,6 +25,15 @@ type Spec struct {
 	Spt    int
 	Data   string // "trsise" or "random"
 	Seed   uint32
+
+	// the protection tricks, only .stx can hold them
+	Timing bool // variable bit rate of all the sectors, as Macrodos / Speedlock has it: the data reads normally
+	Fuzzy  bool // unstable bits in the last sector of each track: it gives a CRC error and differs between the reads
+	Long   bool // track longer than standard, so with a higher bit rate
+}
+
+func (s Spec) hasProtection() bool {
+	return s.Timing || s.Fuzzy || s.Long
 }
 
 func (s Spec) validate() error {
@@ -90,12 +100,26 @@ func (s Spec) forEachTrack(f func(track, side int)) {
 
 // fileName makes the name of an image, with everything about it in the name.
 func (s Spec) fileName(format string) string {
-	return fmt.Sprintf("%dt_%dspt_%ds_%s.%s", s.Tracks, s.Spt, s.Sides, s.Data, format)
+	tricks := ""
+	if s.Timing {
+		tricks += "_timing"
+	}
+	if s.Fuzzy {
+		tricks += "_fuzzy"
+	}
+	if s.Long {
+		tricks += "_long"
+	}
+	return fmt.Sprintf("%dt_%dspt_%ds_%s%s.%s", s.Tracks, s.Spt, s.Sides, s.Data, tricks, format)
 }
 
 func generate(format string, s Spec) ([]byte, error) {
 	if err := s.validate(); err != nil {
 		return nil, err
+	}
+
+	if s.hasProtection() && format != "stx" {
+		return nil, fmt.Errorf("-timing, -fuzzy and -long need -format stx")
 	}
 
 	switch format {
@@ -150,6 +174,9 @@ func run(args []string) error {
 	tracks := fs.Int("tracks", 80, "tracks: 1 .. 85")
 	seed := fs.Uint("seed", 1, "seed of the random data")
 	out := fs.String("o", "", "output file, default: name made from the parameters")
+	timing := fs.Bool("timing", false, "stx: variable bit rate of all sectors (data still reads normally)")
+	fuzzy := fs.Bool("fuzzy", false, "stx: fuzzy bits in the last sector of each track (CRC error, differs between reads)")
+	long := fs.Bool("long", false, "stx: longer track, so with a higher bit rate (data still reads normally)")
 	all := fs.String("all", "", "generate all formats, 8/9/10 sectors per track, 1/2 sides, both data types to this directory")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "usage: ce_floppy_gen [options]\n   or: ce_floppy_gen -all DIR [-tracks N] [-seed N]\n\n")
@@ -167,7 +194,7 @@ func run(args []string) error {
 		return writeAll(*all, *tracks, uint32(*seed))
 	}
 
-	s := Spec{Tracks: *tracks, Sides: *sides, Spt: *spt, Data: *data, Seed: uint32(*seed)}
+	s := Spec{Tracks: *tracks, Sides: *sides, Spt: *spt, Data: *data, Seed: uint32(*seed), Timing: *timing, Fuzzy: *fuzzy, Long: *long}
 	path := *out
 	if path == "" {
 		path = s.fileName(*format)

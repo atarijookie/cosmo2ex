@@ -53,6 +53,7 @@ uint8_t mac[6];
 
 int imageState = IMAGE_NOT_LOADED;
 uint8_t imgTracks = 80, imgSides = 2, imgSectorsPerTrack = 9;
+bool imgReadOnly = false;       // image can't be written (STX) - the ST sees write protected disk after the disk change
 char imageFileName[32];
 bool diskChanged = false;
 bool diskChangeActive = false;  // pins inverted for the disk change now
@@ -241,7 +242,7 @@ void loop(void)
                 diskChangeActive = true;
 
                 BIT_INVERT(PIN_DENSITY);    // invert pins
-                BIT_INVERT(PIN_WPROTECT);
+                gpio_put(PIN_WPROTECT, imgReadOnly ? 1 : 0);    // the opposite of what it will be: the ST looks for the change
                 BIT_INVERT(PIN_DSKCHG);
                 // debug("DSK CHG start");
             }
@@ -254,7 +255,7 @@ void loop(void)
             diskChangeActive = false;   // don't do this until next disk change
 
             BIT_INVERT(PIN_DENSITY);    // invert pins
-            BIT_INVERT(PIN_WPROTECT);
+            gpio_put(PIN_WPROTECT, imgReadOnly ? 0 : 1);    // active low
             BIT_INVERT(PIN_DSKCHG);
             // debug("DSK CHG end");
         }

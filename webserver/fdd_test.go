@@ -30,7 +30,7 @@ func TestFloppyImageNameLess(t *testing.T) {
 func TestIsFloppyImageName(t *testing.T) {
 	for name, want := range map[string]bool{
 		"game.st": true, "GAME.ST": true, "disk 1.Msa": true, "a.b.st": true,
-		"game.stx": false, "game.zip": false, "readme": false, ".st": false, "st": false, "game.ſt": false,
+		"game.stx": true, "GAME.STX": true, "game.zip": false, "readme": false, ".st": false, "st": false, "game.ſt": false,
 	} {
 		if got := isFloppyImageName(name); got != want {
 			t.Errorf("isFloppyImageName(%q) = %v, want %v", name, got, want)

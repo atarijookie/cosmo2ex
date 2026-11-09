@@ -27,6 +27,10 @@ const (
 	screenFrameMaxSize = 1 + 512 + 153600
 	screenChunkHeader  = 12
 	screenFrameTimeout = 500 * time.Millisecond
+
+	// The core sends the chunks of a frame all at once. Each takes more than its size in the socket buffer, so the default
+	// buffer doesn't hold a TT frame: if this goroutine gets to run late, the chunks over it are lost and the frame with them.
+	screenReceiveBuffer = 4 * screenFrameMaxSize
 )
 
 // Screencast frames per second, stored as SCREENCAST_FPS in the device settings dir. ce_cores reads it on every
@@ -42,12 +46,7 @@ const (
 // requestScreenFrame gets the latest frame from ce_cores. With live set, the frame is for a running screencast, which
 // keeps ST sending frames (it stops a few seconds after the last live request).
 func requestScreenFrame(live bool) ([]byte, uint32, error) {
-	request := `{"module":"screencast","action":"get_frame"}`
-	if live {
-		request = `{"module":"screencast","action":"get_frame","live":1}`
-	}
-
-	conn, err := writeToCmdSocket(request)
+	conn, err := sendScreenFrameRequest(live)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -58,6 +57,15 @@ func requestScreenFrame(live bool) ([]byte, uint32, error) {
 	}
 
 	return readScreenFrame(conn)
+}
+
+func sendScreenFrameRequest(live bool) (net.Conn, error) {
+	request := `{"module":"screencast","action":"get_frame"}`
+	if live {
+		request = `{"module":"screencast","action":"get_frame","live":1}`
+	}
+
+	return writeToCmdSocketWithBuffer(request, screenReceiveBuffer)
 }
 
 // readScreenFrame reassembles the frame from chunk datagrams read from conn, until all bytes arrived.

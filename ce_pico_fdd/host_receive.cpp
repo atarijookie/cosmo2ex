@@ -17,6 +17,7 @@ THeader fddHeader;      // keep the header global to preserve syncTag between ca
 static bool headerPending = false;  // header received, but its data not handled yet - no free buffer for it until now
 
 extern uint8_t imgTracks, imgSides, imgSectorsPerTrack;
+extern bool imgReadOnly;
 extern char imageFileName[32];
 extern bool diskChanged;
 extern int imageState;
@@ -206,6 +207,7 @@ void handleImageReceived(void)
     imgTracks = MIN(tmpBfr[1], MAX_TRACKS);
     imgSides = tmpBfr[2];
     imgSectorsPerTrack = MIN(tmpBfr[3], MAX_SECTORS_PER_TRACK);
+    imgReadOnly = (tmpBfr[4 + 32] != 0);
 
     memset(imageFileName, 0, 32);
     strncpy(imageFileName, (const char*) (tmpBfr + 4), 31);        // store file name, up to 31 chars

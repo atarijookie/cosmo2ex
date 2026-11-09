@@ -19,6 +19,8 @@
 #define MFM_OP_RAW              0x50    // hi lo, n data bytes without escapes
 #define MFM_OP_END              0xFF
 
+#define MFM_CELL_TIME_NOMINAL   32000   // 2 us
+
 #define MFM_SECTOR_RUN_SIZE     515     // raw run of a 512 B sector: DAM, data, CRC - the device overwrites it on sector write
 
 class MfmTrackBuilder

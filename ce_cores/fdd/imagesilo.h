@@ -56,6 +56,7 @@ public:
     bool getParams(int floppySlotIndex, int &tracks, int &sides, int &sectorsPerTrack);
     std::string getFileName(int floppySlotIndex);
     std::string getBrowsePath(int floppySlotIndex);     // hostPath of a browsable image, "" if nothing to browse
+    bool isReadOnly(int floppySlotIndex);               // the image in the slot can't be written, the ST should see write protected disk
     bool isSlotEmpty(int floppySlotIndex);              // no image at all (not even a special one)
     uint8_t *getEmptyTrack(int track, int side, int &bytesInBuffer);    // valid until next call
 

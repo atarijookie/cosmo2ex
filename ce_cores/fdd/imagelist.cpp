@@ -184,7 +184,7 @@ bool ImageList::isImageName(const char* name)
         return false;
     }
 
-    return strcasecmp(ext, ".st") == 0 || strcasecmp(ext, ".msa") == 0;
+    return strcasecmp(ext, ".st") == 0 || strcasecmp(ext, ".msa") == 0 || strcasecmp(ext, ".stx") == 0;
 }
 
 static inline unsigned char lowerAscii(char c)

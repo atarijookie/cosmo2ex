@@ -322,8 +322,10 @@ void CoreFdd::handleSendImageToClient(ClientInfo* client)
     uint8_t *encodedTrack;
     int countInTrack = 0;
 
+    bool readOnly = imageSilo->isReadOnly(client->floppySlotIndex);
+
     // sending started, send imagTracks, imgSides, spt
-    ciFdd->fdd_sendImageParamsToChip(client->fdClient, false, imgTracks, imgSides, imgSectorsPerTrack, fileName);
+    ciFdd->fdd_sendImageParamsToChip(client->fdClient, false, imgTracks, imgSides, imgSectorsPerTrack, fileName, readOnly);
 
     // send all the tracks from all the sides
     for(int side=0; side<imgSides; side++) {
@@ -345,7 +347,7 @@ void CoreFdd::handleSendImageToClient(ClientInfo* client)
     }
 
     // sending finished, send imagTracks, imgSides, spt, this will also do the disk change
-    ciFdd->fdd_sendImageParamsToChip(client->fdClient, true, imgTracks, imgSides, imgSectorsPerTrack, fileName);
+    ciFdd->fdd_sendImageParamsToChip(client->fdClient, true, imgTracks, imgSides, imgSectorsPerTrack, fileName, readOnly);
 
     // device switches to the sent image now - sectors it writes from now on belong to this image, the previous one can be released
     imageSilo->setDeviceGen(client->floppySlotIndex, imageGen);

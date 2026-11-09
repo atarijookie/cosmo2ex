@@ -15,6 +15,7 @@
 #include "../misc/settings.h"
 #include "floppyimagemsa.h"
 #include "floppyimagest.h"
+#include "floppyimagestx.h"
 #include "imagesilo.h"
 #include "floppyencoder.h"
 
@@ -186,6 +187,9 @@ FloppyImage *getImage(const char *fileName)
     if(strcasecmp(ext, "msa") == 0) {   // msa image?
         logFdd(LOG_DEBUG, "using MSA image on %s", fileName);
         img = new FloppyImageMsa();
+    } else if(strcasecmp(ext, "stx") == 0) {   // stx image?
+        logFdd(LOG_DEBUG, "using STX image on %s", fileName);
+        img = new FloppyImageStx();
     } else if(strcasecmp(ext, "st") == 0) {    // st image?
         logFdd(LOG_DEBUG, "using ST image on %s", fileName);
         img = new FloppyImageSt();
@@ -254,6 +258,11 @@ static bool floppyEncoder_processOneWrittenSector(int onlySlotNo)
     if(good && !target) {       // decoded fine, but the image it belongs to is gone (or slot empty)
         logFdd(LOG_WARNING, "Written sector track %d, side %d, sector %d of slot %d: image generation %u no longer loaded, dropping write",
             ws.track, ws.side, ws.sector, ws.slotNo, ws.imageGen);
+    }
+
+    if(good && target && target->isReadOnly()) {    // the ST gets it as write protected, so this shouldn't happen
+        logFdd(LOG_WARNING, "Written sector track %d, side %d, sector %d of slot %d: the image is read only, dropping write", ws.track, ws.side, ws.sector, ws.slotNo);
+        good = false;
     }
 
     if(good && target) {        // if decode was good and got the image it belongs to
