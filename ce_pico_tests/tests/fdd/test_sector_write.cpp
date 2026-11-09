@@ -40,6 +40,7 @@ extern volatile uint8_t wrBits;
 
 extern IPCbuffer buffersForCore0[IPC_BUFFER_SMALL_COUNT];  // ipc.cpp - write buffers going to core0
 extern volatile uint32_t wrWritesDropped;               // core1_main.cpp - writes not captured
+extern bool builtinImageShown;                          // core1_main.cpp - the ST sees the built-in floppy
 
 namespace {
 
@@ -405,6 +406,24 @@ TEST_SUITE("fdd write capture") {
 
 // written bytes - pulses come one by one in the tests below, so a byte = 4 symbols, no stream / track needed
 const std::vector<uint8_t> WRITTEN = { 0x6b, 0xe7, 0x9d, 0xb6, 0x5a, 0xa5, 0x7e, 0xdb, 0x66, 0xbd };
+
+TEST_CASE_FIXTURE(WriteFixture, "write to the built-in floppy is dropped - not stored locally, not sent to the host") {
+    // the host would write it into the real image: the device was showing the built-in one, which is write protected anyway
+    builtinImageShown = true;
+    psramStoreTrack(0, 0, trackData0);
+    std::vector<uint8_t> before = psramTrack(0, 0);
+    std::vector<uint8_t> beforeRam(trackData0, trackData0 + READTRACKDATA_SIZE_BYTES);
+
+    writeGateLow();
+    pioPushPulse(PIO_TICKS_GAP);
+    captureBytes(WRITTEN);
+    writeEnd();
+
+    CHECK(ipcGetBufferFromFifo(0) == NULL);
+    CHECK(psramTrack(0, 0) == before);
+    CHECK(memcmp(trackData0, beforeRam.data(), READTRACKDATA_SIZE_BYTES) == 0);
+    CHECK(freeCore0Buffers() == IPC_BUFFER_SMALL_COUNT - 2);   // released, just the 2 prepared for the next writes are taken
+}
 
 TEST_CASE_FIXTURE(WriteFixture, "write IRQ has higher priority than the read stream refill IRQ") {
     CHECK(fakeIrqPriority[DMA_IRQ_1] < PICO_DEFAULT_IRQ_PRIORITY);

@@ -8,6 +8,9 @@ void psramTest(void);
 void psramStoreTrack(int track, int side, uint8_t* data);
 void psramLoadTrack(int track, int side, uint8_t* data);
 
+void psramStoreBuiltinTrack(int track, uint8_t* data);            // built-in floppy, side 0 only
+void psramLoadBuiltinTrack(int track, int side, uint8_t* data);  // side 1: empty track
+
 void psramStoreSector(int track, int side, int byteOffsetFromTrackStart, uint8_t* data, uint32_t copyLength);
 
 #endif

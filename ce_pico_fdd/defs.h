@@ -7,6 +7,10 @@
 #ifndef MFM_PERF_TEST
 #define MFM_PERF_TEST   0       // 1 = track stream timing test next to the real stream, results in the debug log every 5 s, see mfm_perf.h
 #endif
+#ifndef BUILTIN_IMAGE_TEST
+#define BUILTIN_IMAGE_TEST 0    // 1 = the built-in floppy shows all its statuses in a loop (sample values, BUILTIN_TEST_STEP_MS each, then
+#endif                          //     no status sector for a step) and never switches to the real image - see builtin_image.h
+#define BUILTIN_TEST_STEP_MS 8000
 #define FDD_STATUS_LOG  0       // 1 = floppy status in the debug log once a second while the ST uses the drive, see core1StatusReport()
 
 #ifndef TRUE

@@ -57,6 +57,35 @@
   without an image in the drive it browses FLOPPY_IMAGES_DIR (.env) - e.g. the images from
   atari-st-floppy-image-downloader.
 
+## Built-in floppy
+
+- until the first real image from the host is loaded completely (no WiFi settings yet, joining the WiFi, looking for /
+  connecting to the host, loading the image, or the host has no image in the drive), the ST sees a built-in floppy:
+  single sided 80 x 9, write protected (writes to it are dropped, never sent to the host)
+- also again when the WiFi setup (captive portal) starts while the real image is shown - the host connection is closed
+  for it anyway; after the setup the image is loaded again and the ST gets it as after the start
+- its executable boot sector shows the device status on the ST, refreshed once a second, and keeps waiting for the
+  real image until SPACE is pressed (other keys are ignored); while the WiFi setup runs, it tells how to open the setup
+  page;
+  A:\CE_FDD.TOS does the same when started from the desktop (e.g. when booting from a hard disk). Once the real image
+  is loaded, they show 'The floppy image is ready. Reset your ST to boot from it.'
+- the status is also a text file in the root, named after it: SETUP.TXT, NO_WIFI.TXT, WIFI.TXT, HOST.TXT, LOADING.TXT,
+  NO_IMAGE.TXT - a disk change is signalled when the name changes, so the desktop shows the new one after Esc
+- the boot code reads the status from track 0, sector 10 (outside of the file system, the BPB says 9 sectors per
+  track): 'CE2XSTAT', status code, change counter, the text from offset 16
+- the tracks are made on the device (builtin_image.cpp) into their own PSRAM area, so the real image is received into
+  its usual area meanwhile and the switch happens only when it's complete; track 0 is made again on each status change
+- it's made in setup(), before the main loop, which blocks for seconds while joining the WiFi - the ST reads the boot
+  sector a few seconds after the power on; a disk change follows, so a ST that read the drive even earlier reads it again
+- debug log: 'builtin floppy: ...' lines for the start, each status change and each new track 0; 'core 1: streaming the
+  real image now' after the switch; BUILTIN in the floppy status line (FDD_STATUS_LOG)
+- testing: BUILTIN_IMAGE_TEST 1 in defs.h shows all the statuses in a loop (sample values, 8 s each, then 8 s without the
+  status sector) and never switches to the real image
+- the disk content comes from builtin_floppy/: status.s (68000 code of the boot sector and CE_FDD.TOS) and
+  make_builtin.py, which assembles it (m68k-atari-mint-as) and writes builtin_floppy_data.h (committed - Arduino can't
+  run it) and builtin_floppy/builtin.st (the same disk with a sample status, for an emulator or mtools). Run
+  `python3 builtin_floppy/make_builtin.py` after changing them
+
 ## Status LED (neopixel)
 
 - LED2 (WS2812C-2020) on the same GP1 as the button, through the AND gate IC6 (74AHCT1G08, 3.3V -> 5V levels); the

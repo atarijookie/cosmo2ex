@@ -112,6 +112,28 @@ void psramLoadTrack(int track, int side, uint8_t* data)
     psramReadBuffer(address, data, READTRACKDATA_SIZE_BYTES);
 }
 
+// Built-in floppy (builtin_image.h): side 0 only, in its own area after the real image - 1.2 MB, so 3.7 MB in all
+#define BUILTIN_PSRAM_BASE  (MAX_TRACKS * 2 * READTRACKDATA_SIZE_BYTES)
+
+void psramStoreBuiltinTrack(int track, uint8_t* data)
+{
+    if(track < 0 || track >= MAX_TRACKS) {
+        return;
+    }
+
+    psramWriteBuffer(BUILTIN_PSRAM_BASE + track * READTRACKDATA_SIZE_BYTES, data, READTRACKDATA_SIZE_BYTES);
+}
+
+void psramLoadBuiltinTrack(int track, int side, uint8_t* data)
+{
+    if(side != 0 || track < 0 || track >= MAX_TRACKS) {    // nothing there: no stream, the refill sends just the filler
+        memset(data, 0, READTRACKDATA_SIZE_BYTES);
+        return;
+    }
+
+    psramReadBuffer(BUILTIN_PSRAM_BASE + track * READTRACKDATA_SIZE_BYTES, data, READTRACKDATA_SIZE_BYTES);
+}
+
 void psramStoreSector(int track, int side, int byteOffsetFromTrackStart, uint8_t* data, uint32_t copyLength)
 {
     if(track < 0 || track >= MAX_TRACKS) {  // no such track? don't store it over another one

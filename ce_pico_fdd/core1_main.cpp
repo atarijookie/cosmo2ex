@@ -79,6 +79,10 @@ enum MfmStreamState {
 
 volatile MfmStreamState state = STATE_STEPPING;
 
+// The built-in floppy (builtin_image.h) is streamed until core 0 says the real image is loaded (CMD_SHOW_REAL_IMAGE). Its
+// tracks are in their own PSRAM area, the real image is received into the usual one meanwhile.
+bool builtinImageShown = true;
+
 void __isr dmaHandlerMfm(void);
 uint64_t whenRefillPlays(bool readingUpper, uint32_t intoHalf);
 void __isr gpioIsrCore1(uint gpio, uint32_t events);
@@ -495,12 +499,15 @@ void __not_in_flash_func(wgateIsr)(uint32_t events)
     }
 }
 
-// Read data output enable: on only while our drive is selected and its motor is on - otherwise another drive on the
-// bus may be the one sending data. Set from the current levels, so a missed or merged edge can't leave it wrong.
+// Output enable of the drive lines to the ST (U11: RDATA, INDEX, TRACK00, WRITE_PROTECT, DSKCHG, DENSITY): on while our
+// drive is selected, as a real drive does - another drive on the bus is never selected then. Not tied to the motor: TOS
+// finds disk changes by selecting the drive with the motor off and looking at WRITE_PROTECT (its VBL routine), so with
+// the motor condition the ST never saw the disk change toggle. Set from the current levels, so a missed or merged edge
+// can't leave it wrong.
 void __not_in_flash_func(updateStreamOutputEnable)(void)
 {
-    bool stWantsTheStream = BIT_IS_L(PIN_DRIVE_SEL) && BIT_IS_L(PIN_MOT_EN);
-    gpio_put(PIN_FLCC_OE, stWantsTheStream ? 0 : 1);    // OE is active low
+    bool selected = BIT_IS_L(PIN_DRIVE_SEL);
+    gpio_put(PIN_FLCC_OE, selected ? 0 : 1);            // OE is active low
 }
 
 // GPIO IRQ callback of core1 - the sdk has one callback per core for all GPIOs
@@ -539,6 +546,11 @@ void handleWriteBuffers(void)
 
     for(int i=0; i<count; i++) {
         IPCbuffer* bfr = finished[i];
+
+        if(builtinImageShown) {         // the built-in floppy is write protected, and the host must not get this into the real image
+            ipcBufferRelease(bfr);
+            continue;
+        }
 
         if(bfr->length <= 12) {         // WGATE toggled, but nothing was captured? storing it would clear the sector, host ignores it anyway
             wrWritesEmpty++;
@@ -588,17 +600,37 @@ void writeCaptureSetup(void)
     gpio_set_irq_enabled_with_callback(PIN_WGATE, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true, gpioIsrCore1);
 }
 
-// Store track received from host (bfr->data: track #, side #, then bfr->length - 2 bytes of the encoded track stream)
-// to PSRAM, and to the track buffer if it's the track being streamed now.
-void storeReceivedTrack(IPCbuffer* bfr)
+// The buffer (bfr->data: track #, side #, then bfr->length - 2 bytes of the encoded track stream) into a whole track:
+// stream from the start, zeros after it. The bytes after the received data are left from the previous track received
+// into this IPC buffer - e.g. a sector the new track doesn't have.
+static void bufferToWholeTrack(IPCbuffer* bfr)
 {
-    // Turn the buffer into a whole track: stream from the start, zeros after it. The bytes after the received data
-    // are left from the previous track received into this IPC buffer - e.g. a sector the new track doesn't have.
     uint32_t streamLength = (bfr->length > 2) ? MIN(bfr->length - 2, READTRACKDATA_SIZE_BYTES) : 0;
     memmove(bfr->data, bfr->data + 2, streamLength);
     memset(bfr->data + streamLength, 0, READTRACKDATA_SIZE_BYTES - streamLength);
+}
 
+// The tracks under the head, both sides, from the PSRAM area of what the ST sees now.
+static void loadCurrentTracks(void)
+{
+    if(builtinImageShown) {
+        psramLoadBuiltinTrack(hwPosition.track, 0, trackData0);
+        psramLoadBuiltinTrack(hwPosition.track, 1, trackData1);
+    } else {
+        psramLoadTrack(hwPosition.track, 0, trackData0);
+        psramLoadTrack(hwPosition.track, 1, trackData1);
+    }
+}
+
+// Store track received from host to PSRAM, and to the track buffer if it's the track being streamed now.
+void storeReceivedTrack(IPCbuffer* bfr)
+{
+    bufferToWholeTrack(bfr);
     psramStoreTrack(bfr->trackNo, bfr->sideNo, bfr->data);
+
+    if(builtinImageShown) {                         // the ST sees the built-in floppy, this one waits in PSRAM
+        return;
+    }
 
     if(bfr->trackNo == hwPosition.track) {          // we've just received the track that is being streamed out?
         if(bfr->sideNo == streamSide) {             // its layout can be different - main loop finds the position again
@@ -608,6 +640,45 @@ void storeReceivedTrack(IPCbuffer* bfr)
         uint8_t* pTrack = (bfr->sideNo == 0) ? trackData0 : trackData1;     // pick the correct pointer for this side
         memcpy(pTrack, bfr->data, READTRACKDATA_SIZE_BYTES);               // copy data directly to track buffer
     }
+}
+
+// Store track of the built-in floppy (made on core 0, side 0 only) - the same as storeReceivedTrack(), in its own area.
+static void storeBuiltinTrack(IPCbuffer* bfr)
+{
+    bufferToWholeTrack(bfr);
+    psramStoreBuiltinTrack(bfr->trackNo, bfr->data);
+
+    if(builtinImageShown && bfr->trackNo == hwPosition.track) {    // the track being streamed - e.g. new status on track 0
+        if(streamSide == 0) {
+            streamValid = false;
+        }
+
+        memcpy(trackData0, bfr->data, READTRACKDATA_SIZE_BYTES);
+    }
+}
+
+// The real image is loaded completely - stream it from now on, from PSRAM, as after a step.
+static void showRealImage(void)
+{
+    if(!builtinImageShown) {
+        return;
+    }
+
+    builtinImageShown = false;              // no debug() here - core 0 writes to the debug UART too, it would mix up
+    state = STATE_LOADING;      // no refills from now on - before the ring gets the filler, they'd overwrite it
+    clearMfmBuffer();
+}
+
+// The WiFi setup started - the built-in floppy again, its tracks are still in their PSRAM area.
+static void showBuiltinImage(void)
+{
+    if(builtinImageShown) {
+        return;
+    }
+
+    builtinImageShown = true;
+    state = STATE_LOADING;
+    clearMfmBuffer();
 }
 
 static int prevSideNo;
@@ -664,11 +735,11 @@ void core1StatusReport(int imageState)
     }
     wasActive = active;
 
-    debug("fdd: sel %d mot %d oe %d wg %d | head t %d s %d | stream t %d s %d sec %d | state %d | steps %u halves %u | wr %u drop %u empty %u | img %d %dx%dx%d\n",
+    debug("fdd: sel %d mot %d oe %d wg %d | head t %d s %d | stream t %d s %d sec %d | state %d | steps %u halves %u | wr %u drop %u empty %u | img %d %dx%dx%d%s\n",
           sel, mot, BIT_IS_L(PIN_FLCC_OE), BIT_IS_L(PIN_WGATE),
           hwPosition.track, hwPosition.side, posStreamed.track, posStreamed.side, posStreamed.sector, (int) state,
           (unsigned) stepCount, (unsigned) mfmHalfCount, (unsigned) wrWritesCaptured, (unsigned) wrWritesDropped, (unsigned) wrWritesEmpty,
-          imageState, imgTracks, imgSides, imgSectorsPerTrack);
+          imageState, imgTracks, imgSides, imgSectorsPerTrack, builtinImageShown ? " BUILTIN" : "");
 }
 
 // One pass of the core 1 main loop - loop1() calls it again and again.
@@ -690,8 +761,7 @@ void core1Loop(void)
     }
 
     if(state == STATE_LOADING) {
-        psramLoadTrack(hwPosition.track, 0, trackData0);
-        psramLoadTrack(hwPosition.track, 1, trackData1);
+        loadCurrentTracks();
 
         seekStreamToCurrentAngle();
 
@@ -715,6 +785,18 @@ void core1Loop(void)
             // store the track track data into PSRAM
             case CMD_STORE_TRACK:
                 storeReceivedTrack(bfr);
+                break;
+
+            case CMD_STORE_BUILTIN_TRACK:
+                storeBuiltinTrack(bfr);
+                break;
+
+            case CMD_SHOW_REAL_IMAGE:
+                showRealImage();
+                break;
+
+            case CMD_SHOW_BUILTIN_IMAGE:
+                showBuiltinImage();
                 break;
         }
 

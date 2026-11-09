@@ -24,6 +24,7 @@
 #include "neopixel.h"
 #include "diag.h"
 #include "mfm_perf.h"
+#include "builtin_image.h"
 
 // Core 1 (setup1() + loop1()) does the floppy streaming and write capture, core 0 (setup() + loop()) the rest.
 // The WiFi chip and lwIP are started by the arduino core before setup(), they run in the background (IRQ) on core 0.
@@ -54,6 +55,12 @@ uint8_t mac[6];
 int imageState = IMAGE_NOT_LOADED;
 uint8_t imgTracks = 80, imgSides = 2, imgSectorsPerTrack = 9;
 bool imgReadOnly = false;       // image can't be written (STX) - the ST sees write protected disk after the disk change
+
+// what the ST sees on the WP line when no disk change is going on - the built-in floppy is write protected too
+static bool writeProtected(void)
+{
+    return imgReadOnly || builtinImageActive();
+}
 char imageFileName[32];
 bool diskChanged = false;
 bool diskChangeActive = false;  // pins inverted for the disk change now
@@ -100,7 +107,7 @@ void setup(void)
 
     #define OUTPUTS_COUNT 7
     int outputs[OUTPUTS_COUNT] = {PIN_DENSITY, PIN_INDEX, PIN_TRACK00, PIN_WPROTECT, PIN_DSKCHG, PIN_FLCC_OE, PIN_CS};
-    int levels[OUTPUTS_COUNT]  = {          0,         1,           0,            1,          0,           1,      1};
+    int levels[OUTPUTS_COUNT]  = {          0,         1,           0,            0,          0,           1,      1};   // WP on: the built-in floppy is there first
 
     for (int i = 0; i < OUTPUTS_COUNT; i++)
     {
@@ -129,6 +136,9 @@ void setup(void)
     core0ready = true;
     waitForCore1Running();
     ledSetInitStep(LED_STEP_CORE1);
+
+    // the built-in floppy, before the main loop - it blocks for seconds joining the WiFi, the ST boots meanwhile
+    builtinImageStart();
 
     WiFi.mode(WIFI_STA);
 }
@@ -197,6 +207,9 @@ void loop(void)
         // browsing the images on the front panel - page requests, timeout, display
         browserLoop();
 
+        // built-in floppy until the real image is loaded: its tracks, the status on it, the switch to the real image
+        builtinImageLoop();
+
         // floppy status to the debug log, once a second while the ST uses the drive
         if (FDD_STATUS_LOG && (now - lastStatusTime) >= 1000)
         {
@@ -242,7 +255,7 @@ void loop(void)
                 diskChangeActive = true;
 
                 BIT_INVERT(PIN_DENSITY);    // invert pins
-                gpio_put(PIN_WPROTECT, imgReadOnly ? 1 : 0);    // the opposite of what it will be: the ST looks for the change
+                gpio_put(PIN_WPROTECT, writeProtected() ? 1 : 0);   // the opposite of what it will be: the ST looks for the change
                 BIT_INVERT(PIN_DSKCHG);
                 // debug("DSK CHG start");
             }
@@ -255,7 +268,7 @@ void loop(void)
             diskChangeActive = false;   // don't do this until next disk change
 
             BIT_INVERT(PIN_DENSITY);    // invert pins
-            gpio_put(PIN_WPROTECT, imgReadOnly ? 0 : 1);    // active low
+            gpio_put(PIN_WPROTECT, writeProtected() ? 0 : 1);   // active low
             BIT_INVERT(PIN_DSKCHG);
             // debug("DSK CHG end");
         }

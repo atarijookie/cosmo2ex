@@ -1,6 +1,7 @@
-// core1_main.cpp - read data output enable (PIN_FLCC_OE, active low): on only while our drive is selected and the motor
-// is on. The bus is shared with another drive, so it must follow DRIVE_SEL / MOT_EN right away - in the GPIO IRQ, not in
-// a main loop that can be busy for hundreds of ms (it used to be in the core0 loop, which waits on WiFi / TCP).
+// core1_main.cpp - output enable of the drive lines to the ST (PIN_FLCC_OE, active low): on while our drive is selected,
+// motor on or off - TOS looks at WRITE_PROTECT with the motor off to find disk changes. The bus is shared with another
+// drive, so it must follow DRIVE_SEL right away - in the GPIO IRQ, not in a main loop that can be busy for hundreds of ms
+// (it used to be in the core0 loop, which waits on WiFi / TCP).
 
 #include "doctest.h"
 #include "fakes_fdd.h"
@@ -31,12 +32,12 @@ struct OutputEnableFixture {
 
 TEST_SUITE("fdd output enable") {
 
-TEST_CASE_FIXTURE(OutputEnableFixture, "output follows DRIVE_SEL and MOT_EN on every edge, without any main loop") {
+TEST_CASE_FIXTURE(OutputEnableFixture, "output follows DRIVE_SEL on every edge, motor on or off, without any main loop") {
     streamOutputEnableSetup();
     CHECK_FALSE(outputEnabled());
 
-    fakeGpioSet(PIN_DRIVE_SEL, false);          // our drive selected, motor still off
-    CHECK_FALSE(outputEnabled());
+    fakeGpioSet(PIN_DRIVE_SEL, false);          // our drive selected, motor still off - TOS reads WRITE_PROTECT like this
+    CHECK(outputEnabled());
 
     fakeGpioSet(PIN_MOT_EN, false);             // motor on
     CHECK(outputEnabled());
@@ -47,7 +48,10 @@ TEST_CASE_FIXTURE(OutputEnableFixture, "output follows DRIVE_SEL and MOT_EN on e
     fakeGpioSet(PIN_DRIVE_SEL, false);          // back to our drive
     CHECK(outputEnabled());
 
-    fakeGpioSet(PIN_MOT_EN, true);              // motor off
+    fakeGpioSet(PIN_MOT_EN, true);              // motor off - still selected
+    CHECK(outputEnabled());
+
+    fakeGpioSet(PIN_DRIVE_SEL, true);
     CHECK_FALSE(outputEnabled());
 }
 

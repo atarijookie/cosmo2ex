@@ -5,7 +5,10 @@
 
 enum IpcCommand {
   CMD_STORE_TRACK,
-  CMD_SEND_WRITTEN_SECTOR
+  CMD_SEND_WRITTEN_SECTOR,
+  CMD_STORE_BUILTIN_TRACK,      // track of the built-in floppy, the same form as CMD_STORE_TRACK - see builtin_image.h
+  CMD_SHOW_REAL_IMAGE,          // stream the real image from now on, not the built-in floppy
+  CMD_SHOW_BUILTIN_IMAGE        // stream the built-in floppy again (WiFi setup started)
 };
 
 struct __attribute__((packed)) IPCbuffer

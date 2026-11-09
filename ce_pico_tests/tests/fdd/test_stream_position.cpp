@@ -3,6 +3,7 @@
 // the other side or track is something else, maybe the middle of a raw run.
 
 #include <vector>
+#include <algorithm>
 #include <cstdint>
 
 #include "doctest.h"
@@ -27,6 +28,7 @@ extern uint64_t nextRotationStartUs;
 extern uint64_t streamResumeUs;
 extern uint32_t rotationNo;
 extern uint32_t halfTicks[2];
+extern bool builtinImageShown;
 
 namespace {
 
@@ -233,6 +235,78 @@ TEST_CASE_FIXTURE(StreamPositionFixture, "main loop: after a step the track from
 
     fakeGpioLevel[PIN_SIDE1] = true;        // back, for the other tests
     core1Loop();
+}
+
+// the IPC message as core 0 sends it: track #, side #, stream
+static void sendToCore1(IpcCommand command, int track, const std::vector<uint8_t>& stream)
+{
+    IPCbuffer* bfr = ipcGetFreeBuffer(1, 0);
+    REQUIRE(bfr != NULL);
+    uint32_t length = stream.empty() ? 0 : ((stream[0] << 8) | stream[1]);     // just the stream, as the host sends it
+    REQUIRE(2 + length <= READTRACKDATA_SIZE_BYTES);
+    bfr->data[0] = track;
+    bfr->data[1] = 0;
+    if(length > 0) {
+        memcpy(bfr->data + 2, stream.data(), length);
+    }
+    bfr->trackNo = track;
+    bfr->sideNo = 0;
+    ipcSetBufferAndPutToFifo(bfr, 1, command, (command == CMD_SHOW_REAL_IMAGE || command == CMD_SHOW_BUILTIN_IMAGE) ? 0 : 2 + length);
+}
+
+TEST_CASE_FIXTURE(StreamPositionFixture, "built-in floppy: streamed from its own PSRAM area, the real image waits until CMD_SHOW_REAL_IMAGE") {
+    ipcInit();
+    std::vector<uint8_t> builtin = buildTestTrack(5, 0, 10);
+    memset(trackData0, 0, READTRACKDATA_SIZE_BYTES);
+    memset(trackData1, 0, READTRACKDATA_SIZE_BYTES);
+    hwPosition.track = 5;
+    builtinImageShown = true;
+
+    sendToCore1(CMD_STORE_BUILTIN_TRACK, 5, builtin);          // track under the head: streamed right away
+    sendToCore1(CMD_STORE_TRACK, 5, side0);                    // real image: PSRAM only
+    for(int i=0; i<3; i++) {
+        core1Loop();
+    }
+
+    CHECK(memcmp(trackData0, builtin.data(), READTRACKDATA_SIZE_BYTES) == 0);
+    std::vector<uint8_t> t(READTRACKDATA_SIZE_BYTES);
+    psramLoadTrack(5, 0, t.data());
+    CHECK(t == side0);
+    psramLoadBuiltinTrack(5, 0, t.data());
+    CHECK(t == builtin);
+
+    // after a step: from the built-in area, side 1 empty there
+    lastStepTime = fakeNowMs;
+    core1Loop();
+    fakeNowMs += 20;
+    core1Loop();
+    CHECK(memcmp(trackData0, builtin.data(), READTRACKDATA_SIZE_BYTES) == 0);
+    CHECK(std::all_of(trackData1, trackData1 + READTRACKDATA_SIZE_BYTES, [](uint8_t b) { return b == 0; }));
+
+    // switch: the real tracks from PSRAM, streamed from where the disk is
+    psramStoreTrack(5, 1, side1.data());
+    nextRotationStartUs = (fakeNowMs + 140) * 1000ull;
+    sendToCore1(CMD_SHOW_REAL_IMAGE, 0, {});
+    core1Loop();                            // the command
+    core1Loop();                            // tracks loaded
+    CHECK_FALSE(builtinImageShown);
+    CHECK(memcmp(trackData0, side0.data(), READTRACKDATA_SIZE_BYTES) == 0);
+    CHECK(memcmp(trackData1, side1.data(), READTRACKDATA_SIZE_BYTES) == 0);
+    CHECK(streamValid);
+    CHECK(mfmStream.track == trackData0);
+
+    // built-in tracks don't get streamed anymore
+    sendToCore1(CMD_STORE_BUILTIN_TRACK, 5, builtin);
+    core1Loop();
+    CHECK(memcmp(trackData0, side0.data(), READTRACKDATA_SIZE_BYTES) == 0);
+
+    // WiFi setup started: back to the built-in floppy, from its PSRAM area
+    sendToCore1(CMD_SHOW_BUILTIN_IMAGE, 0, {});
+    core1Loop();
+    core1Loop();
+    CHECK(builtinImageShown);
+    CHECK(memcmp(trackData0, builtin.data(), READTRACKDATA_SIZE_BYTES) == 0);
+    CHECK(std::all_of(trackData1, trackData1 + READTRACKDATA_SIZE_BYTES, [](uint8_t b) { return b == 0; }));
 }
 
 TEST_CASE_FIXTURE(StreamPositionFixture, "the seek takes ms, but the interrupts stay enabled - only the short parts have them off") {

@@ -12,6 +12,7 @@
 #include "host_receive.h"
 #include "image_browser.h"
 #include "settings.h"
+#include "builtin_image.h"
 
 THeader fddHeader;      // keep the header global to preserve syncTag between calls
 static bool headerPending = false;  // header received, but its data not handled yet - no free buffer for it until now
@@ -211,6 +212,10 @@ void handleImageReceived(void)
 
     memset(imageFileName, 0, 32);
     strncpy(imageFileName, (const char*) (tmpBfr + 4), 31);        // store file name, up to 31 chars
+
+    if(tmpBfr[0] == 1 && imgTracks > 0) {     // a real image is in PSRAM now (0 tracks: the host has no image) - the ST gets it
+        builtinImageRealImageLoaded();
+    }
 
     debug("handleImageReceived %s, imgTracks: %d, imgSides: %d, imageFileName: %s\n", (tmpBfr[0] == 1) ? "END" : "START", imgTracks, imgSides, imageFileName);
 }

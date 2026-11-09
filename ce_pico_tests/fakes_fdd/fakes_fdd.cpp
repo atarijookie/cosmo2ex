@@ -382,8 +382,11 @@ bool queue_is_empty(queue_t *q)
 }
 
 //--------------------------------------------------------
+extern bool builtinImageShown;     // core1_main.cpp - the tests stream the real image, unless they test the built-in floppy
+
 void fakeReset(void)
 {
+    builtinImageShown = false;
     memset(fakeGpioLevel, 0, sizeof(fakeGpioLevel));
     fakeGpioLevel[PIN_CS] = true;                   // PSRAM not selected
     std::fill(fakePsram.begin(), fakePsram.end(), 0);
