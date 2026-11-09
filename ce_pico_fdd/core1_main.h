@@ -12,7 +12,7 @@ extern volatile uint8_t fillWhat;
 void setupPwmOutput(void);
 void setupDmaToPwm(void);
 
-void fillHalfMfmBuffer(uint8_t what);
+void fillHalfMfmBuffer(uint8_t what, uint64_t startUs);      // startUs: when this half starts to play
 void clearMfmBuffer(void);
 void seekStreamToCurrentAngle(void);    // core1 main loop - the stream continues where the disk is now
 

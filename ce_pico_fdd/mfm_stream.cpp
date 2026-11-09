@@ -184,14 +184,16 @@ static uint32_t __not_in_flash_func(nextCells)(MfmStream* s)
     }
 }
 
-void __not_in_flash_func(mfmStreamFill)(MfmStream* s, uint16_t* out, int count)
+int __not_in_flash_func(mfmStreamFillTicks)(MfmStream* s, uint16_t* out, int count, int32_t* ticksLeft)
 {
     uint32_t word = s->word;
     uint32_t cells = s->cells;
     uint32_t since = s->cellsSinceFlux;
     uint32_t remainder = s->tickRemainder;
+    int32_t left = *ticksLeft;
+    int i = 0;
 
-    for(int i=0; i<count; ) {
+    while(i < count && left > 0) {
         if(word == 0) {                     // no flux in the rest of the cells? count them, get next cells
             since += cells;
             word = nextCells(s) << 16;
@@ -204,6 +206,7 @@ void __not_in_flash_func(mfmStreamFill)(MfmStream* s, uint16_t* out, int count)
         uint32_t ticks = (since + advance) * s->cellTicksQ16 + remainder;
         out[i++] = (uint16_t) ((ticks >> 16) - 1);      // PWM period is TOP + 1
         remainder = ticks & 0xffff;
+        left -= (int32_t) (ticks >> 16);
 
         since = 0;
         cells -= advance;
@@ -214,6 +217,29 @@ void __not_in_flash_func(mfmStreamFill)(MfmStream* s, uint16_t* out, int count)
     s->cells = cells;
     s->cellsSinceFlux = since;
     s->tickRemainder = remainder;
+    *ticksLeft = left;
+
+    return i;
+}
+
+void __not_in_flash_func(mfmStreamFill)(MfmStream* s, uint16_t* out, int count)
+{
+    int32_t ticks = INT32_MAX;
+    mfmStreamFillTicks(s, out, count, &ticks);
+}
+
+int __not_in_flash_func(mfmStreamFillerTicks)(uint16_t* out, int count, int32_t* ticksLeft)
+{
+    int32_t left = *ticksLeft;
+    int i = 0;
+
+    while(i < count && left > 0) {
+        out[i++] = fillerTop;
+        left -= fillerTop + 1;
+    }
+
+    *ticksLeft = left;
+    return i;
 }
 
 // Goes through the stream the same way as streaming it, just without making the intervals. Position is found by time,

@@ -48,6 +48,11 @@ typedef struct {
 void mfmStreamGlobalInit(uint32_t pwmClockHz);                                      // PWM runs at this clock with divider 1
 void mfmStreamStart(MfmStream* s, const uint8_t* track, uint32_t trackBufferSize);  // from the track start
 void mfmStreamFill(MfmStream* s, uint16_t* out, int count);                         // next 'count' PWM TOP values
+
+// The same, but stops also when the PWM ticks of the made intervals used up *ticksLeft (the last interval can go over it,
+// *ticksLeft is negative then). Returns how many values it made.
+int  mfmStreamFillTicks(MfmStream* s, uint16_t* out, int count, int32_t* ticksLeft);
+int  mfmStreamFillerTicks(uint16_t* out, int count, int32_t* ticksLeft);            // 4 us intervals, the same way
 void mfmStreamSeek(MfmStream* s, uint32_t timeUs);                                  // after mfmStreamStart: skip to this time after track start
 void mfmStreamFiller(uint16_t* out, int count);                                     // PWM TOP values of 4 us intervals
 

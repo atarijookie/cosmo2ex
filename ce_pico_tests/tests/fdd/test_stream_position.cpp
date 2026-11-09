@@ -22,13 +22,15 @@ extern TDrivePosition posStreamed, hwPosition;
 extern volatile uint32_t lastStepTime;
 extern MfmStream mfmStream;
 extern volatile bool streamValid;
-extern volatile bool trackRestart;
 extern volatile int streamSide;
-extern volatile uint32_t timeTrackStartUs;
+extern uint64_t nextRotationStartUs;
+extern uint64_t streamResumeUs;
+extern uint32_t rotationNo;
+extern uint32_t halfTicks[2];
 
 namespace {
 
-const int SEEK_TIME_MS = 3;                 // the stream continues this far ahead, as the seek takes about that long
+const int SEEK_TIME_MS = 4;                 // the stream continues this far ahead, as the seek takes about that long
 
 struct StreamPositionFixture {
     std::vector<uint8_t> side0 = buildTestTrack(5, 0, 9);
@@ -41,14 +43,19 @@ struct StreamPositionFixture {
         memcpy(trackData1, side1.data(), READTRACKDATA_SIZE_BYTES);
         fakeGpioLevel[PIN_SIDE1] = true;        // side 0
         mfmStream = MfmStream();
-        trackRestart = false;
         streamValid = false;
         streamSide = 0;
+        streamResumeUs = 0;
+        halfTicks[0] = halfTicks[1] = 0;
     }
 
     void seekAt(uint32_t msSinceTrackStart) {
-        timeTrackStartUs = (fakeNowMs - msSinceTrackStart) * 1000;
+        nextRotationStartUs = (fakeNowMs + 200 - msSinceTrackStart) * 1000ull;
         seekStreamToCurrentAngle();
+    }
+
+    void refill(void) {
+        fillHalfMfmBuffer(FILL_LOWER, fakeNowMs * 1000ull);
     }
 
     bool lowerHalfIsFiller(void) {
@@ -80,7 +87,7 @@ TEST_CASE_FIXTURE(StreamPositionFixture, "stream continues where the disk is now
 TEST_CASE_FIXTURE(StreamPositionFixture, "at the very start of the track - before the first sector mark") {
     seekAt(0);
     CHECK(streamValid);
-    CHECK(mfmStream.pos < 150);             // 3 ms = 94 data bytes, plus the header and the mark
+    CHECK(mfmStream.pos < 170);             // 4 ms = 125 data bytes, plus the header and the mark
 }
 
 TEST_CASE_FIXTURE(StreamPositionFixture, "side 1 - taken from the side 1 track") {
@@ -100,8 +107,8 @@ TEST_CASE_FIXTURE(StreamPositionFixture, "past the end of the track data - fille
     CHECK(streamValid);
     CHECK(mfmStream.ended);
 
-    fillHalfMfmBuffer(FILL_LOWER);
-    fillHalfMfmBuffer(FILL_LOWER);          // the first one may join to the previous flux
+    refill();
+    refill();          // the first one may join to the previous flux
     CHECK(lowerHalfIsFiller());
 }
 
@@ -111,8 +118,8 @@ TEST_CASE_FIXTURE(StreamPositionFixture, "nothing valid in the track (not receiv
     seekAt(40);
 
     CHECK(mfmStream.ended);
-    fillHalfMfmBuffer(FILL_LOWER);
-    fillHalfMfmBuffer(FILL_LOWER);
+    refill();
+    refill();
     CHECK(lowerHalfIsFiller());
 }
 
@@ -120,7 +127,7 @@ TEST_CASE_FIXTURE(StreamPositionFixture, "not streaming from an invalid position
     streamValid = false;
     mfmBuffer[0] = 1;
 
-    fillHalfMfmBuffer(FILL_LOWER);
+    refill();
 
     CHECK(lowerHalfIsFiller());
 }
@@ -129,11 +136,11 @@ TEST_CASE_FIXTURE(StreamPositionFixture, "side change: the refill stops using th
     seekAt(50);
     REQUIRE(streamValid);
     uint8_t sector = mfmStream.sector;
-    fillHalfMfmBuffer(FILL_LOWER);
+    refill();
     CHECK_FALSE(lowerHalfIsFiller());
 
     fakeGpioLevel[PIN_SIDE1] = false;       // side 1 now, main loop didn't notice it yet
-    fillHalfMfmBuffer(FILL_LOWER);
+    refill();
     CHECK_FALSE(streamValid);
     CHECK(lowerHalfIsFiller());
 
@@ -144,33 +151,53 @@ TEST_CASE_FIXTURE(StreamPositionFixture, "side change: the refill stops using th
     CHECK(mfmStream.sector == sector);
 }
 
-TEST_CASE_FIXTURE(StreamPositionFixture, "new rotation: the refill starts at the track start, not where the seek got") {
-    seekAt(150);
-    REQUIRE(streamValid);
+TEST_CASE_FIXTURE(StreamPositionFixture, "too close to the end of the rotation: no position, the refill starts the track when it comes") {
+    seekAt(198);
 
-    trackRestart = true;                    // the rotation alarm came
-    fillHalfMfmBuffer(FILL_LOWER);
+    CHECK_FALSE(streamValid);
+    CHECK(streamResumeUs == 0);
 
-    CHECK_FALSE(trackRestart);
+    refill();                               // 2 ms of filler, then the track from its start
+
     CHECK(streamValid);
-    CHECK(mfmStream.pos < 300);             // from the start of the track, not from where it was
+    CHECK(mfmStream.pos < 300);
 }
 
-TEST_CASE_FIXTURE(StreamPositionFixture, "track restart while on the other side - starts on the current side") {
+TEST_CASE_FIXTURE(StreamPositionFixture, "new rotation while on the other side - starts on the current side") {
     fakeGpioLevel[PIN_SIDE1] = false;
-    trackRestart = true;
+    nextRotationStartUs = fakeNowMs * 1000ull + 100;
 
-    fillHalfMfmBuffer(FILL_LOWER);
+    refill();
 
     CHECK(streamValid);
     CHECK(streamSide == 1);
     CHECK(mfmStream.track == trackData1);
 }
 
+TEST_CASE_FIXTURE(StreamPositionFixture, "the time of the found position counts in what the ring still has to play") {
+    halfTicks[0] = 1024 * 600;              // 4.096 ms each
+    halfTicks[1] = 1024 * 600;
+
+    seekAt(60);
+
+    CHECK(streamValid);
+    CHECK(streamResumeUs == fakeNowMs * 1000ull + 4000 + 8192);
+}
+
+TEST_CASE_FIXTURE(StreamPositionFixture, "rotations went on while stepping and loading: position in the rotation of now") {
+    nextRotationStartUs = (fakeNowMs - 450) * 1000ull;      // 650 ms ago was its start: it's 50 ms into the rotation now
+
+    seekStreamToCurrentAngle();
+
+    CHECK(nextRotationStartUs == (fakeNowMs + 150) * 1000ull);
+    CHECK(streamValid);
+    CHECK(mfmStream.sector == 3);           // 54 ms
+}
+
 TEST_CASE_FIXTURE(StreamPositionFixture, "refill passes the sector being streamed on as posStreamed") {
     posStreamed.sector = 0;
     seekAt(25);
-    fillHalfMfmBuffer(FILL_LOWER);
+    refill();
 
     CHECK(posStreamed.track == 5);
     CHECK(posStreamed.side == 0);
@@ -185,7 +212,7 @@ TEST_CASE_FIXTURE(StreamPositionFixture, "main loop: after a step the track from
     memset(trackData1, 0, READTRACKDATA_SIZE_BYTES);
     hwPosition.track = 5;
 
-    timeTrackStartUs = (fakeNowMs - 60) * 1000;
+    nextRotationStartUs = (fakeNowMs + 140) * 1000ull;     // 60 ms into the rotation
     lastStepTime = fakeNowMs;
     core1Loop();                            // stepping
     fakeNowMs += 20;
@@ -193,7 +220,7 @@ TEST_CASE_FIXTURE(StreamPositionFixture, "main loop: after a step the track from
 
     CHECK(streamValid);
     CHECK(memcmp(trackData0, side0.data(), READTRACKDATA_SIZE_BYTES) == 0);
-    CHECK(mfmStream.sector == 5);           // 60 + 20 ms + seek time = 83 ms: sector 5 starts at 1.9 + 4 * 19.65 = 80.5 ms
+    CHECK(mfmStream.sector == 5);           // 60 + 20 ms + seek time + 2 halves of filler = 92 ms: sector 5 is 80.5 - 100 ms
     CHECK(mfmStream.side == 0);
 
     fakeGpioLevel[PIN_SIDE1] = false;       // side 1

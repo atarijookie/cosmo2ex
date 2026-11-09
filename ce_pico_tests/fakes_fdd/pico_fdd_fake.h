@@ -28,6 +28,8 @@ absolute_time_t get_absolute_time(void);
 uint32_t millis(void);      // arduino core in the firmware - from the fake clock here
 extern uint32_t fakeNowMs;
 inline uint32_t time_us_32(void) { return fakeNowMs * 1000; }      // no side effects, unlike the time reads above
+inline uint64_t time_us_64(void) { return ((uint64_t) fakeNowMs) * 1000; }
+inline absolute_time_t from_us_since_boot(uint64_t us) { return us; }
 
 enum clock_index { clk_sys = 5 };
 inline uint32_t clock_get_hz(clock_index) { return 150000000; }
@@ -41,6 +43,10 @@ typedef int64_t (*alarm_callback_t)(alarm_id_t id, void *user_data);
 typedef struct FakeAlarmPool alarm_pool_t;
 alarm_pool_t *alarm_pool_create_with_unused_hardware_alarm(uint max_timers);
 alarm_id_t alarm_pool_add_alarm_in_us(alarm_pool_t *pool, uint64_t us, alarm_callback_t callback, void *user_data, bool fire_if_past);
+inline alarm_id_t alarm_pool_add_alarm_at(alarm_pool_t *pool, absolute_time_t at, alarm_callback_t callback, void *user_data, bool fire_if_past) {
+    uint64_t now = time_us_64();
+    return alarm_pool_add_alarm_in_us(pool, (at > now) ? (at - now) : 0, callback, user_data, fire_if_past);
+}
 
 //--------------------------------------------------------
 // gpio - levels in fakeGpioLevel[], gpio_put on the PSRAM CS pin also drives the fake PSRAM

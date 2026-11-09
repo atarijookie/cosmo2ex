@@ -28,8 +28,11 @@ extern uint8_t trackData0[READTRACKDATA_SIZE_BYTES];
 extern uint8_t trackData1[READTRACKDATA_SIZE_BYTES];
 extern uint8_t imgSectorsPerTrack;
 
-extern volatile bool trackRestart;                      // core1_main.cpp - the next refill starts at the track start
-extern volatile bool streamValid;
+extern volatile bool streamValid;                       // core1_main.cpp - the stream position is valid
+extern volatile int streamSide;
+extern MfmStream mfmStream;
+extern uint64_t nextRotationStartUs;
+extern uint64_t streamResumeUs;
 extern volatile IPCbuffer* wrBuffer;                    // core1_main.cpp - buffer the write IRQ appends to
 
 extern volatile uint8_t wrStreamByte;                   // mfm_write.cpp - byte packing of the captured symbols
@@ -40,6 +43,7 @@ extern volatile uint32_t wrWritesDropped;               // core1_main.cpp - writ
 
 namespace {
 
+const uint64_t TEST_REFILL_TIME_US = 1000000;
 const int READ_AHEAD_MIN_BYTES = 256;       // stream read ahead of the output: at least one DMA ring half, in captured symbol bytes (4 intervals)
 
 std::vector<uint8_t> buildEncodedTrack(int track, int side, int spt)
@@ -142,17 +146,21 @@ std::vector<uint8_t> takeWrittenData(void)
 void streamOn(int bytes)
 {
     for(int done = 0; done < bytes; done += READ_AHEAD_MIN_BYTES) {
-        fillHalfMfmBuffer(FILL_LOWER);
+        fillHalfMfmBuffer(FILL_LOWER, TEST_REFILL_TIME_US);
     }
 }
 
 // the ST reads the header of this sector now
 void streamToSector(int sector)
 {
-    trackRestart = true;
+    streamSide = BIT_IS_H(PIN_SIDE1) ? 0 : 1;
+    mfmStreamStart(&mfmStream, (streamSide == 0) ? trackData0 : trackData1, READTRACKDATA_SIZE_BYTES);
+    streamValid = true;
+    streamResumeUs = 0;
+    nextRotationStartUs = TEST_REFILL_TIME_US + 200000;     // the refill is told the same time always, so no new rotation comes
 
     for(int i = 0; i < 100 && (i == 0 || posStreamed.sector != sector); i++) {
-        fillHalfMfmBuffer(FILL_LOWER);
+        fillHalfMfmBuffer(FILL_LOWER, TEST_REFILL_TIME_US);
     }
 
     REQUIRE(posStreamed.sector == sector);
