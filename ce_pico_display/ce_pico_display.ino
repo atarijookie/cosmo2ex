@@ -10,8 +10,10 @@
 #include "keys.h"
 #include "screen.h"
 #include "settings.h"
+#include "status_led.h"
 
 static bool hasEncoder;
+static bool firstDrawn;                 // the LED turns green after the first screen
 
 static LineReceiver rxUart;
 static LineReceiver rxUsb;
@@ -126,8 +128,22 @@ static void handleEncoder(uint32_t now)
     }
 }
 
+// shown until the FDD sends its screen
+static void showSplash(uint32_t now)
+{
+    screenSetLine(0, JUSTIFY_CENTER, TEXT_DOUBLE | TEXT_BOLD, "COSMO2EX", now);
+    screenSetLine(2, JUSTIFY_CENTER, 0, "waiting for FDD...", now);
+
+    char info[32];
+    snprintf(info, sizeof(info), "panel %s, %s", PANEL_FW_VERSION, hasEncoder ? "encoder" : "buttons");
+    screenSetLine(3, JUSTIFY_CENTER, 0, info, now);
+}
+
 void setup(void)
 {
+    ledInit();
+    ledSet(LED_ORANGE);
+
     pinMode(PIN_STRAP_ENCODER, INPUT_PULLUP);
     pinMode(PIN_BTN_LEFT, INPUT_PULLUP);
     pinMode(PIN_BTN_ENTER, INPUT_PULLUP);
@@ -145,6 +161,7 @@ void setup(void)
     settingsInit();
     screenInit();
     screenSetFlipped(settingsFlipped(), millis());
+    showSplash(millis());
 
     if(hasEncoder) {
         attachInterrupt(digitalPinToInterrupt(PIN_BTN_LEFT), encoderIsr, CHANGE);
@@ -169,5 +186,8 @@ void loop(void)
     }
     handleKey(keyEnter, PIN_BTN_ENTER, 'E', now);       // button or encoder push
 
-    screenLoop(now);
+    if(screenLoop(now) && !firstDrawn) {
+        firstDrawn = true;
+        ledSet(LED_GREEN);
+    }
 }

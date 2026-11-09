@@ -62,6 +62,9 @@ The key events (`KES`, `KLH`, ...) and the `I...` answer show up in the terminal
 - another display: change the U8g2 constructor, the fonts and LINE_HEIGHT in screen.cpp - the FDD adapts to the lines
   and columns the panel reports in its `I` message
 - strap (read at start): GP29 to GND = rotary encoder instead of the buttons
+- at start it shows COSMO2EX / waiting for FDD... until the FDD sends its screen
+- neopixel on the board (GP16): orange during setup, green once the first screen was drawn. If the colors look
+  swapped (green during setup), set NEOPIXEL_RGB in defs.h - some RP2040-Zero boards have an RGB order LED
 - screen orientation: upside down by default (how the encoder panel is mounted); hold enter (button or encoder push)
   for 10 s to flip it - it turns right away and is stored in the emulated EEPROM (last flash sector, settings.cpp).
   The long press at 1 s is still sent to the FDD on the way (starts / leaves the WiFi setup), so a press of enter

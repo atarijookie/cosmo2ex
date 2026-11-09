@@ -270,8 +270,10 @@ static bool scroll(uint32_t now)
     return moved;
 }
 
-void screenLoop(uint32_t now)
+bool screenLoop(uint32_t now)
 {
+    bool drawn = false;
+
     if(scroll(now)) {
         dirty = true;
     }
@@ -279,10 +281,13 @@ void screenLoop(uint32_t now)
     if(dirty && now - lastChange >= REDRAW_DELAY_MS) {
         dirty = false;
         draw();
+        drawn = true;
     }
 
     if(!dimmed && now - lastActivity >= DIM_AFTER_MS) {
         dimmed = true;
         u8g2.setContrast(DIM_CONTRAST);
     }
+
+    return drawn;
 }

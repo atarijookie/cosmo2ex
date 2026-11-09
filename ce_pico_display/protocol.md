@@ -118,9 +118,9 @@ won't flicker.
 - `lines` - text lines in normal size (e.g. `4` on the 128x32 OLED, `1` on a 12x1 display)
 - `cols` / `cols2` - chars per line in normal / double size
 - `caps` - capability letters: `E` encoder (otherwise buttons), `S` supports scroll, `D` supports brightness
-- `fwver` - panel firmware version, e.g. `0.1`
+- `fwver` - panel firmware version, e.g. `1.0`
 
-Example: `I1,4,25,18,SD,0.1` (0.91" 128x32 OLED: 4 lines of 25 chars, 18 in double size)
+Example: `I1,4,25,18,SD,1.0` (0.91" 128x32 OLED: 4 lines of 25 chars, 18 in double size)
 
 `K` events:
 

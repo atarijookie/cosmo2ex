@@ -15,6 +15,6 @@ void screenSetBrightness(uint8_t value, uint32_t now);
 void screenSetFlipped(bool flipped, uint32_t now);  // upside down or not - redrawn right away
 void screenActivity(uint32_t now);      // key press - restores the brightness after dimming
 
-void screenLoop(uint32_t now);          // redraws, scrolls and dims
+bool screenLoop(uint32_t now);          // redraws, scrolls and dims - true if it drew the screen
 
 #endif

@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-#define PANEL_FW_VERSION    "0.1"
+#define PANEL_FW_VERSION    "1.0"
 #define PROTOCOL_VERSION    1
 
 // RP2040-Zero pins, see protocol.md
@@ -15,6 +15,9 @@
 #define PIN_BTN_ENTER       27      // also encoder push
 #define PIN_BTN_RIGHT       28      // also encoder B
 #define PIN_STRAP_ENCODER   29      // open = 3 buttons, GND = rotary encoder
+#define PIN_NEOPIXEL        16      // WS2812 on the RP2040-Zero board
+
+#define NEOPIXEL_RGB        0       // 0 = GRB (WS2812 standard), 1 = RGB - if orange / green show swapped on your board
 
 #define UART_BAUD           115200
 
