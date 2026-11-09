@@ -18,4 +18,12 @@ void pio_mfm_write_setup(void);
 void mfmWriteCaptureStart(void);
 void mfmWriteCaptureEnd(void);
 
+#define MFM_DAM_MARK    0xfb
+#define MFM_ID_MARK     0xfe
+
+#define MFM_DECODE_FAILED   0
+#define MFM_DECODE_SECTOR   1       // run holds DAM, data, CRC
+#define MFM_DECODE_FORMAT   2       // ID mark instead of data mark - FORMAT TRACK
+
+int mfmDecodeWrittenSector(const uint8_t* symbols, int length, uint8_t* run);   // run: MFM_SECTOR_RUN_SIZE bytes
 void storeWrittenSectorDataToTrackLocally(uint8_t side, uint8_t track, uint8_t sector, uint8_t* bfr, int len);

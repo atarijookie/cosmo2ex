@@ -4,6 +4,9 @@
 #include <cstdint>
 
 #define DEBUG_STRINGS   1       // debug() on GP0 (TX0), 115200 baud; 0 = no output, see debug() in utils.cpp
+#ifndef MFM_PERF_TEST
+#define MFM_PERF_TEST   0       // 1 = track stream timing test next to the real stream, results in the debug log every 5 s, see mfm_perf.h
+#endif
 #define FDD_STATUS_LOG  0       // 1 = floppy status in the debug log once a second while the ST uses the drive, see core1StatusReport()
 
 #ifndef TRUE
@@ -49,16 +52,13 @@
 #define CMD_WRITE_PROTECT_ON        0x20
 #define CMD_DISK_CHANGE_OFF         0x30
 #define CMD_DISK_CHANGE_ON          0x40
-#define CMD_CURRENT_SECTOR          0x50                            // followed by sector #
 #define CMD_GET_FW_VERSION          0x60
 #define CMD_SET_DRIVE_ID_0          0x70
 #define CMD_SET_DRIVE_ID_1          0x80
 #define CMD_CURRENT_TRACK           0x90                            // followed by track #
 #define CMD_DRIVE_ENABLED           0xa0
 #define CMD_DRIVE_DISABLED          0xb0
-#define CMD_DATA_PART_OF_SECTOR     0xc0
 
-#define CMD_TRACK_STREAM_END        0xF0                            // this is the mark in the track stream that we shouldn't go any further in the stream
 
 ///////////////////////////
 
@@ -117,16 +117,9 @@ typedef struct {
 #define MAX_TRACKS                  90
 #define MAX_SECTORS_PER_TRACK       11
 
-#define ENCODED_SECTOR_MAX_SIZE     1200    // the mfm encoded sector - header + gaps + markers + data - should not exceed this size. Using fixed size to simplify sector write to memory in device.
-
 #define IMAGE_NOT_LOADED    0
 #define IMAGE_REQUESTED     1
 #define IMAGE_LOADED        2
-
-#define STREAM_TABLE_ITEMS  20
-#define STREAM_TABLE_SIZE   STREAM_TABLE_ITEMS
-
-#define STREAM_START_OFFSET STREAM_TABLE_SIZE
 
 #define TAG_WRITE_START 0x80    // start of sector data - sent from MFM streamer
 #define TAG_WRITE_END   0xc0    // end of sector data - sent from MFM streamer

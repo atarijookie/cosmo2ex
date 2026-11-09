@@ -1,6 +1,8 @@
 #ifndef __CORE1_MAIN_H__
 #define __CORE1_MAIN_H__
 
+#include <cstdint>
+
 #define FILL_NONE   0
 #define FILL_LOWER  1
 #define FILL_UPPER  2
@@ -10,7 +12,9 @@ extern volatile uint8_t fillWhat;
 void setupPwmOutput(void);
 void setupDmaToPwm(void);
 
-void fillHalfMfmBuffer(void);
+void fillHalfMfmBuffer(uint8_t what);
+void clearMfmBuffer(void);
+void seekStreamToCurrentAngle(void);    // core1 main loop - the stream continues where the disk is now
 
 struct IPCbuffer;
 void storeReceivedTrack(IPCbuffer* bfr);

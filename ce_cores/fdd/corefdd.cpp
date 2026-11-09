@@ -300,8 +300,7 @@ void CoreFdd::handleSendTrack(ClientInfo* ci)
     if(side < 0 || side > 1 || track < 0 || track >= tr) {      // side / track out of range? use empty track
         logFdd(LOG_ERROR, "handleSendTrack() -- side / track out of range, returning empty track. Franz wants: [track %d, side %d], but current image has %d tracks, %d sides, %d sectors/track", track, side, tr, si, spt);
 
-        encodedTrack = imageSilo->getEmptyTrack();
-        countInTrack = MFM_STREAM_SIZE;
+        encodedTrack = imageSilo->getEmptyTrack(track, side, countInTrack);
     } else {                                                    // side + track within range? use encoded track
         logFdd(LOG_DEBUG, "handleSendTrack() -- Franz wants: [track %d, side %d]", track, side);
 
@@ -332,6 +331,15 @@ void CoreFdd::handleSendImageToClient(ClientInfo* client)
             // logFdd(LOG_DEBUG, "handleSendImage -- sending track %d, side %d, countInTrack: %d", track, side, countInTrack);
             encodedTrack = imageSilo->getEncodedTrack(client->floppySlotIndex, track, side, countInTrack);
             countInTrack = MIN(countInTrack, MFM_STREAM_SIZE);
+            ciFdd->fdd_sendTrackToChip(client->fdClient, countInTrack, encodedTrack);
+        }
+    }
+
+    // The device keeps tracks in PSRAM until they get overwritten. So a side this image doesn't have gets empty tracks,
+    // otherwise reading it would give the tracks of the previous image.
+    for(int side=imgSides; imgTracks > 0 && side<2; side++) {
+        for(int track=0; track<imgTracks; track++) {
+            encodedTrack = imageSilo->getEmptyTrack(track, side, countInTrack);
             ciFdd->fdd_sendTrackToChip(client->fdClient, countInTrack, encodedTrack);
         }
     }

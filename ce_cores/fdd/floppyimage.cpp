@@ -22,6 +22,7 @@ FloppyImage::FloppyImage()
     params.sectorsPerTrack  = 0;
 
     fajl = NULL;                            // no file open yet - close() checks this
+    fileState.known = false;
 
     image.data = NULL;
     image.size = 0;
@@ -172,7 +173,34 @@ bool FloppyImage::open(const char *fileName)
         return false;
     }
 
+    rememberFileState();
+
     return true;
+}
+
+void FloppyImage::rememberFileState(void)
+{
+    struct stat st;
+
+    fileState.known = (stat(currentFileName.c_str(), &st) == 0);
+
+    if(fileState.known) {
+        fileState.mtime = st.st_mtime;
+        fileState.size  = st.st_size;
+        fileState.inode = st.st_ino;
+    }
+}
+
+// A deleted file doesn't count: there's nothing to lose, saving just makes it again.
+bool FloppyImage::fileChangedOnDisk(void)
+{
+    struct stat st;
+
+    if(!fileState.known || stat(currentFileName.c_str(), &st) != 0) {
+        return false;
+    }
+
+    return st.st_mtime != fileState.mtime || st.st_size != fileState.size || st.st_ino != fileState.inode;
 }
 
 bool FloppyImage::loadImageIntoMemory(void)

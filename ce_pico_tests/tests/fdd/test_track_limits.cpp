@@ -55,7 +55,7 @@ TEST_CASE("track beyond the last one is not stored to PSRAM") {
     std::vector<uint8_t> bad(READTRACKDATA_SIZE_BYTES, 0xaa);
     psramStoreTrack(MAX_TRACKS, 0, bad.data());
     psramStoreTrack(MAX_TRACKS + 5, 1, bad.data());
-    psramStoreSector(MAX_TRACKS + 5, 1, 1000, bad.data(), 500, 100);
+    psramStoreSector(MAX_TRACKS + 5, 1, 1000, bad.data(), 500);
 
     CHECK(fakePsram == before);                    // track 89 not overwritten, nothing beyond the track area written
     CHECK(psramTrack(MAX_TRACKS - 1, 1) == last);

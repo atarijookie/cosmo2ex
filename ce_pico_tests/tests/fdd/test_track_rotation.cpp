@@ -11,8 +11,8 @@
 #include "defs.h"
 #include "core1_main.h"
 
-extern uint32_t dataIndexInTrack;           // core1_main.cpp - read index in the streamed track
-extern volatile uint32_t timeTrackStart;
+extern volatile bool trackRestart;          // core1_main.cpp - the next refill starts at the track start
+extern volatile uint32_t timeTrackStartUs;
 
 namespace {
 
@@ -54,15 +54,15 @@ TEST_CASE_FIXTURE(RotationFixture, "INDEX is low for the last 5 ms of every 200 
 
 TEST_CASE_FIXTURE(RotationFixture, "stream restarts at the track start when INDEX goes high") {
     sleep_ms(100);
-    dataIndexInTrack = 5000;            // somewhere in the middle of the track
+    trackRestart = false;               // the refill took the restart from the setup
 
     sleep_ms(99);                       // 199 ms - INDEX pulse, still the same rotation
-    CHECK(dataIndexInTrack == 5000);
+    CHECK_FALSE(trackRestart);
     CHECK(fakeGpioLevel[PIN_INDEX] == false);
 
     sleep_ms(1);                        // 200 ms - next rotation
-    CHECK(dataIndexInTrack == STREAM_START_OFFSET);
-    CHECK(timeTrackStart == start + 200);
+    CHECK(trackRestart);
+    CHECK(timeTrackStartUs == (start + 200) * 1000);
     CHECK(fakeGpioLevel[PIN_INDEX] == true);
 }
 
@@ -73,18 +73,19 @@ TEST_CASE_FIXTURE(RotationFixture, "rotations don't drift - 50th rotation starts
     }
     get_absolute_time();
 
-    CHECK(timeTrackStart == start + 50 * 200);
+    CHECK(timeTrackStartUs == (start + 50 * 200) * 1000);
 }
 
 TEST_CASE_FIXTURE(RotationFixture, "track restart that came while interrupts were disabled is handled when they are enabled again") {
     sleep_ms(198);
+    trackRestart = false;
     uint32_t irqState = save_and_disable_interrupts();
     sleep_ms(3);                        // 201 ms - restart due, but the IRQ waits
     CHECK(fakeGpioLevel[PIN_INDEX] == false);
     restore_interrupts(irqState);
 
     CHECK(fakeGpioLevel[PIN_INDEX] == true);
-    CHECK(dataIndexInTrack == STREAM_START_OFFSET);
+    CHECK(trackRestart);
 
     for (int ms = 0; ms < 195; ms++) {  // next INDEX pulse still on the 200 ms grid, not shifted by the late IRQ
         sleep_ms(1);

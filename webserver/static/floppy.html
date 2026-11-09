@@ -68,6 +68,8 @@
 
           var dirRequestNo = 0;   // only the answer to the last request is shown - typing in search sends many
           var searchTimer = null;
+          var folderSelectMode = false;   // the selector picks a folder for a new image, not a file
+          var newImageFolder = "";
 
           // going into another folder - without the search of the previous one
           function openDir(new_path) {
@@ -132,16 +134,18 @@
                 files.forEach(item => {
                   var fullpath = (new_path == "/") ? ("/" + item) : (new_path + "/" + item);
                   const div = document.createElement('div');
-                  div.className = 'item';
+                  div.className = folderSelectMode ? 'item item-only-shown' : 'item';
                   div.textContent = item;
-                  div.onclick = () => onFileSelected(fullpath);
+                  if (!folderSelectMode) {
+                    div.onclick = () => onFileSelected(fullpath);
+                  }
                   itemList.appendChild(div);
                 });
 
                 // the inserted image is in this folder - select it and scroll to it, otherwise start at the top
                 var current = splitPath(currentImagePath);
                 var currentItem = null;
-                if (current.dir == new_path && files.indexOf(current.name) >= 0) {
+                if (!folderSelectMode && current.dir == new_path && files.indexOf(current.name) >= 0) {
                   selectedFile = currentImagePath;
                   currentItem = selectByText(selectedFile, true);
                 }
@@ -185,7 +189,13 @@
           function openSelector() {
             var info = splitPath(currentImagePath);
             dir = info.dir || defaultDir || "/home";
-            openDir(dir);
+            showSelector(false, dir);
+          }
+
+          function showSelector(forFolder, startDir) {
+            folderSelectMode = forFolder;
+            document.getElementById('selector-ok').textContent = forFolder ? 'Use this folder' : 'OK';
+            openDir(startDir);
             var overlay = document.getElementsByClassName('container-file-selector')[0];
             if (overlay) { overlay.style.display = 'flex'; }
             $("[name=file-selector]").show();
@@ -204,13 +214,23 @@
             openDir(new_path);
           }
 
-          function onSelectorCancel() {
+          function hideSelector() {
             $("[name=file-selector]").hide();
             var overlay = document.getElementsByClassName('container-file-selector')[0];
             if (overlay) { overlay.style.display = 'none'; }
+            folderSelectMode = false;
+          }
+
+          function onSelectorCancel() {
+            hideSelector();
           }
 
           function onSelectorOK() {
+            if (folderSelectMode) {
+              setNewImageFolder(dir);
+              hideSelector();
+              return;
+            }
             if (!selectedFile) {
               return;
             }
@@ -220,9 +240,76 @@
               return;
             }
             saveImage(selectedFile);
-            $("[name=file-selector]").hide();
-            var overlay = document.getElementsByClassName('container-file-selector')[0];
-            if (overlay) { overlay.style.display = 'none'; }
+            hideSelector();
+          }
+
+          // empty image - ready for the ST to use, without formatting it
+          function setNewImageFolder(path) {
+            newImageFolder = path;
+            document.getElementById('new-image-folder').textContent = path;
+          }
+
+          function openNewImageDialog() {
+            setNewImageFolder(splitPath(currentImagePath).dir || defaultDir || "/home");
+            document.getElementById('new-image-error').textContent = '';
+            document.getElementById('new-image-overlay').style.display = 'flex';
+            document.getElementById('new-image-name').focus();
+          }
+
+          function closeNewImageDialog() {
+            document.getElementById('new-image-overlay').style.display = 'none';
+          }
+
+          function createNewImage(overwrite) {
+            var mac = getURLParameter('mac');
+            var error = document.getElementById('new-image-error');
+            if (!mac) {
+              error.textContent = 'No MAC address specified';
+              return;
+            }
+            var insert = document.getElementById('new-image-insert').checked;
+            error.textContent = '';
+            fetch('/fdd/' + encodeURIComponent(mac) + '/image/new', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                dir: newImageFolder,
+                name: document.getElementById('new-image-name').value,
+                tracks: parseInt(document.getElementById('new-image-tracks').value, 10),
+                sectors: parseInt(document.getElementById('new-image-sectors').value, 10),
+                sides: parseInt(document.getElementById('new-image-sides').value, 10),
+                insert: insert,
+                overwrite: overwrite === true
+              })
+            }).then(function(res) {
+              if (res.status == 409) {      // exists - maybe it should be overwritten with an empty one, e.g. during tests
+                return res.text().then(function(t) {
+                  if (confirm(t.trim() + '\n\nOverwrite it? Everything in it will be lost.')) {
+                    createNewImage(true);
+                  }
+                  return null;
+                });
+              }
+              if (!res.ok) {
+                return res.text().then(function(t) { throw new Error(t.trim() || ('POST failed ' + res.status)); });
+              }
+              return res.json();
+            }).then(function(data) {
+              if (!data) {                  // not overwritten, or the second try handled it
+                return;
+              }
+              closeNewImageDialog();
+              if (insert) {
+                updateDisplay(data.image);
+              }
+              var created = document.getElementById('new-image-created');
+              created.textContent = 'created: ' + data.image;
+              created.style.display = 'block';
+              setTimeout(function() { created.style.display = 'none'; }, 5000);
+            }).catch(function(err) {
+              console.log('Error creating image:', err);
+              error.textContent = err.message;
+            });
           }
 
           function saveImage(path) {
@@ -293,6 +380,10 @@
             var ejectBtn = document.getElementById('eject-image');
             if (ejectBtn) {
               ejectBtn.onclick = ejectImage;
+            }
+            var newBtn = document.getElementById('new-image');
+            if (newBtn) {
+              newBtn.onclick = openNewImageDialog;
             }
             var prevBtn = document.getElementById('prev-image');
             if (prevBtn) {
@@ -418,7 +509,7 @@
             position: relative;
           }
 
-          .container-file-selector {
+          .container-file-selector, #new-image-overlay {
             z-index: 1000;
             position: fixed;
             top: 0;
@@ -494,6 +585,59 @@
 
           .item:hover {
             background-color: #f9f9f9;
+          }
+
+          .item-only-shown {
+            color: #999;
+            cursor: default;
+          }
+
+          .new-image-dialog {
+            width: 400px;
+            max-width: 90vw;
+            padding: 16px;
+            box-sizing: border-box;
+            background: white;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+          }
+
+          .new-image-dialog label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+          }
+
+          .new-image-dialog label > span {
+            width: 70px;
+            flex-shrink: 0;
+          }
+
+          .new-image-dialog select, .new-image-dialog input[type=text] {
+            flex-grow: 1;
+            min-width: 0;
+            box-sizing: border-box;
+            margin: 0;
+            height: auto;
+            padding: 6px 8px;
+          }
+
+          #new-image-folder {
+            flex-grow: 1;
+            min-width: 0;
+            font-size: 14px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          #new-image-error {
+            color: #c00;
+            font-size: 14px;
           }
 
           .bottom-bar {
@@ -580,6 +724,10 @@
               <div style="display: flex; align-items: center; justify-content: center;">
                 <button id="eject-image" style="padding: 10px 18px; font-size: 16px; min-width: 90px;">Eject</button>
               </div>
+              <div style="display: flex; align-items: center; justify-content: center;">
+                <button id="new-image" style="padding: 10px 18px; font-size: 16px; min-width: 90px;">Create empty image</button>
+              </div>
+              <div id="new-image-created" style="display: none; color: #3baf16; font-size: 14px; word-break: break-all;"></div>
             </div>
           </div>
         </div>
@@ -599,6 +747,44 @@
         </div>
     </div>
 
+    <div id="new-image-overlay">
+      <div class="new-image-dialog">
+        <strong>Create empty image (.st)</strong>
+        <label><span>Tracks</span>
+          <select id="new-image-tracks">
+            <option selected>80</option><option>81</option>
+          </select>
+        </label>
+        <label><span>Sectors</span>
+          <select id="new-image-sectors">
+            <option>8</option><option selected>9</option><option>10</option><option>11</option>
+          </select>
+        </label>
+        <label><span>Sides</span>
+          <select id="new-image-sides">
+            <option>1</option><option selected>2</option>
+          </select>
+        </label>
+        <label><span>File name</span>
+          <input type="text" id="new-image-name" value="empty.st" autocomplete="off">
+        </label>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 70px; flex-shrink: 0;">Folder</span>
+          <div id="new-image-folder"></div>
+          <button onclick="showSelector(true, newImageFolder)">Browse</button>
+        </div>
+        <label>
+          <input type="checkbox" id="new-image-insert" checked style="margin: 0;">
+          Insert after create
+        </label>
+        <div id="new-image-error"></div>
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button onclick="closeNewImageDialog()">Cancel</button>
+          <button onclick="createNewImage(false)">Create</button>
+        </div>
+      </div>
+    </div>
+
     <div class="container-file-selector">
       <div class="file-selector" name="file-selector">
         <div class="top-bar">
@@ -616,7 +802,7 @@
 
         <div class="bottom-bar">
           <button onclick="onSelectorCancel()">Cancel</button>
-          <button onclick="onSelectorOK()">OK</button>
+          <button id="selector-ok" onclick="onSelectorOK()">OK</button>
         </div>
       </div>
     </div>

@@ -1,42 +1,48 @@
-(first two bytes received via network are track # and side #, but they are ignored
-and not stored to psram, so the offsets below are without these 2 additional bytes at start)
+Track stream sent from ce_cores/fdd to the device and stored in PSRAM (one slot of 13800 B per track and side).
+ST, MSA and STX images all come in this form - the device knows nothing about image formats. The host lays out the track
+and calculates CRCs, the device does the MFM encoding while streaming (mfm_stream.cpp).
+
+The first two bytes received via network are track # and side #. They are not stored, so the longest stream is 13798 B,
+and the offsets below are without these 2 bytes.
 
 offset  |   what
 ---------------------------
- 0..1        byte offset to end of stream (no valid data beyong this point)
- 2..3        byte offset to sector 1
- 4..5        byte offset to sector 2
- 6..7        byte offset to sector 3
- 8..9        byte offset to sector 4
-10..11       byte offset to sector 5
-12..13       byte offset to sector 6
-14..15       byte offset to sector 7
-16..17       byte offset to sector 8
-18..19       byte offset to sector 9
-20..21       byte offset to sector 10
-22..39       not used (would be used if there would be more sectors)
+ 0..1        offset of the stream end (big endian)
+ 2           stream version (2) - the device streams nothing but the filler when this doesn't match
+ 3           reserved
+ 4..         stream
 
-(rest is encoded as mfm symbols, so there is no exact offset possible for the rest)
+Stream: data bytes, one byte = 8 data bits = 16 bit cells. F5 is the escape:
 
-60* 0x4e as mfm symbols
+ xx                  data byte (anything but F5)
+ F5 00               data byte F5
+ F5 A1               A1 with missing clock (0x4489)
+ F5 C2               C2 with missing clock (0x5224)
+ F5 10 hi lo         bit cell time in 1/16 ns, 32000 = 2 us (the default on each track start)
+ F5 20 n ...         n (0 = 256) * (data, mask): mask bit 1 keeps the data bit, 0 makes it random on every rotation
+ F5 40 s t n         side, track, sector of the sector following - position for the writes
+ F5 50 hi lo ...     raw run of hi lo data bytes, no escapes in it
+ F5 FF               end of stream; the device sends 4 us intervals until the track restarts
 
-sector - ENCODED_SECTOR_MAX_SIZE == 1200 B
-(this section repeats 8 or 9 or 10 times per track, based on sectors-per-track of the image)
+Anything unknown ends the stream too. There's no table of offsets: to find a position, the device goes through the stream
+and adds up the time (a data byte takes 16 cell times), which works for any layout.
+
+Track of an ST / MSA image (gaps in () are for 11 sectors per track, which need to be shorter to fit 6250 B = 200 ms):
+
+60 (10) * 4E
+sector - repeats for each sector
 [
-    CMD_CURRENT_SECTOR + side + track + sector
-    12* 0x00 as mfm symbols
-     3* A1 mark
-    ID_mark + track side sector size crc
-    22* 0x4e as mfm symbols
-
-    CMD_DATA_PART_OF_SECTOR
-    12* 0x00 as mfm symbols
-    DAM_mark
-    512* data bytes as mfm symbols
-    CRC
-     40* 0x4e as mfm symbols
-    raw zeros appended to 1200 B size
+    F5 40 side track sector
+    12 (3) * 00
+    3 * F5 A1
+    FE track side sector size crc crc
+    22 * 4E
+    12 * 00
+    3 * F5 A1
+    F5 50 02 03  FB + 512 data bytes + crc crc      <-- always this size, so a written sector is stored in place over it
+    40 (2) * 4E
 ]
+F5 FF
 
-CMD_TRACK_STREAM_END
-0
+Written sectors don't use this format: the device captures the intervals as 2-bit symbols (mfm_write.cpp) and sends them
+to the host as they are. It also decodes them itself into the raw run of the sector, so the ST can read it back right away.

@@ -14,6 +14,7 @@
 #include "utils.h"
 #include "psram.h"
 #include "ipc.h"
+#include "mfm_stream.h"
 
 static PIO pioMfmWrite;
 static uint smMfmWrite;
@@ -53,7 +54,7 @@ static inline uint32_t pulseDuration(uint32_t capturedStamp)
 }
 
 // take one captured value and turn it into symbol duration
-void updateWriteDataDirect(uint32_t capturedStamp)
+void __not_in_flash_func(updateWriteDataDirect)(uint32_t capturedStamp)
 {
     uint32_t capturedDuration = pulseDuration(capturedStamp);
 
@@ -86,7 +87,7 @@ void updateWriteDataDirect(uint32_t capturedStamp)
 }
 
 // index in mfmBufferWrite the DMA writes next
-static uint32_t dmaRingIndex(void)
+static uint32_t __not_in_flash_func(dmaRingIndex)(void)
 {
     uintptr_t dmaWriteAddr = (uintptr_t) dma_hw->ch[dma_channel_rx].write_addr;      // next address the DMA will write
     return ((dmaWriteAddr - (uintptr_t) mfmBufferWrite) / sizeof(uint32_t)) % MFM_WRITE_BUFFER_SIZE;
@@ -94,7 +95,7 @@ static uint32_t dmaRingIndex(void)
 
 // No write captured now: drop only the pulses older than the newest MFM_WRITE_KEEP_IDLE - a write start noticed late
 // takes the rest. Call from the DMA IRQ or with interrupts disabled.
-static void trimIdlePulses(void)
+static void __not_in_flash_func(trimIdlePulses)(void)
 {
     uint32_t dmaIdx = dmaRingIndex();
     uint32_t pending = (dmaIdx - wrProcessedIdx) % MFM_WRITE_BUFFER_SIZE;
@@ -105,7 +106,7 @@ static void trimIdlePulses(void)
 }
 
 // Process all pulses the DMA stored in the ring since the last call. Call from the DMA IRQ or with interrupts disabled.
-static void processCapturedPulses(void)
+static void __not_in_flash_func(processCapturedPulses)(void)
 {
     uint32_t dmaIdx = dmaRingIndex();
 
@@ -116,7 +117,7 @@ static void processCapturedPulses(void)
 }
 
 // DMA interrupt handler, called when a DMA channel has data
-static void dmaHandlerMfmWrite(void)
+static void __not_in_flash_func(dmaHandlerMfmWrite)(void)
 {
     if (dma_irqn_get_channel_status(DMA_IRQ_TO_USE, dma_channel_rx)) {
         dma_irqn_acknowledge_channel(DMA_IRQ_TO_USE, dma_channel_rx);
@@ -134,7 +135,7 @@ static void dmaHandlerMfmWrite(void)
 // write, pushed by the first pulse of this one), so the pulses that came before the WGATE IRQ (the 00 preamble) belong
 // to the write, and anything older (e.g. a write to the other drive) doesn't. No gap pulse kept (started too long ago)?
 // Then everything kept is taken. The byte packing starts from scratch.
-void mfmWriteCaptureStart(void)
+void __not_in_flash_func(mfmWriteCaptureStart)(void)
 {
     trimIdlePulses();
 
@@ -152,7 +153,7 @@ void mfmWriteCaptureStart(void)
 // On write end, call with interrupts disabled while wrBuffer is still set.
 // Stores the pulses that are in the ring but weren't processed yet (the last DMA block of the write is usually not complete,
 // so no IRQ came for it), and the partially filled last byte - padded with 4 us symbols, which fall into the gap after the CRC.
-void mfmWriteCaptureEnd(void)
+void __not_in_flash_func(mfmWriteCaptureEnd)(void)
 {
     processCapturedPulses();
 
@@ -202,6 +203,167 @@ void pio_mfm_write_setup(void)
     irq_set_enabled(dma_get_irq_num(DMA_IRQ_TO_USE), true);
 }
 
+// CRC-CCITT of DAM + data, continuing from the 3x A1 before them
+static uint16_t updateSectorCrc(uint16_t crc, uint8_t data)
+{
+    for(int i=0; i<8; i++) {
+        crc = ((crc << 1) ^ ((((crc >> 8) ^ (data << i)) & 0x0080) ? 0x1021 : 0));
+    }
+
+    return crc;
+}
+
+#define CRC_AFTER_3X_A1     0xcdb4
+
+// Decode a captured write (2-bit symbols, as the host gets it) into the raw run of a sector: DAM, data, CRC. Same decoding
+// as MfmCachedImage::decodeMfmBuffer() on the host. The CRC is deliberately lenient the same way: with write emulation the
+// captured data is often good while the received CRC is off by 1, or the end of it wasn't captured. The stored CRC is
+// always the calculated one, so the sector reads back fine then. Data which isn't complete is not good, though.
+int mfmDecodeWrittenSector(const uint8_t* symbols, int length, uint8_t* run)
+{
+    int total = length * 4;
+    int index = 0;
+
+    uint32_t sync = 0;                              // find 3x A1
+    bool syncFound = false;
+    while(index < total) {
+        uint8_t time = (symbols[index / 4] >> (6 - 2 * (index % 4))) & 3;
+        index++;
+
+        if(time == 0) {                             // invalid time? skip it
+            continue;
+        }
+
+        sync = ((sync << 2) | time) & 0x0fffffff;   // leave place only for 3x A1 sync bytes
+
+        if(sync == 0xee7b9ee) {
+            syncFound = true;
+            break;
+        }
+    }
+
+    if(!syncFound) {
+        return MFM_DECODE_FAILED;
+    }
+
+    uint16_t crc = CRC_AFTER_3X_A1;
+    uint16_t calcedCrc = 0;
+    uint16_t recvedCrc = 0;
+    int byteOffset = 0;                             // offset of decoded byte after 3x A1
+    int bits = 0;
+    uint8_t decoded = 0;
+    bool remainder = false;                         // got some remainder from the previous time
+
+    while(index < total) {
+        uint8_t time = (symbols[index / 4] >> (6 - 2 * (index % 4))) & 3;
+        index++;
+
+        uint8_t newBits = 0;
+        int newBitsCount;
+
+        if(remainder) {                             // with remainder of '1' from previous time
+            switch(time) {
+                case MFM_4US: newBits = 0; newBitsCount = 1; remainder = true;  break;
+                case MFM_6US: newBits = 1; newBitsCount = 2; remainder = false; break;
+                case MFM_8US: newBits = 0; newBitsCount = 2; remainder = true;  break;
+                default:      continue;
+            }
+        } else {                                    // no remainder from previous time
+            switch(time) {
+                case MFM_4US: newBits = 1; newBitsCount = 1; remainder = false; break;
+                case MFM_6US: newBits = 0; newBitsCount = 1; remainder = true;  break;
+                case MFM_8US: newBits = 1; newBitsCount = 2; remainder = false; break;
+                default:      continue;
+            }
+        }
+
+        for(int i=newBitsCount-1; i>=0; i--) {
+            decoded = (decoded << 1) | ((newBits >> i) & 1);
+            bits++;
+
+            if(bits < 8) {
+                continue;
+            }
+            bits = 0;
+
+            if(byteOffset == 0 && decoded == MFM_ID_MARK) {     // ID mark instead of data mark - the track is being formatted
+                return MFM_DECODE_FORMAT;
+            }
+
+            if(byteOffset == 0 && decoded != MFM_DAM_MARK) {
+                return MFM_DECODE_FAILED;
+            }
+
+            if(byteOffset <= 512) {
+                run[byteOffset] = decoded;
+                crc = updateSectorCrc(crc, decoded);
+            } else if(byteOffset == 513) {
+                calcedCrc = crc;
+                recvedCrc = ((uint16_t) decoded) << 8;
+            } else if(byteOffset == 514) {
+                recvedCrc |= decoded;
+
+                if(recvedCrc != calcedCrc && (((int) recvedCrc) - ((int) calcedCrc)) != 1) {
+                    return MFM_DECODE_FAILED;
+                }
+            }
+
+            byteOffset++;
+
+            if(byteOffset > 514) {                  // the rest is just the gap
+                run[513] = crc >> 8;
+                run[514] = crc & 0xff;
+                return MFM_DECODE_SECTOR;
+            }
+        }
+    }
+
+    if(byteOffset <= 512) {                         // the data didn't make it whole
+        return MFM_DECODE_FAILED;
+    }
+
+    run[513] = crc >> 8;                            // the CRC didn't make it whole, the data did
+    run[514] = crc & 0xff;
+    return MFM_DECODE_SECTOR;
+}
+
+// FORMAT TRACK: the host clears all the sectors of the image track, do the same here so the track reads the same until
+// the next image load. Only when this track is still the one in the buffer - it's not after a step.
+static void clearFormattedTrack(uint8_t side, uint8_t track, uint8_t* pTrackStart)
+{
+    uint8_t run[MFM_SECTOR_RUN_SIZE];
+    memset(run, 0, sizeof(run));
+    run[0] = MFM_DAM_MARK;
+
+    uint16_t crc = CRC_AFTER_3X_A1;
+    for(int i=0; i<513; i++) {
+        crc = updateSectorCrc(crc, run[i]);
+    }
+    run[513] = crc >> 8;
+    run[514] = crc & 0xff;
+
+    bool cleared = false;
+    uint32_t pos = 0, runSize = 0;
+    int markSide = -1, markTrack = -1, markSector = -1;
+
+    while(true) {
+        int offset = mfmStreamNextRawRun(pTrackStart, READTRACKDATA_SIZE_BYTES, &pos, &runSize, &markSide, &markTrack, &markSector);
+
+        if(offset < 0) {
+            break;
+        }
+
+        if(markSide == side && markTrack == track && runSize == MFM_SECTOR_RUN_SIZE) {
+            memcpy(pTrackStart + offset, run, MFM_SECTOR_RUN_SIZE);
+            cleared = true;
+        }
+    }
+
+    if(cleared) {
+        psramStoreTrack(track, side, pTrackStart);
+    }
+}
+
 void storeWrittenSectorDataToTrackLocally(uint8_t side, uint8_t track, uint8_t sector, uint8_t* bfr, int len)
 {
     // track / side / sector out of bounds?
@@ -211,82 +373,36 @@ void storeWrittenSectorDataToTrackLocally(uint8_t side, uint8_t track, uint8_t s
     }
 
     uint8_t* pTrackStart = (side == 0) ? trackData0 : trackData1;
-    uint8_t* pData = pTrackStart;
 
-    uint8_t* pStreamTableItem = pData + (sector * 2);       // calc pointer to where the offset to sector is - in the stream table
-    uint32_t offsetToSector = getWord(pStreamTableItem);    // get offset to sector in stream from stream table
+    uint8_t run[MFM_SECTOR_RUN_SIZE];
+    int result = mfmDecodeWrittenSector(bfr, len, run);
 
-    // make sure that the whole sector is after the stream table and within the track data (offset 0 - sector not in track)
-    if(offsetToSector < (2 * STREAM_TABLE_ITEMS) || offsetToSector > (READTRACKDATA_SIZE_BYTES - ENCODED_SECTOR_MAX_SIZE)) {
-        debug("Failed to write side: %d, track: %d, sector: %d - bad sector offset!\n", side, track, sector);
+    if(result == MFM_DECODE_FORMAT) {
+        clearFormattedTrack(side, track, pTrackStart);
         return;
     }
 
-    // advance pointer to start of the sector - this address should contain CMD_CURRENT_SECTOR
-    pData += offsetToSector;
-    uint8_t* pSectorEnd = pData + ENCODED_SECTOR_MAX_SIZE - 1;  // end of sector should be exactly here, because using fixed encoded sector size
-
-    uint8_t* pSectorDataStart = NULL;
-
-    #define HEADER_START    0
-    #define DATA_START      1
-    #define NOTHING         3
-
-    uint8_t lookingFor = HEADER_START;      // look for header, then for data start, then for data end
-
-    // find start and end of the sector we want to overwrite - only within this sector, so the data start can't be beyond its end
-    while(pData + 3 < pSectorEnd) {         // + 3: the current_sector mark is 4 bytes long
-        uint8_t val = *pData;
-
-        // end of the track stream - the sector isn't here (e.g. the track buffer already holds another track after a step)
-        if(val == CMD_TRACK_STREAM_END) {
-            break;
-        }
-
-        // current_sector mark
-        if(val == CMD_CURRENT_SECTOR) {
-            if(lookingFor == DATA_START) {  // header found, but next sector starts before its data start? sector has no data part
-                break;
-            }
-
-            if(pData[1] == side && pData[2] == track && pData[3] == sector) {   // side + track + sector match? found header!
-                lookingFor = DATA_START;    // header found, look for data start
-            }
-            pData += 4; // skip the current_sector mark - to continue after it
-            continue;
-        }
-
-        // if we already found the header, but not the sector data start, and this is start of the data, we've found start now
-        if(lookingFor == DATA_START && val == CMD_DATA_PART_OF_SECTOR) {
-            pData++;                    // skip beyond marker
-            pSectorDataStart = pData;   // store pointer to sector data start
-            lookingFor = NOTHING;       // data start found, look for data end
-            break;
-        }
-
-        // mfm data, or data part mark of a sector we're not looking for - move to next data
-        pData++;
-    }
-
-    // if we didn't find everything needed, fail
-    if(lookingFor != NOTHING) {
-        debug("Failed to write side: %d, track: %d, sector: %d - no data start found!\n", side, track, sector);
+    if(result != MFM_DECODE_SECTOR) {       // the old sector stays, the verify read after the write finds out; host decides on its own
+        debug("Failed to write side: %d, track: %d, sector: %d - bad written data!\n", side, track, sector);
         return;
     }
 
-    int dataSizeBytes = pSectorEnd - pSectorDataStart;  // how many bytes are allocated in buffer for the sector data (from end to start) - should be about 1100 bytes
-    int copySize = MIN(len, dataSizeBytes);         // pick smaller of these sizes, so we won't overwrite the start of next sector
+    uint32_t pos = 0, runSize = 0;
+    int markSide = -1, markTrack = -1, markSector = -1;
 
-    int dataSizeToClear = dataSizeBytes - copySize; // how many bytes should be cleared
-    dataSizeToClear = MAX(dataSizeToClear, 0);      // make sure it's not negative
+    // find the sector by its mark - it's not there e.g. when the buffer already holds another track after a step
+    while(true) {
+        int offset = mfmStreamNextRawRun(pTrackStart, READTRACKDATA_SIZE_BYTES, &pos, &runSize, &markSide, &markTrack, &markSector);
 
-    memcpy(pSectorDataStart, bfr, copySize);        // copy new data at the start of data part of the sector
+        if(offset < 0) {
+            debug("Failed to write side: %d, track: %d, sector: %d - sector not in track!\n", side, track, sector);
+            return;
+        }
 
-    if(dataSizeToClear > 0) {
-        memset(pSectorDataStart + copySize, 0, dataSizeToClear);    // clear the bytes up to end of sector data
+        if(markSide == side && markTrack == track && markSector == sector && runSize == MFM_SECTOR_RUN_SIZE) {
+            memcpy(pTrackStart + offset, run, MFM_SECTOR_RUN_SIZE);     // same size, so nothing else in the track moves
+            psramStoreSector(track, side, offset, run, MFM_SECTOR_RUN_SIZE);
+            return;
+        }
     }
-
-    // copy the new data to psram
-    int byteOffsetFromTrackStart = pSectorDataStart - pTrackStart;  // calculate the byte offset of the written sector data from start of the track
-    psramStoreSector(track, side, byteOffsetFromTrackStart, bfr, copySize, dataSizeToClear);
 }

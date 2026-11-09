@@ -26,6 +26,7 @@ void print_status_read(void);
 void print_status_write(void);
 
 void setImageGeometry(int tracks, int sides, int sectors);
+void askForImageGeometry(void);
 
 BYTE bfr     [9*512];
 BYTE writeBfr[9*512];
@@ -187,6 +188,13 @@ void showMenu(void)
     (void)Cconws("NO\33q\r\n");
 
     (void)Cconws("\r\n");
+    (void)Cconws(" \33p[ G ]\33q - image geometry: ");
+    showInt(imgGeometry.tracks, 2);
+    (void)Cconws(" tracks, ");
+    showInt(imgGeometry.sides, 1);
+    (void)Cconws(" sides, ");
+    showInt(imgGeometry.sectors, 2);
+    (void)Cconws(" sectors\r\n");
     (void)Cconws(" \33p[ M ]\33q - make TEST floppy image\r\n");
     (void)Cconws(" \33p[ S ]\33q - write sector 1, track 3, side 0\r\n");
     (void)Cconws(" \33p[ Q ]\33q - quit this app\r\n");
@@ -206,6 +214,7 @@ int test_floppy_main(void)
     testConf.sectorsAtOnce = 1;
 
     setImageGeometry(80, 2, 9);
+    askForImageGeometry();
 
     removeAllWaitingKeys();                                             // read all the possibly waiting keys, so we can ignore them...
 
@@ -233,6 +242,7 @@ int test_floppy_main(void)
 
             case 's': writeSingleSectorTest();                              break;
             case 'm': makeFloppy();                                         break;
+            case 'g': askForImageGeometry();                                break;
 
             case 'd': {
                 testConf.dataType++;
@@ -257,7 +267,7 @@ int test_floppy_main(void)
             case 'e': testConf.foreverNotOnce = (req == 'e');               break;
         }
 
-        if(req == '+' && testConf.sectorsAtOnce < 9) {
+        if(req == '+' && testConf.sectorsAtOnce < 9 && testConf.sectorsAtOnce < imgGeometry.sectors) {  // 9: size of bfr
             testConf.sectorsAtOnce++;
         }
 
@@ -805,10 +815,10 @@ void updateFloppyPosition(BYTE linearNotRandom, BYTE foreverNotOnce)
     } else {                            // last sector?
         fl.sector = 1;
 
-        if(fl.side < 1) {               // side 0?
+        if(fl.side < (imgGeometry.sides - 1)) {     // not the last side? next side
             fl.side     = 1;
             fl.space    = 1;            // add space between sides
-        } else {                        // side 1?
+        } else {                        // last side?
             fl.side     = 0;
             fl.newLine  = 1;            // make new line after this, because next track
 
@@ -874,18 +884,18 @@ void makeFloppy(void)
     VT52_Clear_home();
     (void)Cconws("Writing TEST floppy...\r\n");
 
-    for(track=0; track<80; track++) {
+    for(track=0; track<imgGeometry.tracks; track++) {
         (void)Cconws("\r\nTrack ");
         showInt(track, 2);
         (void)Cconws(": ");
 
-        for(side=0; side<2; side++) {
+        for(side=0; side<imgGeometry.sides; side++) {
             testConf.dataType = DATATYPE_TRSISE;
 
             fl.track = track;
             fl.side = side;
 
-            for(sector=1; sector<=9; sector++) {
+            for(sector=1; sector<=imgGeometry.sectors; sector++) {
                 fl.sector = sector;
 
                 if(Cconis()) {
@@ -912,6 +922,65 @@ void setImageGeometry(int tracks, int sides, int sectors)
     imgGeometry.sides   = sides;
 
     imgGeometry.totalSectors = sectors * tracks * sides;
+}
+
+// Ask for a number, just ENTER keeps the current value. Asks again until the answer is valid.
+static int askForNumber(const char *question, int current, int min, int max)
+{
+    while(1) {
+        char line[8];
+        line[0] = 3;                    // max count of characters
+        line[1] = 0;
+
+        (void)Cconws(question);
+        (void)Cconws(" [");
+        showInt(current, (current < 10) ? 1 : 2);
+        (void)Cconws("]: ");
+        Cconrs(line);
+        (void)Cconws("\r\n");
+
+        int count = line[1];
+
+        if(count == 0) {
+            return current;
+        }
+
+        int value = 0;
+        int i;
+        for(i=0; i<count; i++) {
+            if(line[2 + i] < '0' || line[2 + i] > '9') {
+                value = -1;
+                break;
+            }
+            value = value * 10 + (line[2 + i] - '0');
+        }
+
+        if(value >= min && value <= max) {
+            return value;
+        }
+
+        (void)Cconws("Valid values: ");
+        showInt(min, (min < 10) ? 1 : 2);
+        (void)Cconws(" to ");
+        showInt(max, (max < 10) ? 1 : 2);
+        (void)Cconws("\r\n");
+    }
+}
+
+void askForImageGeometry(void)
+{
+    VT52_Clear_home();
+    (void)Cconws("Image geometry, ENTER keeps the value in []\r\n\r\n");
+
+    int tracks  = askForNumber("Tracks ", imgGeometry.tracks, 1, 85);
+    int sides   = askForNumber("Sides  ", imgGeometry.sides, 1, 2);
+    int sectors = askForNumber("Sectors", imgGeometry.sectors, 1, 11);
+
+    setImageGeometry(tracks, sides, sectors);
+
+    if(testConf.sectorsAtOnce > sectors) {      // can't read more at once than a track has
+        testConf.sectorsAtOnce = (sectors < 9) ? sectors : 9;
+    }
 }
 
 // given set implementation (TOS/asm), will:

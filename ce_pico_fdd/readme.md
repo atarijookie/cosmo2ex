@@ -28,7 +28,7 @@
 - debug port: Disabled (this is only for the debug of the arduino core; debug strings don't use it, see Notes)
 - C++ exceptions: disabled
 - flash size: 4MB (no FS)
-- CPU speed: 150 MHz (the MFM stream timing (PWM divider) depends on it)
+- CPU speed: 150 MHz (the MFM stream and write capture dividers are calculated from the clock, so other speeds keep the timing)
 - IP/Bluetooth stack: IPv4 Only
 - optimize: Small (-Os) (standard)
 - Operating system: None (with FreeRTOS lwIP would run in its own task, and the cores would be shared)

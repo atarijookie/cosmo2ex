@@ -308,7 +308,7 @@ TEST_CASE_FIXTURE(HostReceiveFixture, "loaded image beeps, the start doesn't") {
 
 TEST_CASE_FIXTURE(HostReceiveFixture, "image message longer than 128 bytes - the rest is dropped, the next message is found") {
     std::vector<uint8_t> d = imageData(true, "GAME.ST");
-    d.resize(300, 0x50);                            // 0x50 == CMD_CURRENT_SECTOR, whatever - must not be parsed
+    d.resize(300, 0x50);                            // 0x50 == MFM_OP_RAW, whatever - must not be parsed
     std::vector<uint8_t> next = trackData(6, 0, 3000, 0x5a);
     fakeHostReceive(message(ATN_SEND_WHOLE_IMAGE, d, d.size()));
     fakeHostReceive(message(ATN_SEND_TRACK, next, next.size()));

@@ -26,19 +26,15 @@ ImageSilo::ImageSilo(ChipInterface *chipInterface)
     this->chipInterface = chipInterface;
 
     //-----------
-    // create empty track, which can be used when the equested track is out of range (or image doesn't exist)
-    emptyTrack = new uint8_t[MFM_STREAM_SIZE];
-    memset(emptyTrack, 0, MFM_STREAM_SIZE);
+    // empty track for when the requested track is out of range or not ready: track #, side #, then a stream with nothing in it
+    emptyTrack = new uint8_t[MFM_STREAM_PREFIX_SIZE + MFM_STREAM_HEADER_SIZE + 2];
+
+    MfmTrackBuilder builder;
+    builder.begin(emptyTrack + MFM_STREAM_PREFIX_SIZE, MFM_STREAM_HEADER_SIZE + 2);
+    emptyTrackBytes = MFM_STREAM_PREFIX_SIZE + builder.finish();
 
     trackCopy = new uint8_t[MFM_STREAM_SIZE];  // encoded track is copied here before sending, see getEncodedTrack()
     memset(trackCopy, 0, MFM_STREAM_SIZE);
-
-    uint8_t *p = emptyTrack;
-    for(int i=0; i<(MFM_STREAM_SIZE/3); i++) {        // fill the empty track with 0x4e sync bytes
-        *p++ = 0xa9;
-        *p++ = 0x6a;
-        *p++ = 0x96;
-    }
 
     //-----------
     // init slots
@@ -55,8 +51,12 @@ ImageSilo::~ImageSilo()
     delete []trackCopy;
 }
 
-uint8_t *ImageSilo::getEmptyTrack(void)
+uint8_t *ImageSilo::getEmptyTrack(int track, int side, int &bytesInBuffer)
 {
+    emptyTrack[0] = track;
+    emptyTrack[1] = side;
+
+    bytesInBuffer = emptyTrackBytes;
     return emptyTrack;
 }
 
@@ -220,10 +220,8 @@ uint8_t *ImageSilo::getEncodedTrack(int floppySlotIndex, int track, int side, in
     // the encoder thread could start re-encoding (memset + rewrite) that track while we're still sending it.
     // All callers run in the single FDD thread and send the data right away, so one copy buffer is enough.
 
-    bytesInBuffer = MFM_STREAM_SIZE;        // count for emptyTrack, used on every early return below
-
     if(floppySlotIndex < 0 || floppySlotIndex >= SLOT_COUNT) {
-        return emptyTrack;
+        return getEmptyTrack(track, side, bytesInBuffer);
     }
 
     MfmCachedImage *encImage = &slots[floppySlotIndex].encImage;
@@ -245,8 +243,7 @@ uint8_t *ImageSilo::getEncodedTrack(int floppySlotIndex, int track, int side, in
         Utils::sleepMs(1);  // don't spin - give the CPU to the encoder thread, which is the one making the track ready
     }
 
-    bytesInBuffer = MFM_STREAM_SIZE;            // not ready in time - return empty track
-    return emptyTrack;
+    return getEmptyTrack(track, side, bytesInBuffer);   // not ready in time - return empty track
 }
 
 bool ImageSilo::getParams(int floppySlotIndex, int &tracks, int &sides, int &sectorsPerTrack)

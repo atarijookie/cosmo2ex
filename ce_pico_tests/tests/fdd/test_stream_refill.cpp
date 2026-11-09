@@ -14,6 +14,7 @@
 extern uint16_t mfmBuffer[];                // core1_main.cpp - the ring the DMA plays out, 2 halves
 extern int dmaChannel;
 void dmaHandlerMfm(void);
+extern volatile uint32_t mfmLateMax, mfmUnderruns;
 
 namespace {
 
@@ -42,6 +43,15 @@ TEST_CASE_FIXTURE(RefillFixture, "the half that was played out is filled - the o
     CHECK(irqWhileReadingAt(0) == FILL_UPPER);                 // upper done, wrapped to the lower one
     CHECK(irqWhileReadingAt(HALF_BYTES + 6) == FILL_LOWER);    // IRQ a bit late
     CHECK(irqWhileReadingAt(10) == FILL_UPPER);
+}
+
+TEST_CASE_FIXTURE(RefillFixture, "late IRQ is counted - how many intervals into the half the DMA already was") {
+    mfmLateMax = 0;
+    irqWhileReadingAt(HALF_BYTES + 6);      // 6 B = 3 intervals
+    CHECK(mfmLateMax == 3);
+    irqWhileReadingAt(2);                   // less late - the maximum stays
+    CHECK(mfmLateMax == 3);
+    CHECK(mfmUnderruns == 0);               // the DMA stayed in the half it was in during the refill
 }
 
 TEST_CASE_FIXTURE(RefillFixture, "IRQs merged while core 1 was idled - still the half the DMA doesn't read") {

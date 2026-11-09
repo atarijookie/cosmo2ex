@@ -16,6 +16,7 @@
 typedef unsigned int uint;
 
 #define __isr
+#define __not_in_flash_func(name)   name
 #define hard_assert(x)      assert(x)
 #define PICO_OK             0
 
@@ -25,6 +26,11 @@ typedef uint64_t absolute_time_t;
 
 absolute_time_t get_absolute_time(void);
 uint32_t millis(void);      // arduino core in the firmware - from the fake clock here
+extern uint32_t fakeNowMs;
+inline uint32_t time_us_32(void) { return fakeNowMs * 1000; }      // no side effects, unlike the time reads above
+
+enum clock_index { clk_sys = 5 };
+inline uint32_t clock_get_hz(clock_index) { return 150000000; }
 inline uint32_t to_ms_since_boot(absolute_time_t t) { return (uint32_t) (t / 1000); }
 void sleep_ms(uint32_t ms);
 

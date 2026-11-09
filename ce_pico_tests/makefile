@@ -67,11 +67,11 @@ $(foreach p,$(PROJECTS),$(eval $(call PROJECT_template,$(p))))
 
 #--------------------------------------------------------
 # ce_pico_fdd - core1 / write capture / psram / ipc / front panel / image browser / captive portal page / beeper / status LED sources against fakes_fdd/, connection.h skipped via force_include.h
-FDD_FW_SRCS     = core1_main.cpp mfm_write.cpp psram.cpp ipc.cpp utils.cpp written_sectors.cpp host_receive.cpp panel.cpp portal_form.cpp beeper.cpp neopixel.cpp image_browser.cpp
+FDD_FW_SRCS     = core1_main.cpp mfm_write.cpp mfm_stream.cpp mfm_perf.cpp psram.cpp ipc.cpp utils.cpp written_sectors.cpp host_receive.cpp panel.cpp portal_form.cpp beeper.cpp neopixel.cpp image_browser.cpp
 FDD_FWOBJS      = $(addprefix obj/fdd/fw/,$(FDD_FW_SRCS:.cpp=.o))
 FDD_TOBJS       = $(addprefix obj/fdd/,$(patsubst %.cpp,%.o,tests/test_main.cpp $(wildcard tests/fdd/*.cpp) fakes_fdd/fakes_fdd.cpp))
 FLAGS_fdd       = -std=gnu++17 -g -O0 -Wall -Wno-sign-compare -Wno-unused-variable -Wno-unused-function -Wno-unused-but-set-variable -MMD -MP \
-                  -DPICO_NO_HARDWARE=1 -Ifakes_fdd -Itests -I../third_party/doctest -I../ce_pico_fdd -include fakes_fdd/force_include.h $(CXXFLAGS)
+                  -DPICO_NO_HARDWARE=1 -DMFM_PERF_TEST=1 -Ifakes_fdd -Itests -I../third_party/doctest -I../ce_pico_fdd -include fakes_fdd/force_include.h $(CXXFLAGS)
 
 obj/fdd/fw/%.o: ../ce_pico_fdd/%.cpp
 	@mkdir -p $(dir $@)

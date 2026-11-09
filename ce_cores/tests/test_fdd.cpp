@@ -144,9 +144,91 @@ static void encodeWholeImage(MfmCachedImage *enc, FloppyImage *img)
     }
 }
 
-// Get the MFM data part of one encoded sector, as the device would send it on sector write:
-// everything after the CMD_DATA_PART_OF_SECTOR mark till the end of the fixed size sector.
-// (CMD_DATA_PART_OF_SECTOR 0xC0 contains '00' bit pairs, which never appear in MFM time bytes, so it can be searched for.)
+// Walks the v2 stream of a track (as ce_pico_fdd/mfm_stream.cpp does) to find the raw run of a sector.
+static bool findSectorRun(const uint8_t *stream, int streamSize, int sector, int &runStart, int &runSize)
+{
+    int end = (stream[0] << 8) | stream[1];
+    int pos = MFM_STREAM_HEADER_SIZE;
+    int lastSector = -1;
+
+    if(end > streamSize || stream[2] != MFM_STREAM_VERSION) {
+        return false;
+    }
+
+    while(pos < end) {
+        if(stream[pos++] != MFM_ESC) {
+            continue;
+        }
+
+        switch(stream[pos++]) {
+            case MFM_OP_LITERAL:
+            case MFM_OP_SYNC_A1:
+            case MFM_OP_SYNC_C2:
+                break;
+
+            case MFM_OP_SECTOR:
+                lastSector = stream[pos + 2];
+                pos += 3;
+                break;
+
+            case MFM_OP_RAW:
+                runSize = (stream[pos] << 8) | stream[pos + 1];
+                pos += 2;
+
+                if(lastSector == sector) {
+                    runStart = pos;
+                    return true;
+                }
+
+                pos += runSize;
+                break;
+
+            default:
+                return false;
+        }
+    }
+
+    return false;
+}
+
+// What the device captures when the ST writes a sector: 2-bit interval symbols, 4 in a byte. Made the way the v1 encoder
+// (and the hardware) did it, as the decoder on the host still gets the captured writes in this form.
+struct SymbolEncoder {
+    uint8_t threeBits = 1, times = 0, timesCnt = 0;
+    std::vector<uint8_t> out;
+
+    void symbol(uint8_t time) {
+        times = (times << 2) | time;
+        if(++timesCnt == 4) {
+            timesCnt = 0;
+            out.push_back(times);
+        }
+    }
+
+    void byte(uint8_t val) {
+        for(int i=0; i<8; i++) {
+            threeBits = ((threeBits << 1) | ((val & 0x80) >> 7)) & 7;
+            val <<= 1;
+
+            switch(threeBits) {
+                case 0: case 3: case 7: symbol(1); break;   // 4 us
+                case 1: case 4:         symbol(2); break;   // 6 us
+                case 5:                 symbol(3); break;   // 8 us
+            }
+        }
+    }
+
+    void syncA1(void) {
+        symbol((threeBits == 0 || threeBits == 4) ? 2 : ((threeBits == 2 || threeBits == 6) ? 3 : 1));
+        symbol(3);
+        symbol(2);
+        symbol(3);
+        symbol(2);
+        threeBits = 1;
+    }
+};
+
+// Get the data part of one encoded sector, as the device would send it on sector write: 12x 00, 3x A1, raw run, gap.
 static bool tryGetSectorDataPartMfm(MfmCachedImage *enc, int track, int side, int sector, std::vector<uint8_t> &mfm)
 {
     std::vector<uint8_t> trackBuf(MFM_STREAM_SIZE);
@@ -155,22 +237,26 @@ static bool tryGetSectorDataPartMfm(MfmCachedImage *enc, int track, int side, in
         return false;
     }
 
-    int tableOffset = 2 + 2 * sector;                                       // track + side bytes, then stream table words
-    int sectorStart = 2 + ((trackBuf[tableOffset] << 8) | trackBuf[tableOffset + 1]);
-    int sectorEnd   = sectorStart + ENCODED_SECTOR_MAX_SIZE;
-    if(sectorEnd > MFM_STREAM_SIZE || trackBuf[sectorStart] != CMD_CURRENT_SECTOR || trackBuf[sectorStart + 3] != sector) {
+    int runStart = 0, runSize = 0;
+    if(!findSectorRun(trackBuf.data() + MFM_STREAM_PREFIX_SIZE, bytes - MFM_STREAM_PREFIX_SIZE, sector, runStart, runSize) || runSize != MFM_SECTOR_RUN_SIZE) {
         return false;
     }
 
-    int pos = sectorStart + 4;
-    while(pos < sectorEnd && trackBuf[pos] != CMD_DATA_PART_OF_SECTOR) {
-        pos++;
+    SymbolEncoder symbols;
+    for(int i=0; i<12; i++) {
+        symbols.byte(0);
     }
-    if(pos >= sectorEnd) {
-        return false;
+    for(int i=0; i<3; i++) {
+        symbols.syncA1();
+    }
+    for(int i=0; i<runSize; i++) {
+        symbols.byte(trackBuf[MFM_STREAM_PREFIX_SIZE + runStart + i]);
+    }
+    for(int i=0; i<40; i++) {
+        symbols.byte(0x4e);
     }
 
-    mfm.assign(trackBuf.begin() + pos + 1, trackBuf.begin() + sectorEnd);
+    mfm = symbols.out;
     return true;
 }
 
@@ -202,11 +288,83 @@ TEST_CASE_FIXTURE(FddTmpDir, "st image: geometry is detected from size, unknown 
     CHECK(s == 2);
     CHECK(p == 9);
 
+    struct { int tracks, sides, spt; } sizes[] = {
+        {80, 1, 8}, {80, 1, 9}, {80, 1, 10}, {80, 1, 11}, {80, 2, 8}, {80, 2, 10}, {80, 2, 11}, {82, 1, 10}, {83, 2, 9}
+    };
+    for(auto &g : sizes) {
+        CAPTURE(g.tracks);
+        CAPTURE(g.sides);
+        CAPTURE(g.spt);
+        writeFile(path("g.st"), makeImageData(g.tracks, g.sides, g.spt, false));
+        FloppyImageSt img;
+        REQUIRE(img.open(path("g.st").c_str()));
+        REQUIRE(img.getParams(t, s, p));
+        CHECK(t == g.tracks);
+        CHECK(s == g.sides);
+        CHECK(p == g.spt);
+    }
+
     std::vector<uint8_t> odd(1000 * 512 + 100);         // matches no tracks * sides * spt combination
     writeFile(path("odd.st"), odd);
     FloppyImageSt bad;
     CHECK_FALSE(bad.open(path("odd.st").c_str()));
     CHECK_FALSE(bad.isLoaded());
+}
+
+TEST_CASE_FIXTURE(FddTmpDir, "st image: writes aren't saved over a file replaced on disk, otherwise saving goes on as usual")
+{
+    std::vector<uint8_t> original(80 * 2 * 9 * 512, 0x11);
+    std::vector<uint8_t> replaced(80 * 2 * 9 * 512, 0x22);
+    std::vector<uint8_t> sector(512, 0x33);
+
+    writeFile(path("a.st"), original);
+    FloppyImageSt img;
+    REQUIRE(img.open(path("a.st").c_str()));
+    CHECK_FALSE(img.fileChangedOnDisk());
+
+    img.writeSector(0, 0, 1, sector.data());                // own saves don't count as a change, also more of them
+    CHECK(img.save());
+    CHECK_FALSE(img.fileChangedOnDisk());
+    img.writeSector(0, 0, 2, sector.data());
+    CHECK(img.save());
+    CHECK(readFile(path("a.st"))[512] == 0x33);
+
+    writeFile(path("new.st"), replaced);                    // the same size in the same second - it's another file
+    REQUIRE(rename(path("new.st").c_str(), path("a.st").c_str()) == 0);
+    CHECK(img.fileChangedOnDisk());
+
+    img.writeSector(0, 0, 3, sector.data());
+    CHECK(img.gotUnsavedChanges());
+    CHECK_FALSE(img.save());
+    CHECK_FALSE(img.gotUnsavedChanges());                   // not trying again and again
+    CHECK(readFile(path("a.st")) == replaced);
+
+    REQUIRE(remove(path("a.st").c_str()) == 0);             // deleted: nothing to lose, saved again
+    CHECK_FALSE(img.fileChangedOnDisk());
+    img.writeSector(0, 0, 3, sector.data());
+    CHECK(img.save());
+    CHECK(readFile(path("a.st")).size() == original.size());
+}
+
+TEST_CASE_FIXTURE(FddTmpDir, "msa image: writes aren't saved over a file replaced on disk")
+{
+    std::vector<uint8_t> data = makeImageData(80, 2, 9, false);
+    std::vector<uint8_t> sector(512, 0x33);
+    REQUIRE(MSA_WriteDisk(path("a.msa").c_str(), data.data(), (int) data.size(), 80, 2, 9));
+
+    FloppyImageMsa img;
+    REQUIRE(img.open(path("a.msa").c_str()));
+    img.writeSector(0, 0, 1, sector.data());
+    CHECK(img.save());
+    CHECK_FALSE(img.fileChangedOnDisk());
+
+    std::vector<uint8_t> other = {1, 2, 3};
+    writeFile(path("new.msa"), other);
+    REQUIRE(rename(path("new.msa").c_str(), path("a.msa").c_str()) == 0);
+
+    img.writeSector(0, 0, 2, sector.data());
+    CHECK_FALSE(img.save());
+    CHECK(readFile(path("a.msa")) == other);
 }
 
 TEST_CASE_FIXTURE(FddTmpDir, "st image: reads and writes outside of the geometry are refused")
@@ -458,7 +616,7 @@ TEST_CASE_FIXTURE(FddTmpDir, "msa: starting track is honored on load and save")
     CHECK(sectorIs(&b, 5, 1, 3, t5));
 }
 
-TEST_CASE_FIXTURE(FddTmpDir, "msa: sectors per track are limited by the stream table")
+TEST_CASE_FIXTURE(FddTmpDir, "msa: sectors per track are limited")
 {
     int spts[]   = {11, 15, MAX_SECTORS_PER_TRACK_IN_STREAM, MAX_SECTORS_PER_TRACK_IN_STREAM + 1, 36};
     bool loads[] = {true, true, true, false, false};
@@ -559,7 +717,7 @@ TEST_CASE_FIXTURE(FddTmpDir, "mfm cache: encoded track can be copied, re-encode 
 
 TEST_CASE_FIXTURE(FddTmpDir, "mfm cache: track size to send covers the track + side prefix and the whole stream up to the end mark")
 {
-    // the device gets exactly 'bytes' bytes - the stream must end with CMD_TRACK_STREAM_END + 0 within them,
+    // the device gets exactly 'bytes' bytes - the stream must end with the end mark within them,
     // otherwise the device streams on into whatever is after the received data
     writeFile(path("a.st"), makeImageData(80, 2, 9, false));
     FloppyImageSt img;
@@ -578,42 +736,135 @@ TEST_CASE_FIXTURE(FddTmpDir, "mfm cache: track size to send covers the track + s
             int bytes = 0;
             REQUIRE(enc->copyEncodedTrackIfReady(track, side, buf.data(), bytes));
 
-            REQUIRE(bytes >= 4);
+            REQUIRE(bytes >= 8);
             REQUIRE(bytes <= MFM_STREAM_SIZE);
             CHECK(buf[0] == track);
             CHECK(buf[1] == side);
-            CHECK(buf[bytes - 2] == CMD_TRACK_STREAM_END);  // used to be cut off - sent count was without the 2 prefix bytes
-            CHECK(buf[bytes - 1] == 0);
-
-            int lastSectorOffset = (buf[2 + 2 * 9] << 8) | buf[2 + 2 * 9 + 1];     // stream table word 9 - sector 9
-            CHECK(2 + lastSectorOffset + ENCODED_SECTOR_MAX_SIZE == bytes - 2);     // last sector ends right before the end mark
+            CHECK(buf[2 + 2] == MFM_STREAM_VERSION);
+            CHECK(((buf[2] << 8) | buf[2 + 1]) == bytes - 2);       // end offset is from the start of the stream, without the prefix
+            CHECK(buf[bytes - 2] == MFM_ESC);
+            CHECK(buf[bytes - 1] == MFM_OP_END);
         }
     }
 
     delete enc;
 }
 
-TEST_CASE_FIXTURE(FddTmpDir, "mfm cache: track longer than the stream buffer is cut at the buffer end, not written past it")
+// Time the track takes on the floppy: every data byte is 32 us. Escapes and marks take no time.
+static int trackDataBytes(const uint8_t *stream)
 {
-    // 15 sectors * 1200 B doesn't fit into MFM_STREAM_SIZE. The stream starts after the 2 prefix bytes, so the encoder
-    // must stop 2 bytes earlier than MFM_STREAM_SIZE - it used to write 2 bytes past the buffer (seen with ASan)
-    writeFile(path("a.st"), makeImageData(80, 2, 15, false));
-    FloppyImageSt img;
-    REQUIRE(img.open(path("a.st").c_str()));
+    int end = (stream[0] << 8) | stream[1];
+    int pos = MFM_STREAM_HEADER_SIZE;
+    int count = 0;
 
-    MfmCachedImage *enc = new MfmCachedImage();
-    enc->storeImageParams(&img, SLOT_COUNT - 1);
-    int t, s, p;
-    enc->getParams(t, s, p);
-    REQUIRE(p == 15);
-    encodeWholeImage(enc, &img);
+    while(pos < end) {
+        if(stream[pos] != MFM_ESC) {
+            pos++;
+            count++;
+            continue;
+        }
 
-    std::vector<uint8_t> buf(MFM_STREAM_SIZE);
-    int bytes = 0;
-    REQUIRE(enc->copyEncodedTrackIfReady(0, 0, buf.data(), bytes));
-    CHECK(bytes == MFM_STREAM_SIZE);        // full buffer, nothing more
+        uint8_t op = stream[pos + 1];
+        pos += 2;
 
-    delete enc;
+        if(op == MFM_OP_SECTOR) {
+            pos += 3;
+        } else if(op == MFM_OP_RAW) {
+            int size = (stream[pos] << 8) | stream[pos + 1];
+            pos += 2 + size;
+            count += size;
+        } else if(op != MFM_OP_END) {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+TEST_CASE_FIXTURE(FddTmpDir, "mfm cache: track fits into one rotation up to 11 sectors, all the sectors are there")
+{
+    for(int spt : { 9, 10, 11 }) {
+        CAPTURE(spt);
+        writeFile(path("a.st"), makeImageData(80, 2, spt, false));
+        FloppyImageSt img;
+        REQUIRE(img.open(path("a.st").c_str()));
+
+        MfmCachedImage *enc = new MfmCachedImage();
+        enc->storeImageParams(&img, SLOT_COUNT - 1);
+        encodeWholeImage(enc, &img);
+
+        std::vector<uint8_t> buf(MFM_STREAM_SIZE);
+        int bytes = 0;
+        REQUIRE(enc->copyEncodedTrackIfReady(3, 1, buf.data(), bytes));
+
+        CHECK(trackDataBytes(buf.data() + 2) <= 6250);      // v1 had 6814 B for 11 sectors, the last sector didn't make it
+
+        std::vector<uint8_t> mfm;
+        for(int sector=1; sector<=spt; sector++) {
+            CHECK(tryGetSectorDataPartMfm(enc, 3, 1, sector, mfm));
+        }
+        CHECK_FALSE(tryGetSectorDataPartMfm(enc, 3, 1, spt + 1, mfm));
+
+        delete enc;
+    }
+}
+
+TEST_CASE("track builder: F5 data bytes are escaped, raw runs aren't")
+{
+    uint8_t bfr[64];
+    MfmTrackBuilder b;
+    b.begin(bfr, sizeof(bfr));
+
+    const uint8_t raw[] = { 0xF5, 0x12 };
+    b.data(0x4e);
+    b.data(0xF5);
+    b.syncA1();
+    b.sectorMark(1, 80, 9);
+    b.rawRun(raw, 2);
+    b.cellTime(32000);
+    int size = b.finish();
+
+    const uint8_t expected[] = { 0, 26, MFM_STREAM_VERSION, 0,
+        0x4e, MFM_ESC, MFM_OP_LITERAL, MFM_ESC, MFM_OP_SYNC_A1,
+        MFM_ESC, MFM_OP_SECTOR, 1, 80, 9,
+        MFM_ESC, MFM_OP_RAW, 0, 2, 0xF5, 0x12,
+        MFM_ESC, MFM_OP_CELL_TIME, 32000 >> 8, 32000 & 0xff,
+        MFM_ESC, MFM_OP_END };
+
+    REQUIRE(size == (int) sizeof(expected));
+    CHECK(memcmp(bfr, expected, size) == 0);
+    CHECK_FALSE(b.overflowed());
+}
+
+TEST_CASE("track builder: what doesn't fit is left out whole, the stream stays valid and in the buffer")
+{
+    std::vector<uint8_t> raw(600, 0x11);
+
+    for(int bufferSize : { 6, 7, 20, 603, 609, 610, 611, 700 }) {
+        CAPTURE(bufferSize);
+
+        std::vector<uint8_t> bfr(bufferSize + 1, 0xaa);     // the last one is a guard
+        MfmTrackBuilder b;
+        b.begin(bfr.data(), bufferSize);
+
+        b.rawRun(raw.data(), raw.size());
+        b.data(0xF5);                                       // 2 B when escaped
+        b.data(0x22);
+        int size = b.finish();
+
+        CHECK(size <= bufferSize);
+        CHECK(bfr[bufferSize] == 0xaa);
+        CHECK(((bfr[0] << 8) | bfr[1]) == size);
+        CHECK(bfr[size - 2] == MFM_ESC);
+        CHECK(bfr[size - 1] == MFM_OP_END);
+
+        bool all = (bufferSize >= 4 + 4 + 600 + 2 + 1 + 2);
+        CHECK(b.overflowed() == !all);
+
+        if(bufferSize < 4 + 4 + 600 + 2) {                  // nothing after the item that didn't fit
+            CHECK(size == 4 + 2);
+        }
+    }
 }
 
 TEST_CASE_FIXTURE(FddTmpDir, "mfm: encoded sector decodes back to the same data")
@@ -783,6 +1034,42 @@ TEST_CASE_FIXTURE(FddTmpDir, "floppy encoder: written sectors go to the image th
     int t, s, p;
     slots[slot].encImage.getParams(t, s, p);
     CHECK(t == 0);                                          // empty slot is sent as 0 tracks
+
+    // image C is loaded, then the ST writes to it - the same request for the unchanged file does nothing
+    std::string pathC = path("C.st"), pathNew = path("new.st");
+    writeFile(pathC, std::vector<uint8_t>(80 * 2 * 9 * 512, 0x00));
+    floppyEncoder_addEncodeWholeImageRequest(slot, pathC.c_str());
+    REQUIRE(waitFor([&]{ return slotSendToDevice[slot] != 0; }));
+    slotSendToDevice[slot] = 0;
+    deviceReceivedCurrentImage(slot);
+
+    uint32_t genC = lockedImageGen(slot);
+    floppyEncoder_addEncodeWholeImageRequest(slot, pathC.c_str());
+    Utils::sleepMs(200);
+    CHECK(lockedImageGen(slot) == genC);
+
+    floppyEncoder_decodeMfmWrittenSector(slot, 3, 1, 4, mfm5A.data(), mfm5A.size());
+    Utils::sleepMs(200);
+
+    // the file gets replaced (web UI: create empty image over it), inserted again: loaded and sent to the device, and
+    // the write to the old content doesn't get into the new file
+    writeFile(pathNew, std::vector<uint8_t>(80 * 2 * 9 * 512, 0x77));
+    REQUIRE(rename(pathNew.c_str(), pathC.c_str()) == 0);
+    floppyEncoder_addEncodeWholeImageRequest(slot, pathC.c_str());
+    REQUIRE(waitFor([&]{ return lockedImageGen(slot) != genC && slotSendToDevice[slot] != 0; }));
+    slotSendToDevice[slot] = 0;
+    deviceReceivedCurrentImage(slot);
+
+    MfmCachedImage *decoderC = new MfmCachedImage();
+    REQUIRE(waitFor([&]{
+        std::vector<uint8_t> mfm;
+        uint8_t out[512];
+        return tryGetSectorDataPartMfm(&slots[slot].encImage, 3, 1, 4, mfm) && decodeSector(decoderC, mfm, out) && out[0] == 0x77;
+    }));
+    delete decoderC;
+
+    Utils::sleepMs(200);                                    // the old image got released and it would save now
+    CHECK(fileSectorIs(pathC, 3, 1, 4, 0x77));
 
     // shutdown - everything saved
     floppyEncoder_stop();

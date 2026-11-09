@@ -124,6 +124,11 @@ bool FloppyImageMsa::save(void)
         return false;
     }
 
+    if(fileChangedOnDisk()) {                   // e.g. replaced on the host - don't overwrite the new file with what the ST wrote to the old one
+        logFdd(LOG_WARNING, "MSA Image %s was replaced on disk, not saving the writes to the old content", currentFileName.c_str());
+        return false;
+    }
+
     // Tracks before firstStoredTrack weren't in the original file. Keep it that way, unless the ST wrote something there
     // (e.g. formatted track 0) - then save from track 0, otherwise that data would be lost.
     int startTrack = firstStoredTrack;
@@ -137,5 +142,7 @@ bool FloppyImageMsa::save(void)
     }
 
     // save with the geometry from the original MSA header (what we loaded with), not with what the boot sector claims
-    return MSA_WriteDisk(currentFileName.c_str(), image.data, image.size, params.tracksNo, params.sidesNo, params.sectorsPerTrack, startTrack);
+    bool saved = MSA_WriteDisk(currentFileName.c_str(), image.data, image.size, params.tracksNo, params.sidesNo, params.sectorsPerTrack, startTrack);
+    rememberFileState();
+    return saved;
 }

@@ -52,6 +52,18 @@ bool FloppyImageSt::calcParams(void)
         return true;
     }
 
+    // single sided with 10 or 11 sectors per track has more than the limit below - e.g. 800 sectors isn't 80 / 2 / 5, nobody uses that
+    for(int spt=10; spt<=11; spt++) {
+        if((cnt % spt) == 0 && (cnt / spt) >= 75 && (cnt / spt) < 86) {
+            params.tracksNo         = cnt / spt;
+            params.sidesNo          = 1;
+            params.sectorsPerTrack  = spt;
+
+            params.isInit           = true;
+            return true;
+        }
+    }
+
     if(cnt < 750) {                     // too little sectors?
         params.sidesNo = 1;             // single sided
     } else {
@@ -87,6 +99,13 @@ bool FloppyImageSt::save(void)
         return false;
     }
 
+    if(fileChangedOnDisk()) {           // e.g. replaced from the web UI - don't overwrite the new file with what the ST wrote to the old one
+        logFdd(LOG_WARNING, "ST Image %s was replaced on disk, not saving the writes to the old content", currentFileName.c_str());
+        return false;
+    }
+
     // write to temp file and rename it over the original - a crash during save can't destroy the image
-    return saveFileAtomically(currentFileName.c_str(), image.data, image.size);
+    bool saved = saveFileAtomically(currentFileName.c_str(), image.data, image.size);
+    rememberFileState();
+    return saved;
 }

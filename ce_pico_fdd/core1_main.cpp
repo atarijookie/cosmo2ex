@@ -8,6 +8,7 @@
 #include "pico/multicore.h"
 #include "pico/util/queue.h"
 #include "hardware/spi.h"
+#include "hardware/clocks.h"
 
 #include "defs.h"
 #include "utils.h"
@@ -17,12 +18,13 @@
 #include "mfm_write.h"
 #include "core1_main.h"
 #include "beeper.h"
+#include "mfm_stream.h"
+#include "mfm_perf.h"
 
 volatile bool core1running = false;
 
 #define MFM_BUFFER_SIZE         2048                                // 12 address bits masked for ring mode (4096 bytes == 2048 words)
 #define MFM_BUFFER_HALF_SIZE    (MFM_BUFFER_SIZE / 2)
-#define MFM_READ_SIZE_FILLS     (MFM_BUFFER_HALF_SIZE / 4)
 
 __attribute__((aligned(4096))) uint16_t mfmBuffer[MFM_BUFFER_SIZE]; // must align to 4096 for ring mode to work correctly
 
@@ -37,11 +39,21 @@ volatile uint8_t fillWhat = FILL_NONE;
 
 extern uint8_t trackData0[READTRACKDATA_SIZE_BYTES];
 extern uint8_t trackData1[READTRACKDATA_SIZE_BYTES];
-uint32_t dataIndexInTrack = STREAM_START_OFFSET;
+
+// The track being streamed. Only the refill (DMA IRQ) touches it while streamValid is true. The stream isn't valid after a
+// step, a side change or a new track in the buffer: the same offset means something else then, so the refill sends just
+// the filler until the main loop finds the position again (seekStreamToCurrentAngle).
+MfmStream mfmStream;
+volatile bool streamValid = false;
+volatile bool trackRestart = false;     // new rotation started, the next refill starts at the track start
+volatile int streamSide = 0;
 volatile uint32_t lastStepTime = 0;
 volatile uint32_t stepCount = 0;          // STEP pulses taken (motor on) - for the status in the debug log
 volatile uint32_t mfmHalfCount = 0;       // MFM buffer halves streamed (DMA IRQs) - for the status in the debug log
-volatile uint32_t timeTrackStart;
+volatile uint32_t mfmUnderruns = 0;       // refill finished after the DMA got into the refilled half - the output had old data
+volatile uint32_t mfmLateMax = 0;         // the latest DMA IRQ so far: how many intervals into the half the DMA was
+volatile uint32_t mfmGapMaxUs = 0;        // the longest time between DMA IRQs so far
+volatile uint32_t timeTrackStartUs;
 
 extern TDrivePosition posStreamed, hwPosition;
 
@@ -64,7 +76,7 @@ void __isr dmaHandlerMfm(void);
 void __isr gpioIsrCore1(uint gpio, uint32_t events);
 
 // interrupt handler for STEP signal
-void __isr floppyStepISR(uint gpio, uint32_t event_mask)
+void __isr __not_in_flash_func(floppyStepISR)(uint gpio, uint32_t event_mask)
 {
     uint32_t now = millis();
 
@@ -103,11 +115,12 @@ void setupPwmOutput(void)
   uint pwmSliceNum = pwm_gpio_to_slice_num(PIN_RDATA);
   uint pwmChannel = pwm_gpio_to_channel(PIN_RDATA);
 
-  pwm_set_clkdiv_int_frac(pwmSliceNum, 75, 0);      // 150 MHz / 75 = 2 MHz -- 1 tick is 0.5 us
+  uint32_t clockHz = clock_get_hz(clk_sys);
+  pwm_set_clkdiv_int_frac(pwmSliceNum, 1, 0);       // counts at the CPU clock - the interval lengths in the stream are that fine
   pwm_set_output_polarity(pwmSliceNum, true, true);
 
-  pwm_set_wrap(pwmSliceNum, 7);                     // Set period (timer going from from 0 to this value)
-  pwm_set_chan_level(pwmSliceNum, pwmChannel, 1);   // Set channel output high for one cycle before dropping
+  pwm_set_wrap(pwmSliceNum, clockHz / 250000 - 1);  // Set period (timer going from from 0 to this value) - 4 us
+  pwm_set_chan_level(pwmSliceNum, pwmChannel, clockHz / 2000000);   // Set channel output high for 0.5 us before dropping
 
   pwm_set_enabled(pwmSliceNum, true);               // Set the PWM running
 }
@@ -140,10 +153,19 @@ void setupDmaToPwm(void)
 }
 
 // DMA IRQ handler
-void __isr dmaHandlerMfm(void)
+void __isr __not_in_flash_func(dmaHandlerMfm)(void)
 {
     // Clear the interrupt
     dma_hw->ints0 = 1u << dmaChannel;
+
+    static uint32_t lastIrqUs = 0;
+    uint32_t irqStartUs = time_us_32();
+    uint32_t gapUs = irqStartUs - lastIrqUs;
+    lastIrqUs = irqStartUs;
+
+    if(mfmHalfCount > 0) {          // the first one has no previous one to compare to
+        mfmGapMaxUs = MAX(mfmGapMaxUs, gapUs);
+    }
 
     mfmHalfCount++;
 
@@ -155,105 +177,71 @@ void __isr dmaHandlerMfm(void)
     bool readingUpper = (readOffset % sizeof(mfmBuffer)) >= (MFM_BUFFER_HALF_SIZE * sizeof(mfmBuffer[0]));
     halfDone = readingUpper;    // the lower half was played out last
 
+    uint32_t intoHalf = (readOffset % (MFM_BUFFER_HALF_SIZE * sizeof(mfmBuffer[0]))) / sizeof(mfmBuffer[0]);
+    mfmLateMax = MAX(mfmLateMax, intoHalf);
+
     fillWhat = readingUpper ? FILL_LOWER : FILL_UPPER;
 
     if(state == STATE_STREAMING) {
+        uint32_t fillStartUs = time_us_32();
         fillHalfMfmBuffer(fillWhat);
+        mfmPerfRecordRefill(time_us_32() - fillStartUs);
+    }
+
+    mfmPerfOnRefill();
+
+    // the DMA got into the half we were filling meanwhile? then the output had old data
+    uintptr_t readOffsetNow = (uintptr_t) dma_hw->ch[dmaChannel].read_addr - (uintptr_t) mfmBuffer;
+    bool readingUpperNow = (readOffsetNow % sizeof(mfmBuffer)) >= (MFM_BUFFER_HALF_SIZE * sizeof(mfmBuffer[0]));
+
+    if(readingUpperNow != readingUpper) {
+        mfmUnderruns++;
     }
 }
 
-void getMfmDataToBuffer(uint8_t* bfr, int len)
+static inline uint8_t* trackDataOfSide(int side)
 {
-    // update SIDE var
-    hwPosition.side = BIT_IS_H(PIN_SIDE1) ? 0 : 1; // get the current SIDE
-
-    // get current track and side we should be streaming, limit them to maximum values
-    int trackNo = MIN(hwPosition.track, MAX_TRACKS - 1);
-    int sideNo = MIN(hwPosition.side, 1);
-
-    uint8_t* pTrackDataStart = (sideNo == 0) ? trackData0 : trackData1;
-    uint8_t* pTrackDataEnd = &pTrackDataStart[READTRACKDATA_SIZE_BYTES - 1];
-    uint8_t* pTrackData = &pTrackDataStart[MIN(dataIndexInTrack, READTRACKDATA_SIZE_BYTES - 1)];  // copy data from here, never from beyond the track buffer
-
-    memset(bfr, 0x55, len);                // init all values to 0x55
-
-    for(int i=0; i<len; ) {
-        // end of array or end-of-track marker? we've at the end, don't copy anything more (position checked before reading from it)
-        if(pTrackData >= pTrackDataEnd || *pTrackData == CMD_TRACK_STREAM_END) {
-            break;
-        }
-
-        uint8_t val = *pTrackData++;
-
-        // skip empty bytes
-        if(val == 0) {
-            continue;
-        }
-
-        // skip data part of the sector marker
-        if(val == CMD_DATA_PART_OF_SECTOR) {
-            continue;
-        }
-
-        // current sector marker?
-        if(val == CMD_CURRENT_SECTOR) {
-            if(pTrackData + 3 > pTrackDataEnd) {    // mark cut off by the end of the track buffer? nothing more to stream
-                pTrackData = pTrackDataEnd;
-                break;
-            }
-
-            posStreamed.side = *pTrackData++;
-            posStreamed.track = *pTrackData++;
-            posStreamed.sector = *pTrackData++;
-            continue;
-        }
-
-        // val is just mfm data, store it
-        bfr[i] = val;
-        i++;
-    }
-
-    // now we got 'len' bytes in the bfr, we just need to update data retrieval index
-    dataIndexInTrack = pTrackData - pTrackDataStart;
+    return (side == 0) ? trackData0 : trackData1;
 }
 
-const uint16_t arrValues[4] = {7, 7, 11, 15};       // conversion table from mfm packed symbol to timer ARR value (for 0 us, 4 us, 6 us, 8 us)
-
-void fillHalfMfmBuffer(uint8_t what)
+void __not_in_flash_func(fillHalfMfmBuffer)(uint8_t what)
 {
     uint16_t* bfr = (what == FILL_LOWER) ? &mfmBuffer[0] : &mfmBuffer[MFM_BUFFER_HALF_SIZE];
 
-    // from the track buffer (with all the additional data and spaces) extract
-    // just MFM_READ_SIZE_FILLS bytes which can be transformed into MFM intervals
-    uint8_t rawMfmData[MFM_READ_SIZE_FILLS];
-    getMfmDataToBuffer(rawMfmData, MFM_READ_SIZE_FILLS);
+    // update SIDE var
+    hwPosition.side = BIT_IS_H(PIN_SIDE1) ? 0 : 1; // get the current SIDE
 
-    for(int i=0; i<MFM_READ_SIZE_FILLS; i++) {
-        // get one byte with 4 intervals
-        uint8_t streamByte = rawMfmData[i];
-
-        // unpack intervals into 4 items of uint16_t
-        bfr[0] = arrValues[ ((streamByte >> 6) & 3) ];
-        bfr[1] = arrValues[ ((streamByte >> 4) & 3) ];
-        bfr[2] = arrValues[ ((streamByte >> 2) & 3) ];
-        bfr[3] = arrValues[ ((streamByte     ) & 3) ];
-
-        bfr += 4;
+    if(trackRestart) {                      // new rotation - from the track start of the current side
+        trackRestart = false;
+        streamSide = hwPosition.side;
+        mfmStreamStart(&mfmStream, trackDataOfSide(streamSide), READTRACKDATA_SIZE_BYTES);
+        streamValid = true;
+    } else if(hwPosition.side != streamSide) {  // the other side has a different layout - main loop finds the position
+        streamValid = false;
     }
+
+    if(!streamValid) {
+        mfmStreamFiller(bfr, MFM_BUFFER_HALF_SIZE);
+        return;
+    }
+
+    mfmStreamFill(&mfmStream, bfr, MFM_BUFFER_HALF_SIZE);
+
+    posStreamed.side    = mfmStream.side;
+    posStreamed.track   = mfmStream.trackNo;
+    posStreamed.sector  = mfmStream.sector;
 }
 
 void clearMfmBuffer(void)
 {
     // copy 'all 4 us' pulses into current streaming buffer to allow shortest possible switch to start of track
-    for(int i=0; i<MFM_BUFFER_SIZE; i++) {
-        mfmBuffer[i] = 7;
-    }
+    mfmStreamFiller(mfmBuffer, MFM_BUFFER_SIZE);
 }
 
-void readTrackData_goToStart(void)
+void __not_in_flash_func(readTrackData_goToStart)(void)
 {
-    dataIndexInTrack = STREAM_START_OFFSET;     // stream index to start
-    timeTrackStart = millis();                  // time of track start to now
+    trackRestart = true;                        // the next refill starts at the track start
+    timeTrackStartUs = time_us_32();            // time of track start to now
 }
 
 // Track rotation: 200 ms per track, INDEX low for the last 5 ms of it, stream restarted at the track start. Done in an
@@ -264,7 +252,7 @@ void readTrackData_goToStart(void)
 
 static volatile bool indexPulse = false;
 
-int64_t trackRotationAlarm(alarm_id_t id, void* userData)
+int64_t __not_in_flash_func(trackRotationAlarm)(alarm_id_t id, void* userData)
 {
     if(!indexPulse) {               // index pulse start - last 5 ms of the track
         indexPulse = true;
@@ -291,41 +279,34 @@ void trackRotationSetup(void)
 
 void requestTrackLoad(uint16_t track, uint16_t sector);
 
-void updateStreamPositionByFloppyPosition(void)
+// How long the seek takes at most, the stream continues from there - measured on the worst case track, see mfm_perf.h
+#define SEEK_TIME_US    3000
+
+// Find where the disk is now in the track of the current side, by going through the stream up to that time. This works
+// for any track layout, but takes ms - so with the IRQs enabled, on a copy of the stream, while the refill sends the filler.
+void seekStreamToCurrentAngle(void)
 {
-    // How many ms takes to stream 1 sector (whole track is 200 ms)
-    // This would ideally be '200 / imgSectorsPerTrack', but this causes sometimes the last sector in track not be streamed
-    // and thus *SOMETIMES* produces error reading last sector in track with custom fdc routines in fdd test.
-    int timeMsPerSector = 19;
+    uint32_t irqState = save_and_disable_interrupts();
+    streamValid = false;
+    trackRestart = false;
+    uint32_t startUs = timeTrackStartUs;
+    MfmStream stream = mfmStream;       // keeps the random state going
+    restore_interrupts(irqState);
 
-    uint32_t now = millis();
-    uint32_t timeSinceTrackStart = now - timeTrackStart;        // how many ms have passed since track start (0 - 200)
-    uint32_t timeToTrackEnd = 200 - timeSinceTrackStart;        // how many ms we still have until this track ends (0 - 200)
+    int side = BIT_IS_H(PIN_SIDE1) ? 0 : 1;
 
-    // not enough time to stream the last sector completely?
-    // set data index to end of stream, will just stream same symbols until the track restarts
-    // (this is what could cause last sector in track not be streamed when timeMsPerSector is too big)
-    if(timeSinceTrackStart >= 200 || timeToTrackEnd < timeMsPerSector) {
-        dataIndexInTrack = READTRACKDATA_SIZE_BYTES - 1;
-        return;
+    mfmStreamStart(&stream, trackDataOfSide(side), READTRACKDATA_SIZE_BYTES);
+    mfmStreamSeek(&stream, (time_us_32() - startUs) + SEEK_TIME_US);
+
+    irqState = save_and_disable_interrupts();
+
+    if(!trackRestart && side == (BIT_IS_H(PIN_SIDE1) ? 0 : 1)) {    // new rotation or other side meanwhile? this position is useless
+        mfmStream = stream;
+        streamSide = side;
+        streamValid = true;
     }
 
-    int currentSectorIndex = (timeSinceTrackStart / timeMsPerSector);           // convert timeSinceTrackStart to sector index (0 - 10)
-    int currentSectorNo = MIN(currentSectorIndex + 1, imgSectorsPerTrack);      // limit current sector number
-    currentSectorNo = MAX(currentSectorNo, 1);                                  // entry 0 of the stream table is the end of stream, not a sector
-
-    // from the stream table of the side being streamed read offset to this sector
-    uint8_t* pTrackDataStart = BIT_IS_H(PIN_SIDE1) ? trackData0 : trackData1;   // SIDE1 is H for side 0
-    uint32_t currentSectorStartIndex = getWord(pTrackDataStart + (currentSectorNo * 2));
-
-    // offset 0 (sector not in this track) or not pointing into the stream after the table? don't stream the table or
-    // anything else as MFM data - stream nothing until the track restarts
-    if(currentSectorStartIndex < (2 * STREAM_TABLE_ITEMS) || currentSectorStartIndex >= READTRACKDATA_SIZE_BYTES) {
-        dataIndexInTrack = READTRACKDATA_SIZE_BYTES - 1;
-        return;
-    }
-
-    dataIndexInTrack = currentSectorStartIndex;
+    restore_interrupts(irqState);
 }
 
 // Writes are started and ended in the WGATE IRQ (onWriteStart / onWriteEnd), so the capture starts with the first pulse
@@ -344,7 +325,7 @@ volatile uint32_t wrWritesCaptured = 0;    // writes captured and passed to core
 volatile uint32_t wrWritesEmpty = 0;       // WGATE toggled, but no data captured - for the status in the debug log
 
 // on WGATE falling edge, from IRQ
-void onWriteStart(void)
+void __not_in_flash_func(onWriteStart)(void)
 {
     // WGATE and WDATA are shared by all drives on the ST floppy bus - if our drive isn't selected, this write is for
     // the other drive, so don't capture it (wrBuffer stays NULL, the write IRQ drops the data, onWriteEnd() does nothing)
@@ -389,7 +370,7 @@ void onWriteStart(void)
 }
 
 // on WGATE rising edge, from IRQ
-void onWriteEnd(void)
+void __not_in_flash_func(onWriteEnd)(void)
 {
     uint32_t irqState = save_and_disable_interrupts();      // the write DMA IRQ has higher priority, keep it out of this
     mfmWriteCaptureEnd();                                   // store the rest of the captured pulses into wrBuffer, empty the ring
@@ -411,7 +392,7 @@ void onWriteEnd(void)
 }
 
 // WGATE IRQ - both edges
-void wgateIsr(uint32_t events)
+void __not_in_flash_func(wgateIsr)(uint32_t events)
 {
     bool fell = (events & GPIO_IRQ_EDGE_FALL) != 0;
     bool rose = (events & GPIO_IRQ_EDGE_RISE) != 0;
@@ -433,14 +414,14 @@ void wgateIsr(uint32_t events)
 
 // Read data output enable: on only while our drive is selected and its motor is on - otherwise another drive on the
 // bus may be the one sending data. Set from the current levels, so a missed or merged edge can't leave it wrong.
-void updateStreamOutputEnable(void)
+void __not_in_flash_func(updateStreamOutputEnable)(void)
 {
     bool stWantsTheStream = BIT_IS_L(PIN_DRIVE_SEL) && BIT_IS_L(PIN_MOT_EN);
     gpio_put(PIN_FLCC_OE, stWantsTheStream ? 0 : 1);    // OE is active low
 }
 
 // GPIO IRQ callback of core1 - the sdk has one callback per core for all GPIOs
-void __isr gpioIsrCore1(uint gpio, uint32_t events)
+void __isr __not_in_flash_func(gpioIsrCore1)(uint gpio, uint32_t events)
 {
     if(gpio == PIN_STEP) {
         floppyStepISR(gpio, events);
@@ -537,6 +518,10 @@ void storeReceivedTrack(IPCbuffer* bfr)
     psramStoreTrack(bfr->trackNo, bfr->sideNo, bfr->data);
 
     if(bfr->trackNo == hwPosition.track) {          // we've just received the track that is being streamed out?
+        if(bfr->sideNo == streamSide) {             // its layout can be different - main loop finds the position again
+            streamValid = false;
+        }
+
         uint8_t* pTrack = (bfr->sideNo == 0) ? trackData0 : trackData1;     // pick the correct pointer for this side
         memcpy(pTrack, bfr->data, READTRACKDATA_SIZE_BYTES);               // copy data directly to track buffer
     }
@@ -557,6 +542,9 @@ void core1Setup(void)
     psramTest();
 
     core1running = true;
+
+    mfmStreamGlobalInit(clock_get_hz(clk_sys));
+    mfmPerfInit();
 
     clearMfmBuffer();
     trackRotationSetup();
@@ -621,9 +609,7 @@ void core1Loop(void)
         psramLoadTrack(hwPosition.track, 0, trackData0);
         psramLoadTrack(hwPosition.track, 1, trackData1);
 
-        uint32_t irqState = save_and_disable_interrupts();     // track restart (alarm IRQ) must not come between reading timeTrackStart and setting dataIndexInTrack
-        updateStreamPositionByFloppyPosition();
-        restore_interrupts(irqState);
+        seekStreamToCurrentAngle();
 
         state = STATE_STREAMING;
     }
@@ -632,6 +618,7 @@ void core1Loop(void)
 
     if(prevSideNo != hwPosition.side) {     // on side change, clear the current mfm buffer
         prevSideNo = hwPosition.side;
+        streamValid = false;
         clearMfmBuffer();
     }
 
@@ -650,8 +637,15 @@ void core1Loop(void)
         ipcBufferRelease(bfr);
     }
 
+    // position in the stream lost (side change, new track)? find it - unless a new rotation starts at the track start anyway
+    if(state == STATE_STREAMING && !streamValid && !trackRestart) {
+        seekStreamToCurrentAngle();
+    }
+
     // store finished writes, prepare buffers for next ones
     handleWriteBuffers();
+
+    mfmPerfLoop();
 
     beeperLoop();
 }

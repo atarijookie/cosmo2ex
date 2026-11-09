@@ -2,12 +2,13 @@
 // stored locally (track buffer in RAM + PSRAM) into the sector the ST was writing, and sent to core0 for the host.
 //
 // The track buffers hold the encoded track format of ce_pico_fdd/encoded_track_format.txt (as produced by the CE server).
-// The ST writes a sector right after reading its header, so the write belongs to the sector whose CMD_CURRENT_SECTOR mark
+// The ST writes a sector right after reading its header, so the write belongs to the sector whose sector mark
 // the stream passed last when the write started. The stream is read ahead into the DMA ring, so by the time the write
 // ends, posStreamed already holds the next sector - the tests reproduce that by streaming on between write start and end.
 
 #include <vector>
 #include <cstdint>
+#include <algorithm>
 
 #include "doctest.h"
 #include "fakes_fdd.h"
@@ -18,6 +19,8 @@
 #include "psram.h"
 #include "mfm_write.h"
 #include "core1_main.h"
+#include "mfm_stream.h"
+#include "mfm_test_track.h"
 
 // firmware globals / functions not in the firmware headers
 extern TDrivePosition posStreamed;
@@ -25,9 +28,9 @@ extern uint8_t trackData0[READTRACKDATA_SIZE_BYTES];
 extern uint8_t trackData1[READTRACKDATA_SIZE_BYTES];
 extern uint8_t imgSectorsPerTrack;
 
-extern uint32_t dataIndexInTrack;                       // core1_main.cpp - read index in the streamed track
+extern volatile bool trackRestart;                      // core1_main.cpp - the next refill starts at the track start
+extern volatile bool streamValid;
 extern volatile IPCbuffer* wrBuffer;                    // core1_main.cpp - buffer the write IRQ appends to
-void getMfmDataToBuffer(uint8_t* bfr, int len);         // core1_main.cpp - takes the next MFM bytes of the track, updates posStreamed
 
 extern volatile uint8_t wrStreamByte;                   // mfm_write.cpp - byte packing of the captured symbols
 extern volatile uint8_t wrBits;
@@ -37,71 +40,17 @@ extern volatile uint32_t wrWritesDropped;               // core1_main.cpp - writ
 
 namespace {
 
-const int TRACK_STREAM_TABLE_BYTES = 2 * STREAM_TABLE_ITEMS;   // stream table as the server makes it - 20 words
-const int TRACK_START_GAP_BYTES    = 60;
-const int SECTOR_HEADER_MFM_BYTES  = 40;    // MFM bytes between the CMD_CURRENT_SECTOR mark and CMD_DATA_PART_OF_SECTOR
-const int SECTOR_DATA_MFM_BYTES    = 760;   // MFM bytes after CMD_DATA_PART_OF_SECTOR (12x 00, 3x A1, DAM, 512 B, CRC, 40x 4E), then zero padding
-const int READ_AHEAD_MIN_BYTES     = 256;   // stream read ahead of the output: at least one DMA ring half (MFM_READ_SIZE_FILLS)
-const int SECTOR_DATA_OFFSET       = 4 + SECTOR_HEADER_MFM_BYTES + 1;  // from sector start to first byte of data part
-const int SECTOR_DATA_SPACE        = ENCODED_SECTOR_MAX_SIZE - 1 - SECTOR_DATA_OFFSET;  // data bytes the device may overwrite
+const int READ_AHEAD_MIN_BYTES = 256;       // stream read ahead of the output: at least one DMA ring half, in captured symbol bytes (4 intervals)
 
-int sectorOffset(int sector)        // 1-based sector number -> offset of its CMD_CURRENT_SECTOR mark in the track buffer
-{
-    return TRACK_STREAM_TABLE_BYTES + TRACK_START_GAP_BYTES + (sector - 1) * ENCODED_SECTOR_MAX_SIZE;
-}
-
-// valid MFM byte (four 2-bit symbols, none 00), so it never looks like a stream tag or padding - different per sector
-uint8_t sectorPattern(int sector)
-{
-    static const uint8_t patterns[] = { 0x55, 0x56, 0x57, 0x59, 0x5a, 0x5b, 0x5d, 0x5e, 0x5f, 0x65, 0x66, 0x67 };
-    return patterns[sector % 12];
-}
-
-// encoded track like the server makes it, see ce_pico_fdd/encoded_track_format.txt
 std::vector<uint8_t> buildEncodedTrack(int track, int side, int spt)
 {
-    std::vector<uint8_t> t(READTRACKDATA_SIZE_BYTES, 0);
-
-    for (int i = 0; i < TRACK_START_GAP_BYTES; i++) {
-        t[TRACK_STREAM_TABLE_BYTES + i] = 0x55;
-    }
-
-    for (int s = 1; s <= spt; s++) {
-        int o = sectorOffset(s);
-        storeWord(&t[2 * s], o);            // stream table: offset of sector s
-
-        t[o + 0] = CMD_CURRENT_SECTOR;
-        t[o + 1] = side;
-        t[o + 2] = track;
-        t[o + 3] = s;
-
-        for (int i = 0; i < SECTOR_HEADER_MFM_BYTES; i++) {
-            t[o + 4 + i] = 0x55;
-        }
-
-        t[o + 4 + SECTOR_HEADER_MFM_BYTES] = CMD_DATA_PART_OF_SECTOR;
-
-        for (int i = 0; i < SECTOR_DATA_MFM_BYTES; i++) {
-            t[o + SECTOR_DATA_OFFSET + i] = sectorPattern(s);
-        }
-    }
-
-    int end = sectorOffset(spt + 1);
-    t[end] = CMD_TRACK_STREAM_END;
-    storeWord(&t[0], end + 2);              // stream table: end of stream
-
-    return t;
+    return buildTestTrack(track, side, spt);
 }
 
-// the bytes the ST writes - valid MFM bytes, distinct from all sector patterns
-std::vector<uint8_t> writtenBytes(int count)
+// The bytes the ST writes: a real sector, as it's decoded and stored. Its size follows from the data, about 800 B.
+std::vector<uint8_t> writtenBytes(int count, uint8_t seed = 100)
 {
-    static const uint8_t vals[] = { 0x6b, 0xe7, 0x9d, 0xb6 };
-    std::vector<uint8_t> v(count);
-    for (int i = 0; i < count; i++) {
-        v[i] = vals[i % 4];
-    }
-    return v;
+    return testWriteSymbols(testSectorRun(testSectorData(seed)));
 }
 
 // Pulse intervals as mfm_write.pio captures them (loop counts): 23 / 43 / 63 for 4 / 6 / 8 us, index = MFM_4US / MFM_6US / MFM_8US.
@@ -189,11 +138,24 @@ std::vector<uint8_t> takeWrittenData(void)
     return data;
 }
 
-// read the stream on, as the DMA refills do while the ST is writing - this moves posStreamed
+// read the stream on, as the DMA refills do while the ST is writing - this moves posStreamed. 'bytes': of captured symbols, 4 intervals each.
 void streamOn(int bytes)
 {
-    std::vector<uint8_t> out(bytes);
-    getMfmDataToBuffer(out.data(), bytes);
+    for(int done = 0; done < bytes; done += READ_AHEAD_MIN_BYTES) {
+        fillHalfMfmBuffer(FILL_LOWER);
+    }
+}
+
+// the ST reads the header of this sector now
+void streamToSector(int sector)
+{
+    trackRestart = true;
+
+    for(int i = 0; i < 100 && (i == 0 || posStreamed.sector != sector); i++) {
+        fillHalfMfmBuffer(FILL_LOWER);
+    }
+
+    REQUIRE(posStreamed.sector == sector);
 }
 
 std::vector<uint8_t> psramTrack(int track, int side)
@@ -203,14 +165,15 @@ std::vector<uint8_t> psramTrack(int track, int side)
     return t;
 }
 
-// what the track must look like after 'data' was written into 'sector' - written data, rest of the data part cleared
+// what the track must look like after the captured write 'data' was written into 'sector': the same, just the data in its raw run
 std::vector<uint8_t> expectedAfterWrite(std::vector<uint8_t> t, int sector, const std::vector<uint8_t>& data)
 {
-    int start = sectorOffset(sector) + SECTOR_DATA_OFFSET;
+    uint8_t run[MFM_SECTOR_RUN_SIZE];
+    REQUIRE(mfmDecodeWrittenSector(data.data(), data.size(), run) == MFM_DECODE_SECTOR);
 
-    for (int i = 0; i < SECTOR_DATA_SPACE; i++) {
-        t[start + i] = (i < (int) data.size()) ? data[i] : 0;
-    }
+    int offset = testFindRun(t, sector);
+    REQUIRE(offset > 0);
+    memcpy(&t[offset], run, MFM_SECTOR_RUN_SIZE);
 
     return t;
 }
@@ -229,6 +192,7 @@ struct WriteFixture {
 
         fakeGpioLevel[PIN_DRIVE_SEL] = false;   // our drive selected (active low)
 
+        mfmStreamGlobalInit(150000000);
         imgSectorsPerTrack = 9;
         memset(trackData0, 0, sizeof(trackData0));
         memset(trackData1, 0, sizeof(trackData1));
@@ -243,9 +207,7 @@ struct WriteFixture {
 
         fakeGpioLevel[PIN_SIDE1] = (side == 0);         // SIDE1 is H for side 0
 
-        dataIndexInTrack = sectorOffset(sector);
-        streamOn(SECTOR_HEADER_MFM_BYTES);              // the ST reads the sector header...
-        REQUIRE(posStreamed.sector == sector);
+        streamToSector(sector);                         // the ST reads the sector header...
         REQUIRE(posStreamed.track == track);
     }
 
@@ -269,8 +231,8 @@ struct WriteFixture {
 TEST_SUITE("fdd sector write") {
 
 TEST_CASE_FIXTURE(WriteFixture, "the stream read-ahead reaches the next sector header before the write ends") {
-    // the premise of the tests below: a 512 B sector write is about 700 MFM bytes long, with the read-ahead the stream
-    // passes the end of the data part (about 760 MFM bytes) and the next sector header before WGATE goes high
+    // the premise of the tests below: a 512 B sector write is about 700 captured bytes long, with the read-ahead the
+    // stream passes the end of the data part and the next sector header before WGATE goes high
     insertTrack(5, 0, buildEncodedTrack(5, 0, 9), 3);
 
     writeGateLow();
@@ -293,8 +255,8 @@ TEST_CASE_FIXTURE(WriteFixture, "written data is stored into the sector being wr
 
     SUBCASE("track buffer in RAM") {
         CHECK(memcmp(trackData0, expected.data(), READTRACKDATA_SIZE_BYTES) == 0);
-        CHECK(trackData0[sectorOffset(sector + 1) + SECTOR_DATA_OFFSET] == sectorPattern(sector + 1));  // next sector untouched
-        CHECK(trackData0[sectorOffset(sector) + SECTOR_DATA_OFFSET] == data[0]);
+        CHECK(trackData0[testFindRun(t, sector + 1) + 1] == testSectorData(sector + 1)[0]);     // next sector untouched
+        CHECK(trackData0[testFindRun(t, sector) + 1] == testSectorData(100)[0]);
     }
 
     SUBCASE("track in PSRAM") {
@@ -323,7 +285,7 @@ TEST_CASE_FIXTURE(WriteFixture, "written data is stored into the sector being wr
 }
 
 TEST_CASE_FIXTURE(WriteFixture, "write on side 1 goes to side 1 of the track, side bit set for the host") {
-    const int track = 80, side = 1, sector = 2;        // track 80 == 0x50 == CMD_CURRENT_SECTOR, must not confuse the parsing
+    const int track = 80, side = 1, sector = 2;        // track 80 == 0x50 == MFM_OP_RAW, must not confuse the parsing
     std::vector<uint8_t> t = buildEncodedTrack(track, side, 9);
     std::vector<uint8_t> data = writtenBytes(690);
 
@@ -363,15 +325,13 @@ TEST_CASE_FIXTURE(WriteFixture, "consecutive writes of two sectors each land in 
     const int track = 7, side = 0;
     std::vector<uint8_t> t = buildEncodedTrack(track, side, 9);
     std::vector<uint8_t> data3 = writtenBytes(700);
-    std::vector<uint8_t> data4(680, 0xb6);
+    std::vector<uint8_t> data4 = writtenBytes(680, 101);
 
     insertTrack(track, side, t, 3);
     writeSector(data3);
     REQUIRE(posStreamed.sector == 4);
 
-    dataIndexInTrack = sectorOffset(4);                 // the ST reads sector 4 header now
-    streamOn(SECTOR_HEADER_MFM_BYTES);
-    REQUIRE(posStreamed.sector == 4);
+    streamToSector(4);                                  // the ST reads sector 4 header now
 
     writeSector(data4);
     REQUIRE(posStreamed.sector == 5);
@@ -415,9 +375,7 @@ TEST_CASE_FIXTURE(WriteFixture, "write to the other drive does not disturb the n
     writeSector(std::vector<uint8_t>(700, 0xb6), false);
 
     fakeGpioLevel[PIN_DRIVE_SEL] = false;               // back to our drive, write sector 4
-    dataIndexInTrack = sectorOffset(4);
-    streamOn(SECTOR_HEADER_MFM_BYTES);
-    REQUIRE(posStreamed.sector == 4);
+    streamToSector(4);
     writeSector(data);
 
     std::vector<uint8_t> expected = expectedAfterWrite(t, 4, data);
@@ -648,7 +606,7 @@ TEST_CASE_FIXTURE(WriteFixture, "two writes finished while the main loop is busy
     const int track = 7, side = 0;
     std::vector<uint8_t> t = buildEncodedTrack(track, side, 9);
     std::vector<uint8_t> data3 = writtenBytes(700);
-    std::vector<uint8_t> data4(680, 0xb6);
+    std::vector<uint8_t> data4 = writtenBytes(680, 101);
 
     insertTrack(track, side, t, 3);
     fakeGpioSet(PIN_WGATE, false);
@@ -656,8 +614,7 @@ TEST_CASE_FIXTURE(WriteFixture, "two writes finished while the main loop is busy
     captureBytes(data3);
     fakeGpioSet(PIN_WGATE, true);
 
-    dataIndexInTrack = sectorOffset(4);
-    streamOn(SECTOR_HEADER_MFM_BYTES);
+    streamToSector(4);
     fakeGpioSet(PIN_WGATE, false);
     pioPushPulse(PIO_TICKS_GAP);
     captureBytes(data4);
@@ -761,96 +718,188 @@ TEST_CASE("sector header without data part - search stops, nothing stored") {
     const int track = 5, side = 0;
     std::vector<uint8_t> data = writtenBytes(700);
     ipcInit();
+    int sector = 0;
 
-    SUBCASE("next sector header comes first") {
-        std::vector<uint8_t> t = buildEncodedTrack(track, side, 9);
-        t[sectorOffset(3) + 4 + SECTOR_HEADER_MFM_BYTES] = 0x55;    // sector 3 has no CMD_DATA_PART_OF_SECTOR
-        memcpy(trackData0, t.data(), READTRACKDATA_SIZE_BYTES);
+    SUBCASE("next sector header comes first")   { sector = 3; }
+    SUBCASE("track stream end comes first")     { sector = 9; }
 
-        storeWrittenSectorDataToTrackLocally(side, track, 3, data.data(), data.size());
-        CHECK(memcmp(trackData0, t.data(), READTRACKDATA_SIZE_BYTES) == 0);
-    }
+    std::vector<uint8_t> t = buildTestTrack(track, side, 9, sector);
+    memcpy(trackData0, t.data(), READTRACKDATA_SIZE_BYTES);
 
-    SUBCASE("track stream end comes first") {
-        std::vector<uint8_t> t = buildEncodedTrack(track, side, 9);
-        t[sectorOffset(9) + 4 + SECTOR_HEADER_MFM_BYTES] = 0x55;    // last sector has no CMD_DATA_PART_OF_SECTOR
-        memcpy(trackData0, t.data(), READTRACKDATA_SIZE_BYTES);
-
-        storeWrittenSectorDataToTrackLocally(side, track, 9, data.data(), data.size());
-        CHECK(memcmp(trackData0, t.data(), READTRACKDATA_SIZE_BYTES) == 0);
-    }
+    storeWrittenSectorDataToTrackLocally(side, track, sector, data.data(), data.size());
+    CHECK(memcmp(trackData0, t.data(), READTRACKDATA_SIZE_BYTES) == 0);
 }
 
 }
 
-TEST_SUITE("fdd write with bad sector offset") {
+TEST_SUITE("fdd written sector decoding") {
 
-// The sector offset from the stream table must leave room for the whole sector (ENCODED_SECTOR_MAX_SIZE) in the track
-// buffer and must point beyond the stream table - otherwise the write is not stored locally at all.
+namespace {
 
-struct BadOffsetFixture {
-    const int track = 5, side = 0;
-    std::vector<uint8_t> t = buildEncodedTrack(5, 0, 9);
-    std::vector<uint8_t> data = writtenBytes(700);
+struct DecodeFixture {
+    const int track = 5, side = 0, sector = 3;
+    std::vector<uint8_t> t = buildTestTrack(5, 0, 9);
+    std::vector<uint8_t> data = testSectorData(77);
 
-    BadOffsetFixture() {
+    DecodeFixture() {
         fakeReset();
         ipcInit();
-    }
-
-    // point sector 3 to 'offset', put a sector 3 header + data part mark there, then write sector 3
-    void writeWithOffset(int offset) {
-        storeWord(&t[2 * 3], offset);
-
-        if (offset + 4 + SECTOR_HEADER_MFM_BYTES < READTRACKDATA_SIZE_BYTES) {
-            t[offset + 0] = CMD_CURRENT_SECTOR;
-            t[offset + 1] = side;
-            t[offset + 2] = track;
-            t[offset + 3] = 3;
-            t[offset + 4 + SECTOR_HEADER_MFM_BYTES] = CMD_DATA_PART_OF_SECTOR;
-        }
-
         memcpy(trackData0, t.data(), READTRACKDATA_SIZE_BYTES);
         psramStoreTrack(track, side, trackData0);
+    }
 
-        storeWrittenSectorDataToTrackLocally(side, track, 3, data.data(), data.size());
+    void write(const std::vector<uint8_t>& symbols) {
+        storeWrittenSectorDataToTrackLocally(side, track, sector, (uint8_t*) symbols.data(), symbols.size());
+    }
+
+    std::vector<uint8_t> trackNow(void) {
+        return std::vector<uint8_t>(trackData0, trackData0 + READTRACKDATA_SIZE_BYTES);
+    }
+
+    void checkUnchanged(void) {
+        CHECK(trackNow() == t);
+        CHECK(psramTrack(track, side) == t);
+    }
+
+    void checkStored(const std::vector<uint8_t>& run) {
+        std::vector<uint8_t> expected = t;
+        std::copy(run.begin(), run.end(), expected.begin() + testFindRun(t, sector));
+        CHECK(trackNow() == expected);
+        CHECK(psramTrack(track, side) == expected);
     }
 };
 
-TEST_CASE_FIXTURE(BadOffsetFixture, "sector in the last ENCODED_SECTOR_MAX_SIZE bytes of the track - would write past the track buffer") {
-    writeWithOffset(READTRACKDATA_SIZE_BYTES - ENCODED_SECTOR_MAX_SIZE + 1);
+}   // namespace
 
-    CHECK(memcmp(trackData0, t.data(), READTRACKDATA_SIZE_BYTES) == 0);
-    CHECK(psramTrack(track, side) == t);
+TEST_CASE_FIXTURE(DecodeFixture, "written sector is stored into its raw run, with nothing else in the track moved") {
+    std::vector<uint8_t> run = testSectorRun(data);
+    write(testWriteSymbols(run));
+    checkStored(run);
 }
 
-TEST_CASE_FIXTURE(BadOffsetFixture, "sector exactly at the last possible offset is stored, up to the track buffer end") {
-    const int offset = READTRACKDATA_SIZE_BYTES - ENCODED_SECTOR_MAX_SIZE;
-    writeWithOffset(offset);
-
-    int start = offset + SECTOR_DATA_OFFSET;
-    CHECK(trackData0[start] == data[0]);
-    CHECK(trackData0[start + data.size() - 1] == data.back());
-    CHECK(trackData0[READTRACKDATA_SIZE_BYTES - 1] == 0);
-    CHECK(psramTrack(track, side)[start] == data[0]);
+TEST_CASE_FIXTURE(DecodeFixture, "every byte value decodes back, F5 and the mark values too") {
+    for(int i=0; i<512; i++) {
+        data[i] = i;
+    }
+    std::vector<uint8_t> run = testSectorRun(data);
+    write(testWriteSymbols(run));
+    checkStored(run);
 }
 
-TEST_CASE_FIXTURE(BadOffsetFixture, "sector offset 0 (sector not in track) or inside the stream table") {
-    int offset = 0;
-    SUBCASE("offset 0")              { offset = 0; }
-    SUBCASE("inside stream table")   { offset = 2 * STREAM_TABLE_ITEMS - 1; }
+TEST_CASE_FIXTURE(DecodeFixture, "CRC off by 1 is accepted, the stored CRC is the right one so the sector reads back fine") {
+    std::vector<uint8_t> good = testSectorRun(data);
+    std::vector<uint8_t> received = good;
+    uint16_t crc = (((uint16_t) received[513] << 8) | received[514]) + 1;
+    received[513] = crc >> 8;
+    received[514] = crc & 0xff;
 
-    writeWithOffset(offset);
-
-    CHECK(memcmp(trackData0, t.data(), READTRACKDATA_SIZE_BYTES) == 0);
-    CHECK(psramTrack(track, side) == t);
+    write(testWriteSymbols(received));
+    checkStored(good);
 }
 
-TEST_CASE_FIXTURE(BadOffsetFixture, "sector 0 doesn't exist - its stream table item is the end of stream offset") {
+TEST_CASE_FIXTURE(DecodeFixture, "end of the CRC not captured, the whole data was - accepted, CRC calculated") {
+    std::vector<uint8_t> run = testSectorRun(data);
+    std::vector<uint8_t> symbols = testWriteSymbols(std::vector<uint8_t>(run.begin(), run.end() - 2), 0);
+    write(symbols);
+    checkStored(run);
+}
+
+TEST_CASE_FIXTURE(DecodeFixture, "data not captured whole - the old sector stays") {
+    std::vector<uint8_t> run = testSectorRun(data);
+    write(testWriteSymbols(std::vector<uint8_t>(run.begin(), run.begin() + 300), 0));
+    checkUnchanged();
+}
+
+TEST_CASE_FIXTURE(DecodeFixture, "damaged data - CRC doesn't match, the old sector stays") {
+    std::vector<uint8_t> run = testSectorRun(data);
+    run[200] ^= 0x10;
+    write(testWriteSymbols(run));
+    checkUnchanged();
+}
+
+TEST_CASE_FIXTURE(DecodeFixture, "no sync in the write, or another mark than DAM - the old sector stays") {
+    SUBCASE("no sync") {
+        write(std::vector<uint8_t>(800, 0x55));
+    }
+
+    SUBCASE("deleted data mark") {
+        std::vector<uint8_t> run = testSectorRun(data);
+        run[0] = 0xf8;
+        write(testWriteSymbols(run));
+    }
+
+    SUBCASE("nothing") {
+        write(std::vector<uint8_t>());
+    }
+
+    checkUnchanged();
+}
+
+TEST_CASE_FIXTURE(DecodeFixture, "sector 0 or beyond the limit doesn't exist") {
+    std::vector<uint8_t> symbols = testWriteSymbols(testSectorRun(data));
+
+    storeWrittenSectorDataToTrackLocally(side, track, 0, symbols.data(), symbols.size());
+    storeWrittenSectorDataToTrackLocally(side, track, MAX_SECTORS_PER_TRACK + 1, symbols.data(), symbols.size());
+    checkUnchanged();
+}
+
+TEST_CASE_FIXTURE(DecodeFixture, "FORMAT TRACK clears all the sectors of the track, as the host does in the image") {
+    std::vector<uint8_t> formatWrite = testWriteSymbols({0xfe, (uint8_t) track, (uint8_t) side, 1, 2, 0x12, 0x34});
+    write(formatWrite);
+
+    std::vector<uint8_t> empty = testSectorRun(std::vector<uint8_t>(512, 0));
+
+    for(int s=1; s<=9; s++) {
+        CAPTURE(s);
+        std::vector<uint8_t> now = trackNow();
+        int offset = testFindRun(now, s);
+        REQUIRE(offset > 0);
+        CHECK(std::vector<uint8_t>(now.begin() + offset, now.begin() + offset + MFM_SECTOR_RUN_SIZE) == empty);
+    }
+
+    CHECK(psramTrack(track, side) == trackNow());
+}
+
+TEST_CASE_FIXTURE(DecodeFixture, "FORMAT TRACK when another track is in the buffer already, after a step - nothing changed") {
+    std::vector<uint8_t> formatWrite = testWriteSymbols({0xfe, 4, (uint8_t) side, 1, 2, 0x12, 0x34});
+    storeWrittenSectorDataToTrackLocally(side, 4, 1, formatWrite.data(), formatWrite.size());
+    checkUnchanged();
+}
+
+TEST_CASE("written data read back: raw run after the write gives the intervals of the write") {
+    // the whole way: ST writes symbols -> stored as a raw run -> the stream makes the same intervals
+    fakeReset();
+    ipcInit();
+    mfmStreamGlobalInit(150000000);
+
+    std::vector<uint8_t> t = buildTestTrack(5, 0, 9);
     memcpy(trackData0, t.data(), READTRACKDATA_SIZE_BYTES);
-    storeWrittenSectorDataToTrackLocally(side, track, 0, data.data(), data.size());
 
-    CHECK(memcmp(trackData0, t.data(), READTRACKDATA_SIZE_BYTES) == 0);
+    std::vector<uint8_t> run = testSectorRun(testSectorData(55));
+    std::vector<uint8_t> symbols = testWriteSymbols(run);
+    storeWrittenSectorDataToTrackLocally(0, 5, 3, symbols.data(), symbols.size());
+
+    SymbolEncoder written;
+    written.bytes(std::vector<uint8_t>(12, 0));
+    for(int i=0; i<3; i++) {
+        written.syncA1();
+    }
+    written.bytes(run);
+    std::vector<int> expected(written.intervals.end() - 2500, written.intervals.end() - 8);    // the data part of the sector
+
+    MfmStream s = MfmStream();
+    mfmStreamStart(&s, trackData0, READTRACKDATA_SIZE_BYTES);
+
+    std::vector<int> all;
+    uint16_t out[1024];
+    while(!s.ended) {
+        mfmStreamFill(&s, out, 1024);
+        for(uint16_t top : out) {
+            all.push_back((top + 1) / 150);
+        }
+    }
+
+    CHECK(std::search(all.begin(), all.end(), expected.begin(), expected.end()) != all.end());
 }
 
 }

@@ -208,3 +208,201 @@ func TestFDDSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestEmptyFloppyImageContent(t *testing.T) {
+	for _, tracks := range []int{80, 81} {
+		for _, sectors := range []int{8, 9, 10, 11} {
+			for _, sides := range []int{1, 2} {
+				image, err := makeEmptyFloppyImage(tracks, sectors, sides)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				total := tracks * sectors * sides
+				word := func(at int) int { return int(image[at]) | int(image[at+1])<<8 }
+
+				if len(image) != total*512 || word(11) != 512 || image[13] != 2 || word(14) != 1 || image[16] != 2 ||
+					word(17) != 112 || word(19) != total || word(22) != 5 || word(24) != sectors || word(26) != sides {
+					t.Errorf("%d/%d/%d: bad boot sector % x", tracks, sectors, sides, image[:30])
+				}
+				if floppyBootSectorSum(image) == 0x1234 {
+					t.Errorf("%d/%d/%d: boot sector is executable", tracks, sectors, sides)
+				}
+
+				media := byte(0xF8 + sides - 1)
+				if image[21] != media {
+					t.Errorf("%d/%d/%d: media %x", tracks, sectors, sides, image[21])
+				}
+				for _, fat := range []int{512, 512 + 5*512} {
+					if image[fat] != media || image[fat+1] != 0xFF || image[fat+2] != 0xFF {
+						t.Errorf("%d/%d/%d: FAT at %d: % x", tracks, sectors, sides, fat, image[fat:fat+3])
+					}
+				}
+
+				for i, val := range image[1536*4:] { // after the FATs: nothing, the root dir and the data are empty
+					if val != 0 {
+						t.Fatalf("%d/%d/%d: byte %d is %x", tracks, sectors, sides, 1536*4+i, val)
+					}
+				}
+			}
+		}
+	}
+
+	a, _ := makeEmptyFloppyImage(80, 9, 2)
+	b, _ := makeEmptyFloppyImage(80, 9, 2)
+	if string(a[8:11]) == string(b[8:11]) && string(a[8:11]) == "\x00\x00\x00" {
+		t.Error("serial numbers aren't random")
+	}
+}
+
+func TestCreateEmptyFloppyImage(t *testing.T) {
+	settings := t.TempDir()
+	images := t.TempDir()
+	t.Setenv("SETTINGS_DIR", settings)
+	t.Setenv("CMD_UDP_PORT", "") // don't send to a running core
+
+	s := &Server{}
+	const mac = "2ccf67c4b1e5"
+
+	create := func(body map[string]interface{}) (int, string) {
+		t.Helper()
+		data, _ := json.Marshal(body)
+		rc := chi.NewRouteContext()
+		rc.URLParams.Add("mac", mac)
+		r := httptest.NewRequest(http.MethodPost, "/fdd/"+mac+"/image/new", strings.NewReader(string(data)))
+		r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rc))
+		w := httptest.NewRecorder()
+		s.handlePostFDDImageNew(w, r)
+		return w.Code, w.Body.String()
+	}
+	request := func(name string, insert bool) map[string]interface{} {
+		return map[string]interface{}{"dir": images, "name": name, "tracks": 80, "sectors": 9, "sides": 2, "insert": insert}
+	}
+
+	// not inserted: file created, what's inserted stays
+	if err := s.writeFddImage(mac, "/old/image.st"); err != nil {
+		t.Fatal(err)
+	}
+	if code, body := create(request("first", false)); code != http.StatusOK {
+		t.Fatalf("create: %d %s", code, body)
+	}
+	if info, err := os.Stat(filepath.Join(images, "first.st")); err != nil || info.Size() != 737280 {
+		t.Fatalf("file: %v %v", info, err)
+	}
+	if current, _ := s.readFddImage(mac); current != "/old/image.st" {
+		t.Errorf("image inserted: %q", current)
+	}
+
+	// inserted, name already with the extension
+	if code, body := create(request("Second.ST", true)); code != http.StatusOK {
+		t.Fatalf("create: %d %s", code, body)
+	}
+	if current, _ := s.readFddImage(mac); current != filepath.Join(images, "Second.ST") {
+		t.Errorf("not inserted: %q", current)
+	}
+
+	// an existing file stays as it is
+	existing := filepath.Join(images, "games.st")
+	if err := os.WriteFile(existing, []byte("my game"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := create(request("games.st", true)); code != http.StatusConflict {
+		t.Errorf("existing file: %d, want 409", code)
+	}
+	if content, _ := os.ReadFile(existing); string(content) != "my game" {
+		t.Errorf("existing file changed: %q", content)
+	}
+	if current, _ := s.readFddImage(mac); current != filepath.Join(images, "Second.ST") {
+		t.Errorf("failed create changed the inserted image: %q", current)
+	}
+
+	// asked and confirmed: the file gets replaced, the access rights stay
+	if err := os.Chmod(existing, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	overwrite := request("games.st", false)
+	overwrite["overwrite"] = true
+	overwrite["sides"] = 1
+	if code, body := create(overwrite); code != http.StatusOK {
+		t.Fatalf("overwrite: %d %s", code, body)
+	}
+	info, err := os.Stat(existing)
+	if err != nil || info.Size() != 368640 || info.Mode().Perm() != 0o600 {
+		t.Errorf("overwritten file: %v %v", info, err)
+	}
+	if current, _ := s.readFddImage(mac); current != filepath.Join(images, "Second.ST") {
+		t.Errorf("overwrite without insert changed the inserted image: %q", current)
+	}
+
+	// overwriting the inserted image: stays inserted
+	overwrite = request("Second.ST", false)
+	overwrite["overwrite"] = true
+	overwrite["sectors"] = 10
+	if code, body := create(overwrite); code != http.StatusOK {
+		t.Fatalf("overwrite inserted: %d %s", code, body)
+	}
+	if info, err := os.Stat(filepath.Join(images, "Second.ST")); err != nil || info.Size() != 819200 {
+		t.Errorf("overwritten inserted file: %v %v", info, err)
+	}
+	if current, _ := s.readFddImage(mac); current != filepath.Join(images, "Second.ST") {
+		t.Errorf("not inserted anymore: %q", current)
+	}
+
+	// a symlink stays, the file it points to is replaced
+	if err := os.Symlink(existing, filepath.Join(images, "link.st")); err != nil {
+		t.Fatal(err)
+	}
+	overwrite = request("link.st", false)
+	overwrite["overwrite"] = true
+	if code, body := create(overwrite); code != http.StatusOK {
+		t.Fatalf("overwrite link: %d %s", code, body)
+	}
+	if info, err := os.Lstat(filepath.Join(images, "link.st")); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("symlink gone: %v %v", info, err)
+	}
+	if info, err := os.Stat(existing); err != nil || info.Size() != 737280 {
+		t.Errorf("file behind the symlink: %v %v", info, err)
+	}
+
+	// a folder can't be overwritten
+	if err := os.Mkdir(filepath.Join(images, "folder.st"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	overwrite = request("folder.st", false)
+	overwrite["overwrite"] = true
+	if code, _ := create(overwrite); code == http.StatusOK {
+		t.Errorf("folder overwritten")
+	}
+
+	// no temp files left
+	if names, _ := filepath.Glob(filepath.Join(images, ".new_floppy_*")); len(names) != 0 {
+		t.Errorf("left: %v", names)
+	}
+
+	for _, name := range []string{"", "  ", ".", "..", "../up", "a/b", `a\b`, "c:x", strings.Repeat("x", 300)} {
+		if code, _ := create(request(name, false)); code != http.StatusBadRequest {
+			t.Errorf("name %q: %d, want 400", name, code)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(images), "up.st")); err == nil {
+		t.Error("file created out of the folder")
+	}
+
+	for _, tc := range []struct{ tracks, sectors, sides int }{{79, 9, 2}, {82, 9, 2}, {80, 7, 2}, {80, 12, 2}, {80, 9, 0}, {80, 9, 3}} {
+		body := request("bad", false)
+		body["tracks"], body["sectors"], body["sides"] = tc.tracks, tc.sectors, tc.sides
+		if code, _ := create(body); code != http.StatusBadRequest {
+			t.Errorf("geometry %v: %d, want 400", tc, code)
+		}
+	}
+
+	body := request("x", false)
+	body["dir"] = filepath.Join(images, "no such folder")
+	if code, _ := create(body); code != http.StatusBadRequest {
+		t.Errorf("missing folder: %d, want 400", code)
+	}
+	body["dir"] = existing
+	if code, _ := create(body); code != http.StatusBadRequest {
+		t.Errorf("folder is a file: %d, want 400", code)
+	}
+}

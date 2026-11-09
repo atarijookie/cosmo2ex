@@ -27,6 +27,7 @@ typedef struct
     uint32_t        openRequestSeq; // incremented (under mutex) on every open request - counter, not time, so 2 requests in the same ms aren't mixed up
     uint32_t        openHandledSeq; // openRequestSeq value the encoder saw when it started opening; equal = no newer request
     std::string     imageFileName;  // file name of image to open next
+    volatile bool   checkFileReplaced;  // same image inserted again - encoder thread loads it again if its file was replaced
     FloppyImage     *image;         // this holds object with the loaded floppy image (in normal data form)
 
     // While a new image is being encoded and sent, the device (and ST) still has the previous one - keep it, so sectors
@@ -56,7 +57,7 @@ public:
     std::string getFileName(int floppySlotIndex);
     std::string getBrowsePath(int floppySlotIndex);     // hostPath of a browsable image, "" if nothing to browse
     bool isSlotEmpty(int floppySlotIndex);              // no image at all (not even a special one)
-    uint8_t *getEmptyTrack(void);
+    uint8_t *getEmptyTrack(int track, int side, int &bytesInBuffer);    // valid until next call
 
     void add(int positionIndex, std::string &filename, std::string &hostPath, bool browsable = true);   // browsable = false for special images
     void remove(int index);
@@ -75,6 +76,7 @@ private:
     void clearSlot(int index);
 
     uint8_t *emptyTrack;
+    int emptyTrackBytes;
     uint8_t *trackCopy;                 // copy of encoded track returned by getEncodedTrack()
 };
 

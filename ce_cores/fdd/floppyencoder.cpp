@@ -52,8 +52,11 @@ void floppyEncoder_addEncodeWholeImageRequest(int slotNo, const char *imageFileN
         slot->imageFileName = inImageFileName;	        // store image file name
 
         pthread_cond_signal(&floppyEncoderShouldWork);  	// wake up encoder
-    } else {        // image not changed, don't load
-        logFdd(LOG_WARNING, "floppyEncoder_addEncodeWholeImageRequest -- slotNo: %d, image: %s - image not changed, ignoring", slotNo, imageFileName);
+    } else {        // same image - loaded again only if its file was replaced, the encoder thread checks that
+        logFdd(LOG_DEBUG, "floppyEncoder_addEncodeWholeImageRequest -- slotNo: %d, image: %s - same image, reloading only if the file was replaced", slotNo, imageFileName);
+
+        slot->checkFileReplaced = true;
+        pthread_cond_signal(&floppyEncoderShouldWork);  	// wake up encoder
     }
 
     pthread_mutex_unlock(&floppyEncoderMutex);      	// unlock the mutex
@@ -296,6 +299,21 @@ static void floppyEncoder_handleLoadFiles(void)
 {
     for(int i=0; i<SLOT_COUNT; i++) {
         SiloSlot *slot = &slots[i];					        // get one slot
+
+        pthread_mutex_lock(&floppyEncoderMutex);
+        bool checkFile = slot->checkFileReplaced;
+        slot->checkFileReplaced = false;
+        pthread_mutex_unlock(&floppyEncoderMutex);
+
+        // slot->image is used only by this thread, so the check is here. The writes to the old content aren't saved then, see save().
+        if(checkFile && slot->image && slot->image->fileChangedOnDisk()) {
+            logFdd(LOG_DEBUG, "floppyEncoder_handleLoadFiles -- slot %d: image file was replaced, loading it again", i);
+
+            pthread_mutex_lock(&floppyEncoderMutex);
+            slot->openRequested = true;
+            slot->openRequestSeq++;
+            pthread_mutex_unlock(&floppyEncoderMutex);
+        }
 
         if(!slot->openRequested) {	                        // if image open not request, skip it
             continue;

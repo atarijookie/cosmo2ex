@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string>
+#include <sys/types.h>
+#include <time.h>
 
 #include "../misc/global.h"
 
@@ -17,6 +19,7 @@ public:
     bool isLoaded(void);
     const char *getFileName(void);
     bool gotUnsavedChanges(void);                   // return if we should call save before clear()
+    bool fileChangedOnDisk(void);                   // something else replaced the file since we loaded or saved it
     uint32_t getLastWriteTime(void);                   // return time when last write happened
 
     virtual bool open(const char *fileName);        // open filename for reading
@@ -36,6 +39,7 @@ public:
 
 protected:
     virtual bool loadImageIntoMemory(void);
+    void rememberFileState(void);                   // call after loading or saving the file
 
     struct {
         int tracksNo;
@@ -50,6 +54,13 @@ protected:
     } image;
 
     FILE *fajl;
+
+    struct {
+        bool    known;
+        time_t  mtime;
+        off_t   size;
+        ino_t   inode;
+    } fileState;
 
     std::string currentFileName;
     bool loadedFlag;

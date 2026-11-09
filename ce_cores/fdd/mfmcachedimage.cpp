@@ -72,11 +72,6 @@ MfmCachedImage::MfmCachedImage()
     crc = 0;
 
     newContent = false;         // no new content (yet)
-
-    // initialize encoder
-    encoder.threeBits = 1;
-    encoder.times = 0;
-    encoder.timesCnt = 0;
 }
 
 MfmCachedImage::~MfmCachedImage()
@@ -92,7 +87,6 @@ void MfmCachedImage::clearWholeCachedImage(void)    // go and memset() all the c
 {
     nextIndex = 0;                      // start encoding from track 0
     gotImage = false;
-    maxTotalSymbolsTime = 0;
 
     // forget previous image completely - if the new one fails to load, nothing must still look valid / waiting for encoding
     params.tracks       = 0;
@@ -104,8 +98,6 @@ void MfmCachedImage::clearWholeCachedImage(void)    // go and memset() all the c
     for(int i=0; i<MAX_TRACKS; i++) {
         tracks[i].isReady = false;      // not ready yet
         tracks[i].bytesInStream = 0;
-        tracks[i].symbolsInStream = 0;
-        tracks[i].totalSymbolsTime = 0;
         memset(tracks[i].mfmStream, 0, MFM_STREAM_SIZE);
     }
 }
@@ -233,45 +225,16 @@ bool MfmCachedImage::findNotReadyTrackAndEncodeIt(FloppyImage *img, int &track, 
     tracks[index].mfmStream[0] = track;     // store track and side at position 0 and 1
     tracks[index].mfmStream[1] = side;
 
-    currentStreamStart = tracks[index].mfmStream + MFM_STREAM_PREFIX_SIZE;  // where the stream starts
+    builder.begin(tracks[index].mfmStream + MFM_STREAM_PREFIX_SIZE, MFM_STREAM_MAX_BYTES);
 
-    bfr = currentStreamStart + STREAM_TABLE_SIZE;   // where the MFM data will start (after initial table)
-    bytesInBfr = STREAM_TABLE_SIZE;             // no bytes in stream yet
+    encodeSingleTrack(img, s, t, params.spt);   // encode single track
 
-    int spt = MIN(params.spt, MAX_SECTORS_PER_TRACK_IN_STREAM);    // never more sectors than the stream table can hold
+    tracks[index].bytesInStream = MFM_STREAM_PREFIX_SIZE + builder.finish();    // what to send: track + side prefix and the whole stream (with the end mark)
 
-    for(int i=0; i<STREAM_TABLE_ITEMS; i++) {   // present sector offset will be init to start of stream, non-existent sector offsets to zero
-        setRawWordAtIndex(i, (i <= spt) ? STREAM_START_OFFSET : 0);
-    }
+    // Debug::outBfr(LOGFILE_FDD, tracks[index].mfmStream, 48);     // uncomment to see start of stream in logs
 
-    // init encoder counters of symbols
-    encoder.symbolsInStream = 0;
-    encoder.totalSymbolsTime = 0;
-
-    // init track @ index counters of symbols
-    tracks[index].symbolsInStream = 0;
-    tracks[index].totalSymbolsTime = 0;
-
-    encodeSingleTrack(img, s, t, spt);          // encode single track
-
-    // copy the counters from encoder to this track @ index
-    tracks[index].symbolsInStream = encoder.symbolsInStream;
-    tracks[index].totalSymbolsTime = encoder.totalSymbolsTime;
-
-    // found new longest track?
-    if(maxTotalSymbolsTime < tracks[index].totalSymbolsTime) {
-        maxTotalSymbolsTime = tracks[index].totalSymbolsTime;
-        float avgTimePerSymbol = ((float) tracks[index].totalSymbolsTime) / ((float) tracks[index].symbolsInStream);
-        logFdd(LOG_DEBUG, "MfmCachedImage::findNotReadyTrackAndEncodeIt() - new longest track has %d ms total symbols time, has %d symbols in it, the average symbol time is %.2f us", tracks[index].totalSymbolsTime / 1000, tracks[index].symbolsInStream, avgTimePerSymbol);
-    }
-
-    tracks[index].bytesInStream = MFM_STREAM_PREFIX_SIZE + bytesInBfr;  // what to send: track + side prefix and the whole stream (with the end mark)
-    setRawWordAtIndex(0, STREAM_START_OFFSET + bytesInBfr);     // stream table - index 0: stream size in bytes (stream table + actual mfm data)
-
-    // Debug::outBfr(LOGFILE_FDD, tracks[index].mfmStream, 48);     // uncomment to see start of stream with stream table in logs
-
-    if(bytesInBfr >= MFM_STREAM_MAX_BYTES) {
-        logFdd(LOG_WARNING, "MfmCachedImage::findNotReadyTrackAndEncodeIt() - WARNING! Track with index %d has %d bytes in it - TOO MUCH!", index, tracks[index].bytesInStream);
+    if(builder.overflowed()) {
+        logFdd(LOG_WARNING, "MfmCachedImage::findNotReadyTrackAndEncodeIt() - WARNING! Track with index %d doesn't fit into %d bytes!", index, MFM_STREAM_MAX_BYTES);
     }
 
     //-----
@@ -346,25 +309,30 @@ void MfmCachedImage::dumpTracksToFile(int tracksNo, int sides, int spt)
     fclose(f);
 }
 
+// The track must fit into one rotation, 200 ms = 6250 bytes. A sector takes 528 bytes + gaps, the 22 + 12 bytes
+// between its ID and data field stay (the FDC starts a sector write right after them), so what's left to shrink for 11
+// sectors is the rest of the gaps. Up to 10 sectors it's 6200 bytes, with 11 it's 6247.
 void MfmCachedImage::encodeSingleTrack(FloppyImage *img, int side, int track, int sectorsPerTrack)
 {
-    // start of the track -- we should stream 60* 0x4e
-    for(int i=0; i<60; i++) {
-        appendByteToStream(0x4e);
+    bool tight = (sectorsPerTrack > 10);
+
+    int gapTrackStart   = tight ? 10 : 60;
+    int gapBeforeSync   = tight ?  3 : 12;
+    int gapAfterSector  = tight ?  2 : 40;
+
+    if(sectorsPerTrack > 11) {          // the end of the track won't get to the output before the track restarts
+        logFdd(LOG_WARNING, "MfmCachedImage::encodeSingleTrack - %d sectors per track don't fit into a floppy track", sectorsPerTrack);
     }
 
-    for(int sect=1; sect <= sectorsPerTrack; sect++) {
-        setRawWordAtIndex(sect, bytesInBfr);            // stream table - index #sector: offset to this sector
+    builder.data(0x4e, gapTrackStart);  // start of the track
 
-        encodeSingleSector(img, side, track, sect);     // then create the right MFM stream
+    for(int sect=1; sect <= sectorsPerTrack; sect++) {
+        encodeSingleSector(img, side, track, sect, gapBeforeSync, gapAfterSector);
 
         if(sigintReceived) {                            // app terminated? quit
             return;
         }
     }
-
-    appendRawByte(CMD_TRACK_STREAM_END);                // append this - this is a mark of track stream end
-    appendRawByte(0x00);
 }
 
 bool MfmCachedImage::encodedTrackIsReady(int track, int side)
@@ -437,208 +405,68 @@ bool MfmCachedImage::copyEncodedTrackIfReady(int track, int side, uint8_t *dest,
     return copied;
 }
 
-bool MfmCachedImage::encodeSingleSector(FloppyImage *img, int side, int track, int sector)
+bool MfmCachedImage::encodeSingleSector(FloppyImage *img, int side, int track, int sector, int gapBeforeSync, int gapAfterSector)
 {
     bool res;
 
-    uint8_t data[512];
-    res = img->readSector(track, side, sector, data);     // read data into 'data'
+    uint8_t run[MFM_SECTOR_RUN_SIZE];                       // DAM, data, CRC - sent as a raw run, the device overwrites it on sector write
+    res = img->readSector(track, side, sector, run + 1);    // read data into run
 
     if(!res) {
         return false;
     }
 
-    int bytesAtStartOfSector = bytesInBfr;
+    builder.sectorMark(side, track, sector);                // append this sector mark so we would know what are we streaming out
 
-    appendCurrentSectorCommand(track, side, sector);     // append this sector mark so we would know what are we streaming out
-
-    int i;
-    for(i=0; i<12; i++) {                                   // GAP 2: 12 * 0x00
-        appendByteToStream(0);
-    }
+    builder.data(0, gapBeforeSync);                         // GAP 2
 
     crc = 0xffff;                                           // init CRC
-    for(i=0; i<3; i++) {                                    // GAP 2: 3 * A1 mark
-        appendA1MarkToStream();
+    for(int i=0; i<3; i++) {                                // GAP 2: 3 * A1 mark
+        appendSyncA1();
     }
 
-    appendByteToStream( ID_MARK );            // ID record
-    appendByteToStream( track );
-    appendByteToStream( side );
-    appendByteToStream( sector );
-    appendByteToStream( 0x02 );            // size -- 2 == 512 B per sector
-    appendByteToStream( HIBYTE(crc), false);        // crc1
-    appendByteToStream( LOBYTE(crc), false);        // crc2
+    appendByte(ID_MARK);                    // ID record
+    appendByte(track);
+    appendByte(side);
+    appendByte(sector);
+    appendByte(0x02);                       // size -- 2 == 512 B per sector
 
-    for(i=0; i<22; i++) {                                   // GAP 3a: 22 * 0x4e
-        appendByteToStream(0x4e);
-    }
+    uint16_t idCrc = crc;
+    builder.data(HIBYTE(idCrc));            // crc1
+    builder.data(LOBYTE(idCrc));            // crc2
 
-    appendDataSectionStartCommand();    // this will tell the floppy device that here the DATA part starts, so write can replace data from here
-
-    for(i=0; i<12; i++) {                                   // GAP 3b: 12 * 0x00
-        appendByteToStream(0);
-    }
+    builder.data(0x4e, 22);                                 // GAP 3a: 22 * 0x4e
+    builder.data(0, 12);                                    // GAP 3b: 12 * 0x00
 
     crc = 0xffff;                                           // init CRC
-    for(i=0; i<3; i++) {                                    // GAP 3b: 3 * A1 mark
-        appendA1MarkToStream();
+    for(int i=0; i<3; i++) {                                // GAP 3b: 3 * A1 mark
+        appendSyncA1();
     }
 
-    appendByteToStream(DAM_MARK);               // DAM mark
-
-    for(i=0; i<512; i++) {                                  // data
-        appendByteToStream(data[i]);
+    run[0] = DAM_MARK;                                      // DAM mark
+    for(int i=0; i<513; i++) {                              // CRC of DAM mark and data
+        updateCrcFast(run[i]);
     }
+    run[513] = HIBYTE(crc);                                 // crc1
+    run[514] = LOBYTE(crc);                                 // crc2
 
-    appendByteToStream(HIBYTE(crc), false);         // crc1
-    appendByteToStream(LOBYTE(crc), false);         // crc2
+    builder.rawRun(run, MFM_SECTOR_RUN_SIZE);
 
-    for(i=0; i<40; i++) {                                   // GAP 4: 40 * 0x4e
-        appendByteToStream(0x4e);
-    }
-
-    // now append zero bytes to end of this sector, so when new mfm data is written to floppy, it will not overrun to next sector
-    int bytesToAppend = ENCODED_SECTOR_MAX_SIZE - (bytesInBfr - bytesAtStartOfSector);
-    for(i=0; i<bytesToAppend; i++) {
-        appendRawByte(0);
-    }
-
-    if(bytesToAppend < 5) {
-        logFdd(LOG_WARNING, "MfmCachedImage::encodeSingleSector - appended only %d bytes, might be too little", bytesToAppend);
-    }
+    builder.data(0x4e, gapAfterSector);                     // GAP 4
 
     return true;
 }
 
-// new implementation which generates time from bit triplets (threeBits)
-void MfmCachedImage::appendByteToStream(uint8_t val, bool doCalcCrc)
+void MfmCachedImage::appendByte(uint8_t val)
 {
-    if(doCalcCrc) {
-        updateCrcFast(val);
-    }
-
-    uint8_t time;
-
-    for(int i=0; i<8; i++) {                        // for all bits
-        uint8_t bit = (val & 0x80) >> 7;               // get highest bit (stored in lowest bit now as 0 or 1)
-        encoder.threeBits = ((encoder.threeBits << 1) | bit) & 7;   // construct new 3 bits -- two old, 1 current bit (old-old-new)
-
-        val = val << 1;                             // shift bits in input value up
-
-        time = 0;                                   // no time yet
-
-        switch(encoder.threeBits) {
-            // threeBits with value 0,3,7 produce 4 us mfm time
-            case 0:
-            case 3:
-            case 7: time = MFM_4US;
-                    encoder.symbolsInStream++;
-                    encoder.totalSymbolsTime += 4;
-                    break;
-
-            // threeBits with value 1,4 produce 6 us mfm time
-            case 1:
-            case 4: time = MFM_6US;
-                    encoder.symbolsInStream++;
-                    encoder.totalSymbolsTime += 6;
-                    break;
-
-            // threeBits with value 5 produce 8 us mfm time
-            case 5: time = MFM_8US;
-                    encoder.symbolsInStream++;
-                    encoder.totalSymbolsTime += 8;
-                    break;
-
-            // threeBits with value 2 or 6 don't produce mfm time value
-        }
-
-        if(time != 0) {     // if we found a valid time in threeBits
-            encoder.times = encoder.times << 2;     // shift 2 up
-            encoder.times = encoder.times | time;   // add lowest 2 bits
-
-            encoder.timesCnt++;                     // increment the count of times we have
-            if(encoder.timesCnt == 4) {             // we have 4 times (whole byte), store it
-                encoder.timesCnt = 0;
-
-                if(bytesInBfr < MFM_STREAM_MAX_BYTES) {    // still have some space in buffer? store value
-                    bytesInBfr++;
-
-                    *bfr = encoder.times;           // store times
-                    bfr++;                          // move forward in buffer
-                }
-            }
-        }
-    }
+    updateCrcFast(val);
+    builder.data(val);
 }
 
-// appendTime() used in new implementation by appendA1MarkToStream(), otherwise it's integrated for speed in appendByteToStream()
-void MfmCachedImage::appendTime(uint8_t time)
+void MfmCachedImage::appendSyncA1(void)
 {
-    encoder.times = encoder.times << 2;     // shift 2 up
-    encoder.times = encoder.times | time;   // add lowest 2 bits
-
-    encoder.timesCnt++;                   // increment the count of times we have
-    if(encoder.timesCnt == 4) {         // we have 4 times (whole byte), store it
-        encoder.timesCnt = 0;
-
-        if(bytesInBfr < MFM_STREAM_MAX_BYTES) {    // still have some space in buffer? store value
-            bytesInBfr++;
-
-            *bfr = encoder.times;           // store times
-            bfr++;                          // move forward in buffer
-        }
-    }
-}
-
-void MfmCachedImage::appendA1MarkToStream(void)
-{
-    // the start of A1 mark depends on previous bits
-    if(encoder.threeBits == 0 || encoder.threeBits == 4) {
-        appendTime(MFM_6US);    // 0,4 -> 6 us
-    } else if(encoder.threeBits == 2 || encoder.threeBits == 6) {
-        appendTime(MFM_8US);    // 2,6 -> 8 us
-    } else {
-        appendTime(MFM_4US);    // 1,3,5,7 -> 4 us
-    }
-
-    // append A1 mark in stream, which is 8-6-8-6 in MFM (normaly would been 8-6-4-4-6)
-    appendTime(MFM_8US);
-    appendTime(MFM_6US);
-    appendTime(MFM_8US);
-    appendTime(MFM_6US);
-
     updateCrcFast(0xa1);
-
-    encoder.threeBits = 1;      // the end of A1 is 01 in binary, so initialize threeBits to that
-}
-
-void MfmCachedImage::appendCurrentSectorCommand(int track, int side, int sector)
-{
-    appendRawByte(CMD_CURRENT_SECTOR);
-    appendRawByte(side);
-    appendRawByte(track);
-    appendRawByte(sector);
-}
-
-void MfmCachedImage::appendDataSectionStartCommand(void)
-{
-    appendRawByte(CMD_DATA_PART_OF_SECTOR);
-}
-
-void MfmCachedImage::setRawWordAtIndex(int index, uint16_t val)
-{
-    Utils::storeWord((currentStreamStart + (2 * index)), val);
-}
-
-void MfmCachedImage::appendRawByte(uint8_t val)
-{
-    if(bytesInBfr < MFM_STREAM_MAX_BYTES) {    // still have some space in buffer? store value
-        bytesInBfr++;
-
-        *bfr = val;     // just store this byte, no processing
-        bfr++;          // move further in buffer
-    }
+    builder.syncA1();
 }
 
 // taken from Steem Engine emulator

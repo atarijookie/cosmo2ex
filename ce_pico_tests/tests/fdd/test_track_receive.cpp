@@ -12,19 +12,22 @@
 #include "ipc.h"
 #include "psram.h"
 #include "core1_main.h"
+#include "mfm_stream.h"
 
 extern TDrivePosition hwPosition;
+extern volatile bool streamValid;
+extern volatile int streamSide;
 extern uint8_t trackData0[READTRACKDATA_SIZE_BYTES];
 extern uint8_t trackData1[READTRACKDATA_SIZE_BYTES];
 
 namespace {
 
-// encoded stream of given length: MFM bytes, then CMD_TRACK_STREAM_END + 0 as the server ends it
+// encoded stream of given length: data bytes, then the end mark as the server ends it
 std::vector<uint8_t> makeStream(int length, uint8_t fill)
 {
     std::vector<uint8_t> s(length, fill);
-    s[length - 2] = CMD_TRACK_STREAM_END;
-    s[length - 1] = 0;
+    s[length - 2] = MFM_ESC;
+    s[length - 1] = MFM_OP_END;
     return s;
 }
 
@@ -92,7 +95,7 @@ TEST_CASE_FIXTURE(TrackReceiveFixture, "shorter track after a longer one in the 
 TEST_CASE_FIXTURE(TrackReceiveFixture, "stream is stored without the track + side prefix") {
     hwPosition.track = 7;
     std::vector<uint8_t> stream = makeStream(9000, 0x9d);
-    stream[0] = 0x12;       // stream table starts right at offset 0
+    stream[0] = 0x12;       // stream header starts right at offset 0
     stream[1] = 0x34;
 
     receiveTrack(ipcGetFreeBuffer(1, 0), 7, 1, stream);
@@ -132,6 +135,46 @@ TEST_CASE_FIXTURE(TrackReceiveFixture, "track that isn't streamed now goes only 
 
     CHECK(psramTrack(11, 0) == wholeTrack(stream));
     CHECK(memcmp(trackData0, before.data(), READTRACKDATA_SIZE_BYTES) == 0);
+}
+
+TEST_CASE_FIXTURE(TrackReceiveFixture, "new content of the track being streamed - the position in it isn't valid anymore") {
+    hwPosition.track = 3;
+    streamSide = 0;
+    streamValid = true;
+
+    SUBCASE("other side - not streamed now, nothing changes") {
+        receiveTrack(ipcGetFreeBuffer(1, 0), 3, 1, makeStream(5000, 0x5a));
+        CHECK(streamValid);
+    }
+
+    SUBCASE("other track - nothing changes") {
+        receiveTrack(ipcGetFreeBuffer(1, 0), 4, 0, makeStream(5000, 0x5a));
+        CHECK(streamValid);
+    }
+
+    SUBCASE("this one") {
+        receiveTrack(ipcGetFreeBuffer(1, 0), 3, 0, makeStream(5000, 0x5a));
+        CHECK_FALSE(streamValid);
+    }
+}
+
+TEST_CASE_FIXTURE(TrackReceiveFixture, "empty track for the side an image doesn't have: what the previous image had there is gone, only filler is streamed") {
+    hwPosition.track = 3;
+    receiveTrack(ipcGetFreeBuffer(1, 0), 3, 1, makeStream(9000, 0x5a));
+
+    std::vector<uint8_t> empty = {0, 6, MFM_STREAM_VERSION, 0, MFM_ESC, MFM_OP_END};    // as ImageSilo::getEmptyTrack() makes it
+    receiveTrack(ipcGetFreeBuffer(1, 0), 3, 1, empty);
+
+    CHECK(psramTrack(3, 1) == wholeTrack(empty));
+
+    mfmStreamGlobalInit(150000000);
+    MfmStream s = MfmStream();
+    mfmStreamStart(&s, trackData1, READTRACKDATA_SIZE_BYTES);
+
+    uint16_t out[100];
+    mfmStreamFill(&s, out, 100);
+    CHECK(s.ended);
+    CHECK(out[99] == 599);                  // 4 us
 }
 
 TEST_CASE_FIXTURE(TrackReceiveFixture, "message too short to hold even the prefix stores an empty track") {

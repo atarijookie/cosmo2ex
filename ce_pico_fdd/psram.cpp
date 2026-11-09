@@ -13,7 +13,6 @@
 
 critical_section_t spi_critical_section;
 
-extern volatile uint32_t timeTrackStart;
 
 // Write a buffer to PSRAM
 void psramWriteBuffer(uint32_t addr, const uint8_t *buffer, size_t length)
@@ -113,7 +112,7 @@ void psramLoadTrack(int track, int side, uint8_t* data)
     psramReadBuffer(address, data, READTRACKDATA_SIZE_BYTES);
 }
 
-void psramStoreSector(int track, int side, int byteOffsetFromTrackStart, uint8_t* data, uint32_t copyLength, uint32_t clearLength)
+void psramStoreSector(int track, int side, int byteOffsetFromTrackStart, uint8_t* data, uint32_t copyLength)
 {
     if(track < 0 || track >= MAX_TRACKS) {  // no such track? don't store it over another one
         debug("psramStoreSector - bad track %d\n", track);
@@ -126,65 +125,5 @@ void psramStoreSector(int track, int side, int byteOffsetFromTrackStart, uint8_t
 
     if(copyLength > 0) {        // something to copy? copy it to PSRAM
         psramWriteBuffer(address, data, copyLength);
-    }
-
-    clearLength = MIN(clearLength, ENCODED_SECTOR_MAX_SIZE);
-
-    if(clearLength > 0) {       // something to clear? clear temp buffer and store it to PSRAM
-        uint8_t clearBfr[ENCODED_SECTOR_MAX_SIZE];
-        memset(clearBfr, 0, clearLength);
-
-        address += copyLength;                  // address will now point beyond written sector data
-        psramWriteBuffer(address, clearBfr, clearLength);
-    }
-}
-
-/*
-For the supplied track, side, sector, find the starting address of the track in PSRAM,
-offset from start of track for the sector, and read it into the supplied trackData buffer
-with the offset to the sector.
-*/
-void psramLoadSector(int track, int side, int sectorNumber, uint8_t* trackDataStart)
-{
-    side = MIN(side, 1);                // limit side to values 0 and 1
-    track = MIN(track, MAX_TRACKS - 1); // limit track to the last one
-    sectorNumber = MIN(sectorNumber, MAX_SECTORS_PER_TRACK);    // limit sector to 11
-    uint32_t address = ((track * 2) + side) * READTRACKDATA_SIZE_BYTES;
-
-    // from the stream table read offset to this sector
-    uint8_t bfr[2];
-    psramReadBuffer(address + (2 * sectorNumber), bfr, 2);
-    uint32_t sectorOffsetBytes = getWord(bfr);
-
-    // sector offset present and valid?
-    if(sectorOffsetBytes > 0 && sectorOffsetBytes <= (READTRACKDATA_SIZE_BYTES - ENCODED_SECTOR_MAX_SIZE)) {
-        // read 1200 bytes from the sector start address into data buffer
-        // debug("L t: %d, i: %d, e: %d, o: %d\n", track, side, sector, sectorOffsetBytes);
-        psramReadBuffer(address + sectorOffsetBytes, trackDataStart + sectorOffsetBytes, ENCODED_SECTOR_MAX_SIZE);
-    } else {
-        // debug("L t: %d, i: %d, e: %d - BAD offset\n", track, side, sector);
-    }
-}
-
-void psramLoadTrack_currentSectorFirst(int track, int side, uint8_t* trackDataStart)
-{
-    side = MIN(side, 1);            // limit side to values 0 and 1
-    track = MIN(track, MAX_TRACKS - 1); // limit track to the last one
-    uint32_t address = ((track * 2) + side) * READTRACKDATA_SIZE_BYTES;
-
-    psramReadBuffer(address, trackDataStart, 2 * STREAM_TABLE_ITEMS);     // load stream table at the start of track
-
-    uint32_t now = millis();
-    uint32_t timeSinceTrackStart = now - timeTrackStart;
-    int currentSectorIndex = (timeSinceTrackStart / 18);        // convert timeSinceTrackStart to sector index (0 - 10)
-    currentSectorIndex = MIN(currentSectorIndex, (MAX_SECTORS_PER_TRACK - 1));    // limit current sector index to valid index
-
-    for(int offset = 0; offset < MAX_SECTORS_PER_TRACK; offset++) {     // offset: 0..10
-        int sectorNumber = (currentSectorIndex + 1) + offset;           // start from current sector (e.g. 5)
-        if(sectorNumber > MAX_SECTORS_PER_TRACK) {              // beyond last valid sector? restart to sector 1
-            sectorNumber -= MAX_SECTORS_PER_TRACK;
-        }
-
-        psramLoadSector(track, side, sectorNumber, trackDataStart);   // load sector from psram to track array
     }
 }
