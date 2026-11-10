@@ -1,0 +1,51 @@
+.pio_version 0 // only requires PIO version 0
+
+; HUB75 panels (2x 64x32 P4, 1/16 scan, chained = 128x32), 1 bit per color. Fed by DMA, row after row, forever:
+;   word 0          pixels in the row - 1
+;   word 1..n       a pixel each: bits 0-5 R1 G1 B1 R2 G2 B2 (rows y and y + 16), bits 6-10 the row address A-E
+;   word n + 1      on time (OE low) - 1, in SM cycles
+; The LEDs are off (OE high) while a row is shifted in, so the address can change with the first pixel without
+; ghosting; then LAT copies the shift registers to the outputs and the row is lit for the on time.
+
+.program hub75
+.side_set 3                     ; bit 0 CLK, bit 1 LAT, bit 2 OE (H = LEDs off)
+
+.wrap_target
+    pull block          side 0b100
+    out x, 32           side 0b100
+pixel:
+    pull block          side 0b100
+    out pins, 11        side 0b100      ; RGB1 RGB2 + row address, CLK L
+    jmp x-- pixel       side 0b101      ; CLK H - the panel shifts it in
+    pull block          side 0b100
+    out y, 32           side 0b110 [1]  ; LAT H - the shift registers to the outputs
+    nop                 side 0b100 [1]  ; LAT L
+lit:
+    jmp y-- lit         side 0b000      ; OE L - the row lights up
+.wrap
+
+% c-sdk {
+// pins: dataPin .. dataPin + 10 = R1 G1 B1 R2 G2 B2 A B C D E, sidePin .. sidePin + 2 = CLK LAT OE
+static inline void hub75_program_init(PIO pio, uint sm, uint offset, uint dataPin, uint sidePin, float clkdiv)
+{
+    pio_sm_config c = hub75_program_get_default_config(offset);
+    sm_config_set_out_pins(&c, dataPin, 11);
+    sm_config_set_sideset_pins(&c, sidePin);
+    sm_config_set_out_shift(&c, true, false, 32);           // the low bits first, explicit pulls
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+    sm_config_set_clkdiv(&c, clkdiv);
+
+    pio_sm_set_pins_with_mask(pio, sm, 1u << (sidePin + 2), (0x7ffu << dataPin) | (7u << sidePin));     // OE H
+    pio_sm_set_consecutive_pindirs(pio, sm, dataPin, 11, true);
+    pio_sm_set_consecutive_pindirs(pio, sm, sidePin, 3, true);
+    for(uint i = 0; i < 11; i++) {
+        pio_gpio_init(pio, dataPin + i);
+    }
+    for(uint i = 0; i < 3; i++) {
+        pio_gpio_init(pio, sidePin + i);
+    }
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

@@ -11,14 +11,14 @@
 
 static bool flipped;
 
-void settingsInit(void)
+void settingsInit(bool defaultFlipped)
 {
     EEPROM.begin(EEPROM_SIZE);
 
     if(EEPROM.read(ADDR_MAGIC) == SETTINGS_MAGIC) {
         flipped = EEPROM.read(ADDR_FLIPPED) != 0;
     } else {
-        flipped = DEFAULT_FLIPPED;
+        flipped = defaultFlipped;
     }
 }
 

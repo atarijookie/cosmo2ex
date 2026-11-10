@@ -91,7 +91,7 @@ test-fdd: run_tests_fdd.elf
 
 #--------------------------------------------------------
 # ce_pico_display - protocol parser and keys, plain C++
-DISPLAY_FW_SRCS = protocol.cpp keys.cpp
+DISPLAY_FW_SRCS = protocol.cpp keys.cpp hub75_frame.cpp
 DISPLAY_FWOBJS  = $(addprefix obj/display/fw/,$(DISPLAY_FW_SRCS:.cpp=.o))
 DISPLAY_TOBJS   = $(addprefix obj/display/,$(patsubst %.cpp,%.o,tests/test_main.cpp $(wildcard tests/display/*.cpp)))
 FLAGS_display   = $(CXXFLAGS_BASE) -I../ce_pico_display $(CXXFLAGS)

@@ -3,7 +3,7 @@
 
 // panel settings in the emulated EEPROM (the last flash sector)
 
-void settingsInit(void);
+void settingsInit(bool defaultFlipped);     // defaultFlipped - when nothing is stored yet
 
 bool settingsFlipped(void);
 void settingsSetFlipped(bool flipped);  // stored right away - the flash write stops the panel for a moment

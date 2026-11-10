@@ -3,7 +3,8 @@
 
 #include <cstdint>
 
-void screenInit(void);
+void screenInit(void);           // finds out which board it is - the OLED or the HUB75 LED panels
+bool screenIsHub75(void);
 
 uint8_t screenLines(void);      // text lines in normal size
 uint8_t screenCols(void);       // chars per line in normal size

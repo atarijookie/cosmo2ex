@@ -6,9 +6,13 @@
 #include "defs.h"
 #include "protocol.h"
 #include "screen.h"
+#include "hub75.h"
 
-// 0.91" 128x32 SSD1306 OLED - for another display change this, the fonts and LINE_HEIGHT
-static U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
+// 0.91" 128x32 SSD1306 OLED, or the HUB75 LED panels (128x32 too) - u8g2 draws into its buffer the same way for
+// both, then sends it to the OLED, or hub75Show() takes it. For another display change the setup in screenInit(),
+// the fonts and LINE_HEIGHT.
+static U8G2 u8g2;
+static bool hub75;
 
 #define LINES           4
 #define LINE_HEIGHT     8
@@ -38,19 +42,55 @@ static uint32_t lastActivity;
 static uint8_t brightness = DEFAULT_CONTRAST;
 static bool dimmed;
 
+// u8x8 callback for the HUB75 board - u8g2 sends nothing anywhere, it only draws into its buffer
+static uint8_t noOutput(u8x8_t* u8x8, uint8_t msg, uint8_t argInt, void* argPtr)
+{
+    (void) u8x8;
+    (void) msg;
+    (void) argInt;
+    (void) argPtr;
+    return 1;
+}
+
+static void setContrast(uint8_t value)
+{
+    if(hub75) {
+        hub75SetBrightness(value);
+    } else {
+        u8g2.setContrast(value);
+    }
+}
+
 void screenInit(void)
 {
-    Wire.setSDA(PIN_SDA);
-    Wire.setSCL(PIN_SCL);
-    u8g2.setBusClock(400000);
+    hub75 = hub75Detect();
+
+    if(hub75) {
+        hub75Init();
+        u8g2_Setup_ssd1306_i2c_128x32_univision_f(u8g2.getU8g2(), U8G2_R0, noOutput, noOutput);
+    } else {        // what the U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C constructor does
+        u8g2_Setup_ssd1306_i2c_128x32_univision_f(u8g2.getU8g2(), U8G2_R0, u8x8_byte_arduino_hw_i2c,
+                                                  u8x8_gpio_and_delay_arduino);
+        u8x8_SetPin_HW_I2C(u8g2.getU8x8(), U8X8_PIN_NONE, U8X8_PIN_NONE, U8X8_PIN_NONE);
+
+        Wire.setSDA(PIN_SDA);
+        Wire.setSCL(PIN_SCL);
+        u8g2.setBusClock(400000);
+    }
+
     u8g2.begin();
     u8g2.setFontPosTop();
     u8g2.setFontMode(1);        // transparent, for the bold and inverted text
-    u8g2.setContrast(brightness);
+    setContrast(brightness);
 
     memset(lines, 0, sizeof(lines));
     dirty = true;
     lastChange = lastActivity = millis();
+}
+
+bool screenIsHub75(void)
+{
+    return hub75;
 }
 
 uint8_t screenLines(void)
@@ -109,7 +149,7 @@ void screenSetBrightness(uint8_t value, uint32_t now)
 {
     brightness = value;
     dimmed = false;
-    u8g2.setContrast(brightness);
+    setContrast(brightness);
     lastActivity = now;
 }
 
@@ -127,7 +167,7 @@ void screenActivity(uint32_t now)
 
     if(dimmed) {
         dimmed = false;
-        u8g2.setContrast(brightness);
+        setContrast(brightness);
     }
 }
 
@@ -211,7 +251,11 @@ static void draw(void)
 
     u8g2.setMaxClipWindow();
     u8g2.setDrawColor(1);
-    u8g2.sendBuffer();
+    if(hub75) {
+        hub75Show(u8g2.getBufferPtr());
+    } else {
+        u8g2.sendBuffer();
+    }
 }
 
 // moves the scrolled lines, returns true if anything moved
@@ -286,7 +330,7 @@ bool screenLoop(uint32_t now)
 
     if(!dimmed && now - lastActivity >= DIM_AFTER_MS) {
         dimmed = true;
-        u8g2.setContrast(DIM_CONTRAST);
+        setContrast(DIM_CONTRAST);
     }
 
     return drawn;

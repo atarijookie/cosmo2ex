@@ -135,7 +135,8 @@ static void showSplash(uint32_t now)
     screenSetLine(2, JUSTIFY_CENTER, 0, "waiting for FDD...", now);
 
     char info[32];
-    snprintf(info, sizeof(info), "panel %s, %s", PANEL_FW_VERSION, hasEncoder ? "encoder" : "buttons");
+    snprintf(info, sizeof(info), "panel %s, %s%s", PANEL_FW_VERSION, hasEncoder ? "encoder" : "buttons",
+             screenIsHub75() ? ", LED" : "");
     screenSetLine(3, JUSTIFY_CENTER, 0, info, now);
 }
 
@@ -158,8 +159,8 @@ void setup(void)
     Serial1.begin(UART_BAUD);
     gpio_pull_up(PIN_UART_RX);          // the pads default to pull-down - with no FDD that's a break, not idle
 
-    settingsInit();
     screenInit();
+    settingsInit(screenIsHub75() ? DEFAULT_FLIPPED_HUB75 : DEFAULT_FLIPPED);
     screenSetFlipped(settingsFlipped(), millis());
     showSplash(millis());
 
