@@ -82,6 +82,7 @@ public:
     Ikbd(ChipInterface* ciIkbd);
 
     void loadSettings(void);
+    void reloadSettings(void);                      // settings changed (web UI) - release keyboard joysticks, load, resend joysticks
 
     void findDevices(void);                         // open all attached keyboard / mouse / joysticks we don't have yet
     void deviceAttached(const char *devNode);       // use this device if it's keyboard / mouse / joystick we don't have yet

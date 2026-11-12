@@ -8,8 +8,13 @@
 #include "../misc/utils.h"
 #include "keybjoys.h"
 
-#define KEYBOARD_KEYS_SETTINGS0 "KEYBOARD_KEYS_JOY0"
-#define KEYBOARD_KEYS_SETTINGS1 "KEYBOARD_KEYS_JOY1"
+// same names as the web UI uses (webserver/ikbd.go)
+#define KEYBOARD_KEYS_SETTINGS0 "KEYBOARD_KEYS_SETTINGS0"
+#define KEYBOARD_KEYS_SETTINGS1 "KEYBOARD_KEYS_SETTINGS1"
+
+// names used before - read when the new one is not stored yet, so the keys set earlier are not lost
+#define KEYBOARD_KEYS_SETTINGS0_OLD "KEYBOARD_KEYS_JOY0"
+#define KEYBOARD_KEYS_SETTINGS1_OLD "KEYBOARD_KEYS_JOY1"
 
 KeybJoyKeys::KeybJoyKeys(void)
 {
@@ -96,12 +101,19 @@ void KeybJoyKeys::loadKeys(int joyNumber)
 {
     // prepare pointers to right things for the joyNumber
     const char      *settingsName   = (joyNumber == 0) ? KEYBOARD_KEYS_SETTINGS0    : KEYBOARD_KEYS_SETTINGS1;      // what settings name we should use?
+    const char      *settingsOld    = (joyNumber == 0) ? KEYBOARD_KEYS_SETTINGS0_OLD : KEYBOARD_KEYS_SETTINGS1_OLD;
     const char      *defaultKeys    = (joyNumber == 0) ? "A%S%D%W%LSHIFT"           : "LEFT%DOWN%RIGHT%UP%RSHIFT";  // what are the default settings, if we don't have anything stored?
     JoyKeysPcSt     *keysStruct     = (joyNumber == 0) ? &joyKeys[0]                : &joyKeys[1];                  // to which structure we should store it?
 
     // get the settings
     Settings s;
-    std::string keys = s.getString(settingsName, defaultKeys);
+    std::string keys = s.getString(settingsName, "");
+    if(keys.empty()) {                  // not stored under the current name - try the old name, then the defaults
+        keys = s.getString(settingsOld, defaultKeys);
+    }
+    if(keys.empty()) {
+        keys = defaultKeys;
+    }
     if(keys.size() < 5) {               // old format below reads keys[0..4] - pad with zeros (the old 256 B buffer was zero-filled too)
         keys.resize(5, '\0');
     }

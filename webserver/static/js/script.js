@@ -439,7 +439,17 @@ CosmosEx.Remote=function(){
         		}else{
 	        		$("#keyboardlayer").hide();
         		}
+        		updateStKeyboardButton();
         		return false;
+        	};
+        //button stays pressed while the ST keyboard is shown and tells what a click does
+        var updateStKeyboardButton=function(){
+        		var $btn=$("button#showstkeyboard");
+        		if(bShowStKeyboard){
+        			$btn.addClass("pressed").html("Hide ST keyboard");
+        		}else{
+        			$btn.removeClass("pressed").html("Show ST keyboard");
+        		}
         	};
         var toggleHelp=function(e){
         		e.preventDefault();
@@ -600,6 +610,7 @@ CosmosEx.Remote=function(){
 		        	$("button#lockpointer").hide();
 		        	bShowStKeyboard=true;
 		        }
+		        updateStKeyboardButton();
             if( bHasTouch ){
                 $(".alert.touch").removeClass("hidden");
                 $(".alert.touch").addClass("current");

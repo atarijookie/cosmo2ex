@@ -152,7 +152,7 @@ void *ikbdThreadCode(void *ptr)
         // reload config if needed
         if(events.ikbdReloadConfig) {
             events.ikbdReloadConfig = false;
-            ikbd.loadSettings();
+            ikbd.reloadSettings();
         }
 
         ciIkbd->clientsDisconnectInactive();

@@ -217,6 +217,7 @@
             <div style="font-size: 13px; color: #555; margin-left: 26px;">Off: the ST's own keyboard goes straight to the ST, nothing from the host. Stored on the device.</div>
           </div>
 
+          <div style="font-size: 13px; color: #555; margin-bottom: 8px;">The settings below are common for all STs connected to this host.</div>
           <table class="ikbd-single-column">
             <tr><td><label><input type="checkbox" id="first-joy">First Joy is 0</label></td></tr>
             <tr><td><label><input type="checkbox" id="mouse-wheel-keys">Mouse wheel as keys</label></td></tr>
@@ -457,10 +458,10 @@
         return normalized;
       }
 
+      // one set of IKBD settings for the whole machine (all STs), not per device - see webserver/ikbd.go
       async function loadIkbdSettings() {
-        if (!mac) return;
         try {
-          const res = await fetch('/ikbd/' + encodeURIComponent(mac), { method: 'GET' });
+          const res = await fetch('/ikbd', { method: 'GET' });
           if (!res.ok) throw new Error('GET failed: ' + res.status);
           const data = await res.json();
 
@@ -477,10 +478,6 @@
       }
 
       async function saveIkbdSettings() {
-        if (!mac) {
-          alert('Error: No MAC address in URL');
-          return;
-        }
         setMessageVisible(false);
 
         const keys0Raw = getKeySet('keys0');
@@ -523,7 +520,7 @@
         };
 
         try {
-          const res = await fetch('/ikbd/' + encodeURIComponent(mac), {
+          const res = await fetch('/ikbd', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)

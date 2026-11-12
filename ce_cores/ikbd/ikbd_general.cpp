@@ -66,6 +66,39 @@ void Ikbd::loadSettings(void)
     keyJoyKeys.loadKeys();                              // load the keys used for keyb joys
 }
 
+void Ikbd::reloadSettings(void)
+{
+    // keys of keyboard joysticks held now would never get their release handled when the keys or the enabled flags change
+    // - center those joysticks and release their fire first
+    for(int j=0; j<2; j++) {
+        bool *held = keybJoyHeld[j];
+        bool any = false;
+        for(int k=0; k<KJ_COUNT; k++) {
+            any = any || held[k];
+        }
+        if(!any) {
+            continue;
+        }
+
+        js_event jse;
+        memset(&jse, 0, sizeof(jse));
+        jse.type = JS_EVENT_AXIS;
+        jse.number = 0;                 // X
+        processJoystick(&jse, j);
+        jse.number = 1;                 // Y
+        processJoystick(&jse, j);
+        if(held[KJ_BUTTON]) {
+            jse.type = JS_EVENT_BUTTON;
+            jse.number = 0;
+            processJoystick(&jse, j);
+        }
+        memset(held, 0, sizeof(keybJoyHeld[j]));
+    }
+
+    loadSettings();
+    sendAllJoyStates();                 // JOY_FIRST_IS_0 might have changed - report both ports again, so nothing stays stuck on the old port
+}
+
 void Ikbd::resetInternalIkbdVars(void)
 {
     cur->outputEnabled = true;                  // IKBD reset from this ST resumes its output

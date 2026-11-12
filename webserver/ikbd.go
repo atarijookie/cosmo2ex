@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/go-chi/chi/v5"
 )
 
 const (
@@ -25,26 +23,31 @@ type IKBDSettings struct {
 	KeyboardKeysSettings1 string `json:"keyboard_keys_settings1"`
 }
 
-func (s *Server) handleGetIKBD(w http.ResponseWriter, r *http.Request) {
-	logDebugf("handleGetIKBD %s %s", r.Method, r.URL.Path)
-
-	mac := chi.URLParam(r, "mac")
-	macNoColons := stripMACColons(mac)
-
+// IKBD settings are one set for the whole machine, stored right in SETTINGS_DIR - ce_cores has one IKBD emulation, and the
+// keyboard / mouse / joysticks of this machine and of the web UI go to all connected STs. The names and defaults must
+// match what ce_cores reads (ce_cores/ikbd/ikbd_general.cpp loadSettings(), ce_cores/ikbd/keybjoys.cpp loadKeys()).
+// The {mac} in the /ikbd/{mac} route is ignored, it is accepted so older pages keep working.
+func ikbdSettingsDir() string {
 	settingsDir := os.Getenv("SETTINGS_DIR")
 	if settingsDir == "" {
 		settingsDir = "."
 	}
+	return settingsDir
+}
 
-	deviceDir := filepath.Join(settingsDir, macNoColons)
+func (s *Server) handleGetIKBD(w http.ResponseWriter, r *http.Request) {
+	logDebugf("handleGetIKBD %s %s", r.Method, r.URL.Path)
+
+	dir := ikbdSettingsDir()
 
 	resp := IKBDSettings{
-		JoyFirstIs0:           readSettingInt(deviceDir, "JOY_FIRST_IS_0"),
-		MouseWheelAsKeys:      readSettingInt(deviceDir, "MOUSE_WHEEL_AS_KEYS"),
-		KeyboardJoy0:          readSettingInt(deviceDir, "KEYBOARD_JOY0"),
-		KeyboardJoy1:          readSettingInt(deviceDir, "KEYBOARD_JOY1"),
-		KeyboardKeysSettings0: readKeySettingsWithDefault(deviceDir, "KEYBOARD_KEYS_SETTINGS0", defaultKeys0),
-		KeyboardKeysSettings1: readKeySettingsWithDefault(deviceDir, "KEYBOARD_KEYS_SETTINGS1", defaultKeys1),
+		JoyFirstIs0:      readSettingIntDefault(dir, "JOY_FIRST_IS_0", 0),
+		MouseWheelAsKeys: readSettingIntDefault(dir, "MOUSE_WHEEL_AS_KEYS", 1), // on in ce_cores when not stored
+		KeyboardJoy0:     readSettingIntDefault(dir, "KEYBOARD_JOY0", 0),
+		KeyboardJoy1:     readSettingIntDefault(dir, "KEYBOARD_JOY1", 0),
+		// older ce_cores stored the keys as KEYBOARD_KEYS_JOY0 / 1 - used when the current name is not stored yet (like ce_cores does)
+		KeyboardKeysSettings0: readKeySettingsWithDefault(dir, "KEYBOARD_KEYS_SETTINGS0", readKeySettingsWithDefault(dir, "KEYBOARD_KEYS_JOY0", defaultKeys0)),
+		KeyboardKeysSettings1: readKeySettingsWithDefault(dir, "KEYBOARD_KEYS_SETTINGS1", readKeySettingsWithDefault(dir, "KEYBOARD_KEYS_JOY1", defaultKeys1)),
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -52,9 +55,6 @@ func (s *Server) handleGetIKBD(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePutIKBD(w http.ResponseWriter, r *http.Request) {
 	logDebugf("handlePutIKBD %s %s", r.Method, r.URL.Path)
-
-	mac := chi.URLParam(r, "mac")
-	macNoColons := stripMACColons(mac)
 
 	var payload IKBDSettings
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -70,11 +70,7 @@ func (s *Server) handlePutIKBD(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settingsDir := os.Getenv("SETTINGS_DIR")
-	if settingsDir == "" {
-		settingsDir = "."
-	}
-	deviceDir := filepath.Join(settingsDir, macNoColons)
+	deviceDir := ikbdSettingsDir()
 
 	if err := os.MkdirAll(deviceDir, 0o755); err != nil {
 		logErrorf("handlePutIKBD - error creating directory %s: %v", deviceDir, err)
@@ -118,21 +114,6 @@ func (s *Server) handlePutIKBD(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func readSettingInt(deviceDir, fileName string) int {
-	content, err := os.ReadFile(filepath.Join(deviceDir, fileName))
-	if err != nil {
-		return 0
-	}
-	val, err := strconv.Atoi(strings.TrimSpace(string(content)))
-	if err != nil {
-		return 0
-	}
-	if val != 0 {
-		return 1
-	}
-	return 0
-}
-
 func readSettingString(deviceDir, fileName string) string {
 	content, err := os.ReadFile(filepath.Join(deviceDir, fileName))
 	if err != nil {
@@ -164,4 +145,3 @@ func writeSettingString(deviceDir, fileName, value string) error {
 func isZeroOrOne(v int) bool {
 	return v == 0 || v == 1
 }
-

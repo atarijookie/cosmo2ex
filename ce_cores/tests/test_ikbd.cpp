@@ -557,6 +557,99 @@ TEST_CASE("ikbd: keyboard joystick - releasing one of two opposite keys keeps th
     CHECK(h.sentToSt() == Bytes({KEYBDATA_JOY1, JOYDIR_LEFT, KEYBDATA_JOY1, JOYDIR_RIGHT, KEYBDATA_JOY1, JOYDIR_LEFT}));
 }
 
+TEST_CASE("ikbd: keyboard joystick keys are read from the settings the web UI writes")
+{
+    IkbdHarness h;
+    Settings s;
+    s.setString("KEYBOARD_JOY0", "1");                  // as webserver/ikbd.go writes it - no new line
+    s.setString("KEYBOARD_KEYS_SETTINGS0", "A%S%D%W%LCTRL");
+    h.ikbd->loadSettings();
+    h.stSends({STCMD_SET_JOYSTICK_EVENT_REPORTING});
+    h.sentToSt();
+
+    h.usbEvent(EV_KEY, KEY_LEFTCTRL, 1, true);          // fire from the web UI keys, not the default LSHIFT
+    CHECK(h.sentToSt() == Bytes({KEYBDATA_JOY0, JOYDIR_BUTTON}));
+    h.usbEvent(EV_KEY, KEY_LEFTCTRL, 0, true);
+    CHECK(h.sentToSt() == Bytes({KEYBDATA_JOY0, 0}));
+
+    h.usbEvent(EV_KEY, KEY_LEFTSHIFT, 1, true);         // the default fire key is a normal key now
+    CHECK(h.sentToSt() == Bytes({0x2a}));
+    h.usbEvent(EV_KEY, KEY_LEFTSHIFT, 0, true);
+    h.sentToSt();
+}
+
+TEST_CASE("ikbd: keyboard joystick keys stored under the old name are still used")
+{
+    IkbdHarness h;
+    Settings s;
+    s.setBool("KEYBOARD_JOY1", true);
+    s.setString("KEYBOARD_KEYS_JOY1", "J%K%L%I%SPACE");     // name used before, nothing under KEYBOARD_KEYS_SETTINGS1
+    h.ikbd->loadSettings();
+    h.stSends({STCMD_SET_JOYSTICK_EVENT_REPORTING});
+    h.sentToSt();
+
+    h.usbEvent(EV_KEY, KEY_I, 1, true);
+    CHECK(h.sentToSt() == Bytes({KEYBDATA_JOY1, JOYDIR_UP}));
+    h.usbEvent(EV_KEY, KEY_I, 0, true);
+    h.sentToSt();
+
+    s.setString("KEYBOARD_KEYS_SETTINGS1", "LEFT%DOWN%RIGHT%UP%RCTRL");    // the current name wins
+    h.ikbd->loadSettings();
+    h.usbEvent(EV_KEY, KEY_UP, 1, true);
+    CHECK(h.sentToSt() == Bytes({KEYBDATA_JOY1, JOYDIR_UP}));
+    h.usbEvent(EV_KEY, KEY_UP, 0, true);
+    h.sentToSt();
+    h.usbEvent(EV_KEY, KEY_I, 1, true);                 // old key is a normal key again
+    CHECK(h.sentToSt() == Bytes({0x17}));
+}
+
+TEST_CASE("ikbd: settings reload releases held keyboard joystick keys and resends the ports")
+{
+    IkbdHarness h;
+    Settings s;
+    s.setBool("KEYBOARD_JOY0", true);                   // joy 0 on A S D W + LSHIFT (default keys)
+    h.ikbd->loadSettings();
+    h.stSends({STCMD_SET_JOYSTICK_EVENT_REPORTING});
+    h.sentToSt();
+
+    h.usbEvent(EV_KEY, KEY_W, 1, true);                 // up + fire held
+    h.usbEvent(EV_KEY, KEY_LEFTSHIFT, 1, true);
+    CHECK(h.sentToSt() == Bytes({KEYBDATA_JOY0, JOYDIR_UP, KEYBDATA_JOY0, JOYDIR_UP | JOYDIR_BUTTON}));
+
+    s.setBool("KEYBOARD_JOY0", false);                  // web UI turned the keys off while they are held
+    h.ikbd->reloadSettings();
+    Bytes out = h.sentToSt();
+    int lastPort0 = -1;                                 // port 0 ends up centered, fire released
+    for(size_t i=0; i+1 < out.size(); i += 2) {
+        if(out[i] == KEYBDATA_JOY0) lastPort0 = out[i+1];
+    }
+    CHECK(lastPort0 == 0);
+
+    h.usbEvent(EV_KEY, KEY_W, 0, true);                 // the release is a normal key now - nothing stuck on the joystick
+    CHECK(h.sentToSt() == Bytes({0x91}));
+}
+
+TEST_CASE("ikbd: settings reload with JOY_FIRST_IS_0 changed moves held joystick to the other port")
+{
+    IkbdHarness h(false);
+    h.stSends({STCMD_SET_JOYSTICK_EVENT_REPORTING});
+    h.joystickAxis(1, 1, -20000);                       // stick held up - on port 1
+    h.sentToSt();
+
+    Settings s;
+    s.setBool("JOY_FIRST_IS_0", true);
+    h.ikbd->reloadSettings();
+    Bytes out = h.sentToSt();
+
+    bool gotPort0Up = false, gotPort1Center = false;
+    for(size_t i=0; i+1 < out.size(); i++) {
+        if(out[i] == KEYBDATA_JOY0 && out[i+1] == JOYDIR_UP) gotPort0Up = true;
+        if(out[i] == KEYBDATA_JOY1 && out[i+1] == 0)         gotPort1Center = true;
+    }
+    CHECK(gotPort0Up);
+    CHECK(gotPort1Center);
+}
+
 TEST_CASE("ikbd: joystick events and query report the same port, swapped with JOY_FIRST_IS_0")
 {
     for(int swapped = 0; swapped <= 1; swapped++) {

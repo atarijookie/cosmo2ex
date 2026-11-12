@@ -5,6 +5,7 @@
 		    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0"/>
         <title>Cosmo2ex ScreenCast</title>
 		<script type="text/javascript" src="js/log.js"></script>
+        <script type="text/javascript" src="js/joykeys.js"></script>
         <script>
         document.write('<link rel="stylesheet" type="text/css" href="css/combined.css">');
         //unfortunately we have to support IE<10, so decide on zepto/jquery here
@@ -711,8 +712,9 @@
             text-align: left;
             color: #666;
         }
-        /* 'Grab mouse' stays pressed while the mouse is grabbed */
-        button#lockpointer.grabbed {
+        /* 'Grab mouse' stays pressed while the mouse is grabbed, 'Hide ST keyboard' while the ST keyboard is shown */
+        button#lockpointer.grabbed,
+        button#showstkeyboard.pressed {
             background: #1e6fd9;
             border-color: #1858ad;
             color: #fff;
@@ -733,7 +735,7 @@
         @keyframes btn-spin {
             to { transform: rotate(360deg); }
         }
-        #screencast-info {
+        #screencast-info, #joykeys-info {
             text-align: center;
             margin-top: 4px;
             font-size: 12px;
@@ -925,6 +927,11 @@
         /* special characters bar at the bottom of the window */
         body {
             padding-bottom: 70px;       /* the footer stays visible above the bar */
+        }
+        /* ST keyboard sits right above the special characters bar, not behind it (--charbar-height is set from JS) */
+        #keyboardlayer {
+            bottom: var(--charbar-height, 44px);
+            z-index: 1400;
         }
         #charbar {
             position: fixed;
@@ -1222,6 +1229,13 @@
 
             $(document).ready(function() {
                 var $bar = $('#charbar'), $chars = $('#charbar-chars'), $layout = $('#charbar-layout'), $mode = $('#charbar-mode');
+                // keep the ST keyboard above the bar - its height changes when the characters wrap
+                var updateBarHeight = function () {
+                    document.documentElement.style.setProperty('--charbar-height', $bar[0].offsetHeight + 'px');
+                };
+                updateBarHeight();
+                $(window).on('resize', updateBarHeight);
+                if (window.ResizeObserver) { new ResizeObserver(updateBarHeight).observe($bar[0]); }
                 try {
                     var saved = localStorage.getItem('remote_st_layout');
                     if (saved && layouts[saved]) { layout = saved; }
@@ -1337,10 +1351,11 @@
         </div>
         </div>
         <div id="screencast-info"></div>
+        <div id="joykeys-info" style="display: none"></div>
 
         <div id="remote-buttons">
             <button id="showkeyboard" class="btn">Toggle system keyboard</button>
-            <button id="showstkeyboard" class="btn">Toggle ST keyboard</button>
+            <button id="showstkeyboard" class="btn">Show ST keyboard</button>
             <button id="lockpointer" class="btn">Grab mouse</button>
             <button id="keyctrlaltdel" class="btn">CTRL+ALT+DEL</button>
             <button id="screencast" class="btn">Start Screencast</button>
@@ -1367,7 +1382,7 @@
             <li>double tap with two fingers to doubleclick on the ST</li>
             <li>right mouse button is not supported yet on touch devices</li>
             <li>use the ST Keyboard image to type. Just tap the Key you want to enter. You can tap multiple keys (e.g. CTRL ALT DEL for reset if your TOS supports it)</li>
-            <li>hide ST keyboard with "Toggle ST Keyboard"</li>
+            <li>hide ST keyboard with "Hide ST keyboard"</li>
             <li>show the touch devices keyboard with "Toggle system keyboard"</li>
             <li>recieve a screencast from ST (you must have CE_DD.PRG running on the ST) by tapping "Start Screencast", or a single screenshot by tapping "Take Screenshot"</li>
             </ul>
@@ -1395,7 +1410,8 @@
             <li>right click in the browser to right click on the ST</li>
             <li>click "Grab mouse" (if available in your browser) to attach your mouse to the browser, so you won't leave its boundaries. Press ESC to leave this mode. While grabbed, the mouse wheel sends cursor up / down to the ST.</li>
             <li>use your PCs keyboard to type</li>
-            <li>for Special Keys you can click "Toggle ST keyboard" to show a ST Keyboard. Just click the Key you want to enter</li>
+            <li>when "Enable Keys 0" / "Enable Keys 1" is on in the IKBD settings, those keys move joystick 0 / 1 instead of typing - the line under the settings shows which keys they are</li>
+            <li>for Special Keys you can click "Show ST keyboard" to show a ST Keyboard. Just click the Key you want to enter</li>
             <li>the bar at the bottom sends special characters like @ { } \ as they are - select your ST's (TOS) keyboard layout there. "Keys: by position" sends your keys like a real ST keyboard would (the ST's layout applies), "Keys: by character" sends the character your PC typed, translated for the ST layout</li>
             <li>recieve a screencast from ST (you must have CE_DD.PRG running on the ST) by clicking "Start Screencast", or a single screenshot by clicking "Take Screenshot"</li>
             </ul>
