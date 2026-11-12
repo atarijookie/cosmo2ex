@@ -34,6 +34,11 @@ CosmosEx.Gamepads = function() {
 
 	function sendState(joy, x, y, fire) {
 		var slot = slots[joy];
+		if (x !== slot.x || y !== slot.y || fire !== slot.fire) {	// on-screen joysticks light up what the pad holds
+			if (CosmosEx.JoyPanel) {
+				CosmosEx.JoyPanel.show('pad', joy, x, y, fire);
+			}
+		}
 		if (x !== slot.x) {
 			slot.x = x;
 			post({ type: 'axis', joy: joy, axis: 0, value: x * AXIS_MAX });

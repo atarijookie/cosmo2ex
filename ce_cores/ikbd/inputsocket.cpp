@@ -311,12 +311,14 @@ void InputSocket::processEvent(InputClient& client, const uint8_t *ev)
                     return;
                 }
                 value = MAX(-32767, MIN(32767, value));
+                logIkbd(LOG_DEBUG, "InputSocket - joy %d axis %d = %d", index, code, value);
                 client.joyAxis[index][code] = value;
                 sendJoy(index, JS_EVENT_AXIS, code, value);
             } else {
                 if(code >= INPUT_JOY_BUTTONS || value < 0 || value > 1) {
                     return;
                 }
+                logIkbd(LOG_DEBUG, "InputSocket - joy %d button %d %s", index, code, value ? "down" : "up");
                 client.joyButtonDown[index][code] = (value == 1);
                 sendJoy(index, JS_EVENT_BUTTON, code, value);
             }
@@ -375,6 +377,7 @@ void InputSocket::reportJoysticks(void)
         }
     }
 
+    logIkbd(LOG_DEBUG, "InputSocket - joysticks from apps: joy 0 %s, joy 1 %s", joy[0] ? "yes" : "no", joy[1] ? "yes" : "no");
     sink->joysticksPresent(joy[0], joy[1]);
 }
 

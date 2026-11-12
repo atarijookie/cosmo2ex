@@ -6,6 +6,8 @@
         <title>Cosmo2ex ScreenCast</title>
 		<script type="text/javascript" src="js/log.js"></script>
         <script type="text/javascript" src="js/joykeys.js"></script>
+        <script type="text/javascript" src="js/joypanel.js"></script>
+        <script type="text/javascript" src="js/gamepad.js"></script>
         <script>
         document.write('<link rel="stylesheet" type="text/css" href="css/combined.css">');
         //unfortunately we have to support IE<10, so decide on zepto/jquery here
@@ -577,6 +579,7 @@
           initScreencastFps();
           initMouseSpeed();
           loadDeviceBus();
+          CosmosEx.Gamepads.init(document.getElementById('gamepad-status'));
 
           // Load initial screen on page load
           loadScreenOnce();
@@ -712,9 +715,10 @@
             text-align: left;
             color: #666;
         }
-        /* 'Grab mouse' stays pressed while the mouse is grabbed, 'Hide ST keyboard' while the ST keyboard is shown */
+        /* 'Grab mouse' stays pressed while the mouse is grabbed, 'Hide ST keyboard' / 'Hide joysticks' while they are shown */
         button#lockpointer.grabbed,
-        button#showstkeyboard.pressed {
+        button#showstkeyboard.pressed,
+        button#showjoysticks.pressed {
             background: #1e6fd9;
             border-color: #1858ad;
             color: #fff;
@@ -735,7 +739,7 @@
         @keyframes btn-spin {
             to { transform: rotate(360deg); }
         }
-        #screencast-info, #joykeys-info {
+        #screencast-info, #gamepad-status, #joykeys-info {
             text-align: center;
             margin-top: 4px;
             font-size: 12px;
@@ -804,9 +808,10 @@
         }
         #demo_placeholder {
             width: 100%;
-            margin: 20px 0;
+            margin: 60px 0 20px 0;      /* screen stays where it was when combined.css 'top: 40px' still shifted it */
             display: block;
             position: relative;
+            top: auto;                  /* combined.css: top 40px - shifted the screen below #screen-wrap, so the screen-off hatch didn't cover it */
         }
         #demo_placeholder canvas {
             display: block;
@@ -1351,11 +1356,13 @@
         </div>
         </div>
         <div id="screencast-info"></div>
+        <div id="gamepad-status"></div>
         <div id="joykeys-info" style="display: none"></div>
 
         <div id="remote-buttons">
             <button id="showkeyboard" class="btn">Toggle system keyboard</button>
             <button id="showstkeyboard" class="btn">Show ST keyboard</button>
+            <button id="showjoysticks" class="btn">Show joysticks</button>
             <button id="lockpointer" class="btn">Grab mouse</button>
             <button id="keyctrlaltdel" class="btn">CTRL+ALT+DEL</button>
             <button id="screencast" class="btn">Start Screencast</button>
@@ -1384,10 +1391,11 @@
             <li>use the ST Keyboard image to type. Just tap the Key you want to enter. You can tap multiple keys (e.g. CTRL ALT DEL for reset if your TOS supports it)</li>
             <li>hide ST keyboard with "Hide ST keyboard"</li>
             <li>show the touch devices keyboard with "Toggle system keyboard"</li>
+            <li>"Show joysticks" shows two joysticks at the bottom right - tap the arrows and FIRE to send them to the ST</li>
             <li>recieve a screencast from ST (you must have CE_DD.PRG running on the ST) by tapping "Start Screencast", or a single screenshot by tapping "Take Screenshot"</li>
             </ul>
             <p>
-            There is now Joystick support in this remote.
+            Gamepads connected to this device work as ST joysticks: press a button on the gamepad to activate it. The first one activated is the first joystick, the second one the second joystick. Stick or D-pad moves, any other button is fire.
             </p>
             <p>
             <strong>ST Screencast</strong>
@@ -1412,11 +1420,12 @@
             <li>use your PCs keyboard to type</li>
             <li>when "Enable Keys 0" / "Enable Keys 1" is on in the IKBD settings, those keys move joystick 0 / 1 instead of typing - the line under the settings shows which keys they are</li>
             <li>for Special Keys you can click "Show ST keyboard" to show a ST Keyboard. Just click the Key you want to enter</li>
+            <li>"Show joysticks" shows two joysticks at the bottom right - click the arrows and FIRE to send them to the ST. They also light up what your gamepads and joystick keys are doing</li>
             <li>the bar at the bottom sends special characters like @ { } \ as they are - select your ST's (TOS) keyboard layout there. "Keys: by position" sends your keys like a real ST keyboard would (the ST's layout applies), "Keys: by character" sends the character your PC typed, translated for the ST layout</li>
             <li>recieve a screencast from ST (you must have CE_DD.PRG running on the ST) by clicking "Start Screencast", or a single screenshot by clicking "Take Screenshot"</li>
             </ul>
             <p>
-            There is now Joystick support in this remote.
+            Gamepads connected to this computer work as ST joysticks: press a button on the gamepad to activate it. The first one activated is the first joystick, the second one the second joystick. Stick or D-pad moves, any other button is fire. They only work while this window has the focus.
             </p>
             <p>
             <strong>ST Screencast</strong>

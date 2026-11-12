@@ -5,6 +5,7 @@
   (ce_cores/ikbd/ikbd_usb.cpp processKeyboard()) - for the web UI keys the same way as for a USB keyboard. This file:
 	- shows which keys are the joystick keys (#joykeys-info of the page), from GET /ikbd when the page opens:
 		{ "keyboard_joy0": 1, "keyboard_keys_settings0": "A%S%D%W%LCTRL", ... }    keys: left % down % right % up % fire
+	- lights up the on-screen joysticks (joypanel.js) while those keys are held
 	- sends those keys by position, down on press and up on release (POST /hid/keyboard), whatever key mode the page is
 	  in - in the 'by character' mode the keys are sent as a quick down + up of the typed character, and the held
 	  modifiers (e.g. LCTRL as fire) are released around it, which would make the joystick unusable
@@ -42,8 +43,10 @@ CosmosEx.JoyKeys = (function() {
 
 	var DIRS = ['left', 'down', 'right', 'up', 'fire'];	// order in the settings string
 
-	var keyMap = {};			// key name of an enabled joystick -> linux code
-	var held = {};				// KeyboardEvent.code -> linux code, joystick keys sent as down and not released yet
+	var keyMap = {};			// key name of an enabled joystick -> { linux, joy, dir }
+	var held = {};				// KeyboardEvent.code -> { linux, joy, dir }, joystick keys sent as down and not released yet
+	var dirs = [{}, {}];		// joystick -> { dir: true } of held keys, and the axis values shown on the on-screen joysticks
+	var shown = [{ x: 0, y: 0 }, { x: 0, y: 0 }];
 	var enabled = [null, null];	// enabled joystick -> its keys { left, down, right, up, fire }
 	var infoEl = null;
 
@@ -102,8 +105,27 @@ CosmosEx.JoyKeys = (function() {
 		infoEl.style.display = lines.length ? '' : 'none';
 	}
 
+	// light up the on-screen joysticks (joypanel.js) - the key pressed last wins, on its release the opposite key still
+	// held takes over, like ce_cores does with the keys (Ikbd::handleKeyAsKeybJoy())
+	function showOnPanel(k, down) {
+		var d = dirs[k.joy], s = shown[k.joy];
+		d[k.dir] = down;
+		if (k.dir !== 'fire') {
+			var horizontal = (k.dir === 'left' || k.dir === 'right');
+			var neg = horizontal ? 'left' : 'up', pos = horizontal ? 'right' : 'down';
+			var value = down ? ((k.dir === neg) ? -1 : 1) : (d[neg] ? -1 : (d[pos] ? 1 : 0));
+			s[horizontal ? 'x' : 'y'] = value;
+		}
+		if (CosmosEx.JoyPanel) {
+			CosmosEx.JoyPanel.show('keys', k.joy, s.x, s.y, !!d.fire);
+		}
+	}
+
 	function releaseAll() {
-		Object.keys(held).forEach(function(c) { sendKey(held[c], 'up'); });
+		Object.keys(held).forEach(function(c) {
+			sendKey(held[c].linux, 'up');
+			showOnPanel(held[c], false);
+		});
 		held = {};
 	}
 
@@ -120,15 +142,16 @@ CosmosEx.JoyKeys = (function() {
 			return;
 		}
 		var name = nameOfCode(e.code);
-		var linux = name ? keyMap[name] : undefined;
-		if (linux === undefined) {
+		var k = name ? keyMap[name] : undefined;
+		if (k === undefined) {
 			return;
 		}
 		e.preventDefault();
 		e.stopImmediatePropagation();	// not to the key handlers of the page
 		if (held[e.code] === undefined) {	// not on auto repeat
-			held[e.code] = linux;
-			sendKey(linux, 'down');
+			held[e.code] = k;
+			sendKey(k.linux, 'down');
+			showOnPanel(k, true);
 		}
 	}
 
@@ -138,7 +161,8 @@ CosmosEx.JoyKeys = (function() {
 		}
 		e.preventDefault();
 		e.stopImmediatePropagation();
-		sendKey(held[e.code], 'up');
+		sendKey(held[e.code].linux, 'up');
+		showOnPanel(held[e.code], false);
 		delete held[e.code];
 	}
 
@@ -146,7 +170,7 @@ CosmosEx.JoyKeys = (function() {
 		releaseAll();
 		keyMap = {};
 		enabled = [null, null];
-		for (var j = 0; j < 2; j++) {
+		for (var j = 1; j >= 0; j--) {		// joy 0 last - a key in both sets is joy 0 (ce_cores checks joy 0 first)
 			if (settings['keyboard_joy' + j] !== 1) {
 				continue;
 			}
@@ -157,7 +181,7 @@ CosmosEx.JoyKeys = (function() {
 			enabled[j] = keys;
 			DIRS.forEach(function(d) {
 				if (nameToLinux[keys[d]] !== undefined) {
-					keyMap[keys[d]] = nameToLinux[keys[d]];
+					keyMap[keys[d]] = { linux: nameToLinux[keys[d]], joy: j, dir: d };
 				}
 			});
 		}

@@ -323,17 +323,34 @@ void Ikbd::processJoystick(js_event *jse, int joyNumber)
         js->lastDir = dirTotal;                             // always keep the state - interrogation reports it later
         js->lastBtn = button;
 
+        // what happened with the change - debug log for checking joysticks (also gamepads / keys from the web UI)
+        char dirStr[32];
+        snprintf(dirStr, sizeof(dirStr), "%s%s%s%s%s",
+                 (dirTotal & JOYDIR_UP) ? "UP " : "", (dirTotal & JOYDIR_DOWN) ? "DOWN " : "",
+                 (dirTotal & JOYDIR_LEFT) ? "LEFT " : "", (dirTotal & JOYDIR_RIGHT) ? "RIGHT " : "",
+                 dirTotal ? "" : "center ");
+        const char *logPrefix = "Ikbd::processJoystick - joy %d (ST port %d): %sfire %s";
+
         if(joystickState == Disabled) {                     // ST disabled joysticks? don't report anything
+            logIkbd(LOG_DEBUG, logPrefix, joyNumber, joyPort(joyNumber), dirStr, button ? "down" : "up");
+            logIkbd(LOG_DEBUG, "Ikbd::processJoystick -> not sent, ST disabled joysticks");
             return;
         }
 
         if(joystickState == EnabledInMouseMode && btnChanged) {  // if button state changed, send it as mouse packet
+            logIkbd(LOG_DEBUG, logPrefix, joyNumber, joyPort(joyNumber), dirStr, button ? "down" : "up");
+            logIkbd(LOG_DEBUG, "Ikbd::processJoystick -> fire sent as mouse button (ST is in mouse mode)");
             sendJoyButtonsInMouseMode();
             return;
         }
 
+        logIkbd(LOG_DEBUG, logPrefix, joyNumber, joyPort(joyNumber), dirStr, button ? "down" : "up");
+
         if(joystickMode == JOYMODE_EVENT) {                 // only in event reporting mode the IKBD sends packets on its own
+            logIkbd(LOG_DEBUG, "Ikbd::processJoystick -> sent to ST (event reporting)");
             sendJoyState(joyNumber, button | dirTotal);     // report current direction and buttons
+        } else {
+            logIkbd(LOG_DEBUG, "Ikbd::processJoystick -> not sent, joystick mode 0x%02x (ST asks for state, or mode not supported)", joystickMode);
         }
 
         // JOYMODE_INTERROGATION: ST asks, answered from lastDir / lastBtn (sendBothJoyReport)
