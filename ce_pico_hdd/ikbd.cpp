@@ -34,6 +34,25 @@ static queue_t fifoUartKeybTx;
 
 static int8_t pioIrqUartRx;
 
+// With DEBUG_TO_IKBD the KEYB_TX pin carries the debug output (see utils.cpp), so nothing is sent to the Atari - the data is just dropped.
+static inline bool keybTxCanSend(void)
+{
+#if DEBUG_TO_IKBD
+    return true;
+#else
+    return !pio_sm_is_tx_fifo_full(pioUartKeybTx, smUartKeybTx);
+#endif
+}
+
+static inline void keybTxPut(uint8_t data)
+{
+#if !DEBUG_TO_IKBD
+    uart_tx_program_putc(pioUartKeybTx, smUartKeybTx, data);
+#else
+    (void) data;
+#endif
+}
+
 static volatile uint32_t fifoFullCount = 0;    // incremented in IRQ (no debug() there), reported in ikbdProcessing()
 
 void onIkdbDisabled(void)
@@ -62,9 +81,9 @@ void onIkdbDisabled(void)
     }
 
     // got data for KEYB_TX and can send without blocking? send it
-    while(!queue_is_empty(&fifoUartKeybTx) && !pio_sm_is_tx_fifo_full(pioUartKeybTx, smUartKeybTx)) {
+    while(!queue_is_empty(&fifoUartKeybTx) && keybTxCanSend()) {
         queue_try_remove(&fifoUartKeybTx, &data);
-        uart_tx_program_putc(pioUartKeybTx, smUartKeybTx, data);
+        keybTxPut(data);
     }
 }
 
@@ -106,9 +125,9 @@ void onIkbdEnabled(void)
         }
 
         // got data for KEYB_TX and can send without blocking? send it
-        if(!queue_is_empty(&fifoUartKeybTx) && !pio_sm_is_tx_fifo_full(pioUartKeybTx, smUartKeybTx)) {
+        if(!queue_is_empty(&fifoUartKeybTx) && keybTxCanSend()) {
             queue_try_remove(&fifoUartKeybTx, &data[0]);
-            uart_tx_program_putc(pioUartKeybTx, smUartKeybTx, data[0]);
+            keybTxPut(data[0]);
 
             processing = true;  // still processing data in this loop iteration
         }
@@ -227,10 +246,14 @@ void ikbdInit(void)
     uint offset;
     bool success;
 
+#if DEBUG_TO_IKBD
+    debug("DEBUG_TO_IKBD - KEYB_TX is used for debug output, IKBD output to Atari disabled\n");
+#else
     // for KEYB_TX
     success = pio_claim_free_sm_and_add_program_for_gpio_range(&uart_tx_program, &pioUartKeybTx, &smUartKeybTx, &offset, PIN_KEYB_TX, 1, true);
     if(!success) { debug("HALT! Failed to claim PIO SM for UART\n"); haltWithError(LED_ERR_PIO); }
     uart_tx_program_init(pioUartKeybTx, smUartKeybTx, offset, PIN_KEYB_TX, IKBD_BAUD_RATE);
+#endif
 
     // for KEYB_RX
     success = pio_claim_free_sm_and_add_program_for_gpio_range(&uart_rx_program, &pioUartKeybRx, &smUartKeybRx, &offset, PIN_KEYB_RX, 1, true);

@@ -166,9 +166,17 @@ void storeHeader(uint8_t *bfr, uint16_t atnCode, uint32_t txLen)
     storeDword(bfr + 6, txLen);  //  6..9: txLen (4 bytes)
 }
 
+extern volatile bool core1running;
+
 void saveSettings(void)
 {
-    multicore_lockout_start_blocking();
+    // Pause core 1 while writing flash - but only when it runs, otherwise the lockout waits for its ack forever.
+    // (Default settings get saved in setup() on the first boot of a new board, before core 1 is launched.)
+    bool lockout = core1running;
+
+    if(lockout) {
+        multicore_lockout_start_blocking();
+    }
 
     settings.magic = SETTINGS_MAGIC;
 
@@ -179,7 +187,9 @@ void saveSettings(void)
 
     EEPROM.commit();
 
-    multicore_lockout_end_blocking();
+    if(lockout) {
+        multicore_lockout_end_blocking();
+    }
 }
 
 // Create MAC address from the flash unique ID - different for each board, but the same after EEPROM gets erased.
