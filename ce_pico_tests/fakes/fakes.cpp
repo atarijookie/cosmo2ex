@@ -16,6 +16,7 @@ std::string fakeDebugOut;
 uint32_t    fakeLastAlarmMs  = 0;
 int         fakeActiveAlarms = 0;
 int         fakeLockoutCount = 0;
+volatile bool core1running   = true;   // firmware global from core1_main_loop.cpp (not built here)
 
 bool             fakeAlarmAddFails      = false;
 alarm_id_t       fakeAlarmAddResult     = 0;
@@ -70,6 +71,7 @@ void fakeReset(void)
     fakeLastAlarmMs  = 0;
     fakeActiveAlarms = 0;
     fakeLockoutCount = 0;
+    core1running     = true;
     fakeAlarmAddFails      = false;
     fakeAlarmAddResult     = 0;
     fakeAlarmFireDuringAdd = false;

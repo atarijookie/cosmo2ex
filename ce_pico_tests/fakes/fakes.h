@@ -15,6 +15,7 @@ extern std::string fakeDebugOut;        // everything sent to the debug uart
 extern uint32_t    fakeLastAlarmMs;     // duration of the last add_alarm_in_ms()
 extern int         fakeActiveAlarms;    // alarms added and not yet fired / cancelled
 extern int         fakeLockoutCount;    // multicore_lockout_start_blocking() calls
+extern volatile bool core1running;      // firmware global (core1_main_loop.cpp), true by default
 
 extern bool             fakeAlarmAddFails;      // add_alarm_in_ms() adds nothing and returns fakeAlarmAddResult instead
 extern alarm_id_t       fakeAlarmAddResult;     // 0 = the alarm time has already passed, < 0 = no free alarm slot

@@ -287,6 +287,15 @@ TEST_CASE_FIXTURE(FirmwareFixture, "saveSettings writes all settings bytes with 
     CHECK(EEPROM.commitCount == 1);
 }
 
+TEST_CASE_FIXTURE(FirmwareFixture, "saveSettings before core 1 runs does not lock it out") {
+    core1running = false;               // first boot of a new board: defaults saved in setup() before core 1 is launched
+
+    saveSettings();
+
+    CHECK(fakeLockoutCount == 0);       // lockout would wait forever for the ack of a core that isn't running
+    CHECK(EEPROM.commitCount == 1);
+}
+
 TEST_CASE_FIXTURE(FirmwareFixture, "debug formats and turns \\n into \\n\\r") {
     debug("val %d %s\nnext\n", 42, "x");
 #ifdef LOG_LED
