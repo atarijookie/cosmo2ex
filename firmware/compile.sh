@@ -7,6 +7,11 @@
 # the Arduino IDE builds use those.
 #
 # usage: compile.sh <repo root> <output dir> <project ...>     project: ce_pico_hdd ce_pico_fdd ce_pico_display
+#
+# The results are named <project>_<DEVICE TYPE>.uf2 (e.g. ce_pico_hdd_W6100-EVB-PICO.uf2) - the device type is taken from
+# the identity string in the firmware (fw_update.h: FW_DEVICE_TYPE), the web UI tells the user which file their device needs.
+#
+# CE_BUILD_ID env var - the build id stored in the firmware identity (default: git describe, 'unknown' without git)
 
 set -eu
 
@@ -14,15 +19,21 @@ SRC=$1
 OUT=$2
 shift 2
 
-# Raspberry Pi Pico, with the Arduino IDE settings from ce_pico_hdd/readme.md
-FQBN_HDD="rp2040:rp2040:rpipico:flash=2097152_0,freq=133,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=nousb,ipbtstack=ipv4only,uploadmethod=picoprobe_cmsis_dap"
+# The file system (FS) of HDD and FDD holds the new firmware during the update from the web UI (fw_update.cpp). Changing
+# the flash / FS size changes the flash layout - the update from the web UI refuses such firmware, it must go via USB.
 
-# Raspberry Pi Pico 2 W, with the Arduino IDE settings from ce_pico_fdd/readme.md
-FQBN_FDD="rp2040:rp2040:rpipico2w:arch=arm,flash=4194304_0,freq=150,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only,wificountry=worldwide,uploadmethod=picoprobe_cmsis_dap"
+# Raspberry Pi Pico, with the Arduino IDE settings from ce_pico_hdd/readme.md and the top of ce_pico_hdd.ino
+FQBN_HDD="rp2040:rp2040:rpipico:flash=2097152_524288,freq=133,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=nousb,ipbtstack=ipv4only,uploadmethod=picoprobe_cmsis_dap"
+
+# Raspberry Pi Pico 2 W, with the Arduino IDE settings from ce_pico_fdd/readme.md and the top of ce_pico_fdd.ino
+FQBN_FDD="rp2040:rp2040:rpipico2w:arch=arm,flash=4194304_2097152,freq=150,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only,wificountry=worldwide,uploadmethod=picoprobe_cmsis_dap"
 
 # RP2040-Zero (Waveshare and its clones), with the Arduino IDE settings from ce_pico_display/readme.md - Generic RP2040
 # with the slow generic flash access (boot2), as the clones come with various flash chips
 FQBN_DISPLAY="rp2040:rp2040:generic:flash=2097152_0,freq=133,boot2=boot2_generic_03h_4_padded_checksum,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only,uploadmethod=default"
+
+BUILD_ID=${CE_BUILD_ID:-$(git -C "$SRC" describe --tags --always --dirty 2>/dev/null || echo unknown)}
+echo "Build id: $BUILD_ID"
 
 BUILD=$(mktemp -d)
 trap 'rm -rf "$BUILD"' EXIT
@@ -43,6 +54,7 @@ for project in "$@"; do
     mkdir -p "$SKETCH"
     cp -R "$SRC/$project/." "$SKETCH"
     "$(dirname "$0")/pio_gen.sh" "$SKETCH"
+    printf '#define CE_BUILD_ID "%s"\n' "$BUILD_ID" > "$SKETCH/build_id.h"     # used by fw_update.cpp, Arduino IDE builds don't have it
 
     for header in "$SKETCH"/*.pio.h; do
         [ -e "$header" ] || continue
@@ -60,7 +72,17 @@ for project in "$@"; do
         --warnings default \
         "$SKETCH"
 
-    cp "$BUILD/$project/$project.ino.uf2" "$OUT/$project.uf2"
-    cp "$BUILD/$project/$project.ino.elf" "$OUT/$project.elf"
-    echo "Created $OUT/$project.uf2"
+    # device type from the firmware identity ("CEFWID:dev=HDD;type=W6100-EVB-PICO;..."), the display has none
+    TYPE=$(LC_ALL=C grep -aoE 'CEFWID:dev=[A-Z]+;type=[A-Z0-9-]+' "$BUILD/$project/$project.ino.bin" | head -n 1 | sed 's/.*type=//')
+    if [ -z "$TYPE" ]; then
+        case "$project" in
+            ce_pico_display) TYPE=RP2040-ZERO ;;
+            *) echo "ERROR: no firmware identity found in $project"; exit 1 ;;
+        esac
+    fi
+
+    NAME="${project}_${TYPE}"
+    cp "$BUILD/$project/$project.ino.uf2" "$OUT/$NAME.uf2"
+    cp "$BUILD/$project/$project.ino.elf" "$OUT/$NAME.elf"
+    echo "Created $OUT/$NAME.uf2"
 done

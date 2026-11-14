@@ -43,6 +43,13 @@
 #define ATN_LED_COLORS                  0x09        // host -> device only: neopixel color while running - R, G, B (3 B), from the web UI
                                                     //   (global settings, LED_COLOR_SETTING_*); sent once per connection and on change
 
+// HDD and FDD - firmware info and update (OTA), see FwUpdateSender (fwupdatesender.h) and ce_pico_hdd/fw_update.cpp
+#define ATN_FW_INFO                     0x0a        // once per connection, after the FW version: image size (4 B), MD5 of the image (16 B),
+                                                    //   FS start, FS end (4 B each, offsets in flash), flags (1 B, bit 0: OTA possible,
+                                                    //   bit 1: new firmware on trial, bit 2: rolled back to the previous firmware), 0,
+                                                    //   identity "dev=HDD;type=W6100-EVB-PICO;chip=RP2040;build=v1.0.0;" (zero terminated)
+#define ATN_FW_UPDATE_STATUS            0x0b        // answer to each CMD_FW_UPDATE_*: cmd (1 B), result (1 B, 0 = OK), received (4 B), message
+
 #define DEV_SETTING_IKBD                0x01        // device IKBD (keyboard / mouse via the host) enabled
 #define DEV_SETTING_BEEP_ON_STEP        0x02        // beeper clicks on every head step
 
@@ -66,6 +73,10 @@
 #define CMD_DATA_MARKER                 0xda
 #define CMD_LED_COLORS                  0xe0        // neopixel colors while running: ACSI R, G, B, SCSI R, G, B (6 B) - the device
                                                     //   uses the one of its variant; sent once per connection and on change
+#define CMD_FW_UPDATE_START             0xf0        // firmware update (HDD and FDD), see FwUpdateSender: image size (4 B), MD5 (16 B)
+#define CMD_FW_UPDATE_DATA              0xf1        //   offset (4 B), data (max FWU_CHUNK_SIZE)
+#define CMD_FW_UPDATE_END               0xf2        //   device checks the image, answers, reboots into the new firmware
+#define CMD_FW_UPDATE_ABORT             0xf3
 
 // Hans (HDD) - ACSI only, for the SLM laser printer emulation (hdd/slm/)
 #define CMD_PIO_READ                    0x90        // send the payload bytes to ST one by one with CS / INT handshake (status + EXTENDED STATUS PHASE), then wait for the next command; no payload = just wait for the next command

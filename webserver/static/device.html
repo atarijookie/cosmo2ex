@@ -179,6 +179,9 @@
             <button id="status-button" class="device-action-button" style="padding: 15px 25px; font-size: 16px; cursor: pointer; background-color: #3baf16; color: white; border: none; border-radius: 4px; text-align: center;">
                 Status
             </button>
+            <button id="update-button" class="device-action-button" style="padding: 15px 25px; font-size: 16px; cursor: pointer; background-color: #3baf16; color: white; border: none; border-radius: 4px; text-align: center;">
+                Update
+            </button>
         </div>
 
         <div class="footer-links">
@@ -357,6 +360,12 @@
                     }
 
                     // Status button is always shown (no change needed)
+
+                    // Update (firmware) - HDD and FDD devices
+                    var updateButton = document.getElementById('update-button');
+                    if (updateButton) {
+                        updateButton.style.display = (showAcsiButtons || features.fdd) ? 'block' : 'none';
+                    }
                 })
                 .catch(function(err) {
                     console.log('Error loading device features:', err);
@@ -422,6 +431,10 @@
 
         document.getElementById('status-button').onclick = function() {
             window.location.href = buildDeviceUrl('/status.html');
+        };
+
+        document.getElementById('update-button').onclick = function() {
+            window.location.href = buildDeviceUrl('/firmware_update.html');
         };
     }
 

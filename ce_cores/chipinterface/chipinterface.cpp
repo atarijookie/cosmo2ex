@@ -286,6 +286,7 @@ uint8_t ChipInterface::getFWversion(ClientInfo* ci, bool hddNotFdd)
 
     char fwVerStr[64];
     snprintf(fwVerStr, sizeof(fwVerStr), "%d-%02d-%02d", year, month, day);
+    snprintf(ci->fwVersion, sizeof(ci->fwVersion), "%.15s", fwVerStr);
     StatusReport::storeIpAndFwVer(ci->mac, ci->ipAddr, fwVerStr, bfr[4]);
 
     // device settings flags - only from firmware that sends them (14 bytes instead of 12)
@@ -419,6 +420,49 @@ void ChipInterface::sendLedColorsToAll(bool hddNotFdd)
             sendLedColors(&clients[i], hddNotFdd);
         }
     }
+}
+
+// write the setting only when it changed - this comes on every connect
+static void setStringIfChanged(Settings& s, const char* key, const std::string& value)
+{
+    if(s.getString(key, "") != value) {
+        s.setString(key, value.c_str());
+    }
+}
+
+void ChipInterface::storeFwInfo(ClientInfo* ci)
+{
+    uint8_t bfr[256];
+    int cnt = readRestOfData(ci, bfr, sizeof(bfr) - 1);
+    bfr[sizeof(bfr) - 1] = 0;
+
+    static const uint8_t zeroMac[6] = {0};
+    if(cnt < 31 || memcmp(ci->mac, zeroMac, 6) == 0) {     // too short, or MAC not known yet (FW version comes first)
+        Debug::out(whichLog, LOG_ERROR, "storeFwInfo - %d bytes, mac %s known - ignored", cnt, memcmp(ci->mac, zeroMac, 6) ? "is" : "not");
+        return;
+    }
+
+    char tmp[64];
+    char md5[33];
+    Settings::binToHex(bfr + 4, 16, md5);
+    std::string ident((const char*) bfr + 30, strnlen((const char*) bfr + 30, cnt - 30));
+
+    Settings s(ci->mac);
+
+    snprintf(tmp, sizeof(tmp), "%u", Utils::getDword(bfr));
+    setStringIfChanged(s, "FW_IMAGE_SIZE", tmp);
+    setStringIfChanged(s, "FW_IMAGE_MD5", md5);
+    snprintf(tmp, sizeof(tmp), "%u", Utils::getDword(bfr + 20));
+    setStringIfChanged(s, "FW_FS_START", tmp);
+    snprintf(tmp, sizeof(tmp), "%u", Utils::getDword(bfr + 24));
+    setStringIfChanged(s, "FW_FS_END", tmp);
+    setStringIfChanged(s, "FW_OTA", (bfr[28] & 1) ? "1" : "0");
+    setStringIfChanged(s, "FW_STATE", (bfr[28] & 4) ? "rolled_back" : ((bfr[28] & 2) ? "trial" : "ok"));   // after an update
+    setStringIfChanged(s, "FW_IDENT", ident);
+    setStringIfChanged(s, "FW_VERSION", ci->fwVersion);
+
+    Debug::out(whichLog, LOG_DEBUG, "storeFwInfo - %s, version %s, image %u B, md5 %s, OTA %s", ident.c_str(), ci->fwVersion,
+        Utils::getDword(bfr), md5, (bfr[28] & 1) ? "possible" : "not possible");
 }
 
 void ChipInterface::storeDeviceFeatures(uint8_t* mac, uint8_t featureBits)
@@ -890,6 +934,7 @@ void ChipInterface::clientsClearOne(ClientInfo* info)
     info->deviceSettings = -1;
     info->deviceSettingsSeen = -1;
     info->ledColorsSent = false;
+    info->fwVersion[0] = 0;
     info->bufReader.reset();    // drop any partial header / remaining data size from previous connection
 }
 

@@ -13,6 +13,7 @@
 #include "image_browser.h"
 #include "settings.h"
 #include "builtin_image.h"
+#include "fw_update.h"
 
 THeader fddHeader;      // keep the header global to preserve syncTag between calls
 static bool headerPending = false;  // header received, but its data not handled yet - no free buffer for it until now
@@ -302,6 +303,14 @@ void handleIncommingData(void)
         case ATN_LED_COLORS:
             handleLedColorsReceived();
             headerPending = false;
+            break;
+
+        case CMD_FW_UPDATE_START:       // firmware update from the web UI - fw_update.cpp reads the data
+        case CMD_FW_UPDATE_DATA:
+        case CMD_FW_UPDATE_END:
+        case CMD_FW_UPDATE_ABORT:
+            headerPending = false;
+            fwUpdateCommand(fddHeader.cmdCode, fddHeader.len);
             break;
 
         default:

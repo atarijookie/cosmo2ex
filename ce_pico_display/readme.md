@@ -5,13 +5,13 @@
   same firmware
 - connected to the FDD (ce_pico_fdd) with 4 wires: GND, 5V, TX, RX - the FDD sends text, the panel sends button
   events (the beeper is on the FDD board); connections and the protocol are in [protocol.md](protocol.md)
-- update: drag & drop `ce_pico_display.uf2` onto the RPI-RP2 drive - hold BOOT while plugging in the USB, or send
+- update: drag & drop `ce_pico_display_RP2040-ZERO.uf2` onto the RPI-RP2 drive - hold BOOT while plugging in the USB, or send
   `!BOOT` to the panel (from the FDD, or from a terminal on the panel's USB serial)
 
 ## Compiling under Linux
 
 - from the repo root: `make firmware` (or `firmware/build.sh ce_pico_display`), needs just docker - see firmware/README.md
-- the result is firmware/out/ce_pico_display.uf2
+- the result is firmware/out/ce_pico_display_RP2040-ZERO.uf2
 
 ## Compiling under Windows and Arduino env
 

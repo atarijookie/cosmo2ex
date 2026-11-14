@@ -38,6 +38,8 @@
 // #define ATN_READ_MORE_DATA                  0x03
 #define ATN_WRITE_MORE_DATA                 0x04
 // #define ATN_GET_STATUS                      0x05
+#define ATN_FW_INFO                         0x0a    // identity, size + MD5 of the running image, FS position - once per connection, see fw_update.cpp
+#define ATN_FW_UPDATE_STATUS                0x0b    // answer to each CMD_FW_UPDATE_* - see fw_update.cpp
 
 // commands sent from host to device
 #define CMD_ACSI_CONFIG                     0x10
@@ -49,6 +51,12 @@
 #define CMD_FLOPPY_SWITCH                   0x80
 #define CMD_DATA_MARKER                     0xda
 #define CMD_LED_COLORS                      0xe0    // neopixel colors while running: ACSI R, G, B, SCSI R, G, B (6 B), from the web UI
+
+// firmware update (OTA) from the web UI - see fw_update.cpp; the device answers each with ATN_FW_UPDATE_STATUS
+#define CMD_FW_UPDATE_START                 0xf0    // image size (4 B), MD5 of the image (16 B)
+#define CMD_FW_UPDATE_DATA                  0xf1    // offset (4 B), data (max FWU_CHUNK_MAX B)
+#define CMD_FW_UPDATE_END                   0xf2    // check identity, layout, MD5, then reboot into the OTA stub
+#define CMD_FW_UPDATE_ABORT                 0xf3
 
 // ACSI only - for the SLM laser printer emulation on host (ce_cores/hdd/slm/)
 #define CMD_PIO_READ                        0x90    // send the payload bytes to ST with CS / INT handshake (status + EXTENDED STATUS PHASE), then wait for next command

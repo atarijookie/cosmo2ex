@@ -28,8 +28,12 @@ fi
 mkdir -p "$OUT"
 
 # the repo is mounted read-only, the container runs as the calling user so the results belong to them
+# build id for the firmware identity - git isn't in the image, so it's done here
+CE_BUILD_ID=${CE_BUILD_ID:-$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || echo unknown)}
+
 docker run --rm \
     --user "$(id -u):$(id -g)" \
+    -e CE_BUILD_ID="$CE_BUILD_ID" \
     -v "$ROOT":/src:ro \
     -v "$OUT":/out \
     "$IMAGE" \

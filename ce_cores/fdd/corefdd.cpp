@@ -13,6 +13,7 @@
 #include "../misc/debug.h"
 #include "../misc/utils.h"
 #include "../chipinterface/chipinterface.h"
+#include "../chipinterface/fwupdatesender.h"
 #include "../discovery/discovery.h"
 #include "../../libdospath/libdospath.h"
 
@@ -56,6 +57,8 @@ void *fddThreadCode(void *ptr)
 CoreFdd::CoreFdd()
 {
     lastImageListCheck = 0;
+    ciFdd = NULL;
+    fwSender = NULL;
 
     for(int i=0; i<MAX_CLIENTS; i++) {
         imageBrowseReset(i);
@@ -80,6 +83,9 @@ void CoreFdd::run(void)
 
     imageSilo = new ImageSilo(ciFdd);
 
+    // firmware update from the web UI - over the same connections, the same command codes as on HDD
+    fwSender = new FwUpdateSender(ciFdd, LOGFILE_FDD, CMD_FW_UPDATE_START, CMD_FW_UPDATE_DATA, CMD_FW_UPDATE_END, CMD_FW_UPDATE_ABORT);
+
     int max_fd;
     fd_set readfds;
 
@@ -97,6 +103,12 @@ void CoreFdd::run(void)
             events.fddLedColors = false;
             ciFdd->sendLedColorsToAll(false);
         }
+
+        FwUpdateRequest fwReq;
+        while(fwUpdateRequestPop("fdd", fwReq)) {   // firmware update started / aborted in the web UI
+            fwSender->handleRequest(fwReq.mac, "", fwReq.md5, fwReq.abort);
+        }
+        fwSender->tick();
 
         ciFdd->clientsDisconnectInactive();
 
@@ -173,6 +185,9 @@ void CoreFdd::run(void)
         }
     }
 
+    delete fwSender;
+    fwSender = NULL;
+
     ciFdd->ciClose();
     delete ciFdd;
     ciFdd = NULL;
@@ -229,8 +244,21 @@ bool CoreFdd::handleFdd(ClientInfo* ci, uint8_t* inBuff)
         handleInsertImage(ci);
         break;
 
+    case ATN_FW_INFO:                       // firmware identity, size + MD5 - once per connection
+        ciFdd->storeFwInfo(ci);
+        break;
+
+    case ATN_FW_UPDATE_STATUS:              // answer to a firmware update command
+        if(fwSender) {
+            fwSender->onStatus(ci);
+        } else {
+            ciFdd->readRestOfData(ci, inBuf, BFR_SIZE);
+        }
+        break;
+
     default:
         logFdd(LOG_ERROR, "CoreFdd received weird ATN code %02x waitForATN()", inBuff[3]);
+        ciFdd->readRestOfData(ci, inBuf, BFR_SIZE);     // skip its data, so the next header is found right away
         break;
     }
 

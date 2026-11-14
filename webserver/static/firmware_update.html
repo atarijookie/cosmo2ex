@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0"/>
+    <title>Firmware Update - Cosmo2ex</title>
+    <link rel="stylesheet" type="text/css" href="css/combined.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px 0;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            padding: 30px;
+            max-width: 800px;
+            margin: 20px auto;
+            position: relative;
+            box-sizing: border-box;
+        }
+        @media (max-width: 600px) {
+            .container { margin: 0 16px; padding: 20px 16px; }
+        }
+        h2 { text-align: center; margin-bottom: 4px; }
+        h3 { text-align: center; margin-top: 0; }
+        #account-buttons {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 1000;
+            display: flex;
+            gap: 8px;
+        }
+        #account-buttons button {
+            padding: 8px 16px;
+            font-size: 14px;
+            background-color: #666;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .section {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 0;
+            text-align: left;
+        }
+        .info-table td { padding: 3px 12px 3px 0; vertical-align: top; }
+        .info-table td:first-child { font-weight: bold; white-space: nowrap; }
+        .device-type { font-size: 20px; font-weight: bold; letter-spacing: 0.5px; }
+        .needed-file {
+            font-family: monospace;
+            font-size: 15px;
+            font-weight: bold;
+            background: #f3f3f3;
+            padding: 2px 6px;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+        #drop-zone {
+            border: 2px dashed #aaa;
+            border-radius: 8px;
+            padding: 28px 16px;
+            text-align: center;
+            color: #666;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        #drop-zone.drag-over { background: #eef8ea; border-color: #3baf16; }
+        #drop-zone.disabled { opacity: 0.5; }
+        .btn {
+            padding: 10px 22px;
+            font-size: 15px;
+            cursor: pointer;
+            background-color: #3baf16;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        .btn:disabled { opacity: 0.5; cursor: default; }
+        .btn-gray { background-color: #888; }
+        .btn-red { background-color: #c0392b; }
+        .ok { color: #2d8a10; }
+        .warn { color: #b26a00; }
+        .err { color: #c0392b; }
+        ul.problems { margin: 6px 0 0 0; padding-left: 20px; }
+        #progress-outer {
+            height: 18px;
+            background: #eee;
+            border-radius: 9px;
+            overflow: hidden;
+            margin: 10px 0 6px 0;
+        }
+        #progress-inner {
+            height: 100%;
+            width: 0;
+            background: #3baf16;
+            transition: width 0.3s;
+        }
+        .footer-links {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+        .footer-links a { color: #0066cc; text-decoration: none; margin: 0 10px; }
+        .footer-links span { color: #999; margin: 0 5px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div id="account-buttons">
+        <button onclick="window.location.href='/settings.html'">Settings</button>
+        <button onclick="logout()">Logout</button>
+    </div>
+
+    <div id="breadcrumbs-container"></div>
+    <script src="js/breadcrumbs.js"></script>
+    <h2>Cosmo2ex</h2>
+    <h3>Firmware Update</h3>
+
+    <div class="section" id="device-section">
+        <table class="info-table">
+            <tr><td>Device type:</td><td><span class="device-type" id="dev-type">...</span></td></tr>
+            <tr><td>Firmware:</td><td id="dev-version">...</td></tr>
+            <tr><td>Connected:</td><td id="dev-connected">...</td></tr>
+        </table>
+        <div id="dev-notes" style="margin-top: 10px;"></div>
+        <p style="margin: 12px 0 0 0;">
+            Download the firmware for this device from
+            <a id="releases-link" href="#" target="_blank" rel="noopener">GitHub releases</a>.
+            <span id="needed-line">This device needs the file: <span class="needed-file" id="needed-file"></span></span>
+        </p>
+    </div>
+
+    <div class="section">
+        <div id="drop-zone">
+            Drop the <b>.uf2</b> firmware file here<br><br>
+            <button class="btn btn-gray" id="browse-button">Browse for firmware</button>
+            <input type="file" id="file-input" accept=".uf2" style="display: none;">
+        </div>
+        <div id="check-result" style="margin-top: 12px;"></div>
+        <div style="margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn" id="update-button" disabled>Update</button>
+            <button class="btn btn-red" id="abort-button" style="display: none;">Abort</button>
+        </div>
+    </div>
+
+    <div class="section" id="progress-section" style="display: none;">
+        <div id="progress-text"></div>
+        <div id="progress-outer"><div id="progress-inner"></div></div>
+        <div id="progress-note" class="warn" style="font-size: 13px;">
+            Don't use the drive on the Atari during the update - the device may not answer while it writes to its flash.
+        </div>
+    </div>
+
+    <div class="footer-links">
+        <a href="https://joo.kie.sk/?page_id=384" target="_blank">homepage</a><span>|</span><a href="https://joo.kie.sk/?page_id=415" target="_blank">manual</a><span>|</span><a href="credits.html">credits</a>
+    </div>
+</div>
+
+<script>
+    function getURLParameter(name) {
+        name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+        var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+        var results = regex.exec(location.search);
+        return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+    }
+
+    var mac = getURLParameter('mac');
+    var apiBase = '/device/' + encodeURIComponent(mac) + '/firmware';
+
+    var device = null;          // last GET /device/{mac}/firmware
+    var fileOk = false;         // the chosen file passed the checks (stored on the server)
+    var watching = false;       // update requested - follow its status
+    var shownUpdate = false;    // keep showing the progress / result of the update until another file is chosen
+    var watchStart = 0;         // when the update was requested / the device started rebooting (ms)
+    var rebootSeenAt = 0;
+    var pollTimer = null;
+
+    var REQUEST_TIMEOUT_MS = 20000;     // the core must start the update within this time
+    var REBOOT_TIMEOUT_MS = 120000;     // the device must come back (with any firmware) within this time
+
+    function el(id) { return document.getElementById(id); }
+
+    function text(s) {
+        var d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
+    function updateState() {
+        if (!device || !device.update) return null;
+        return device.update;
+    }
+
+    function isRunning(st) {
+        return st && (st.state === 'requested' || st.state === 'starting' || st.state === 'sending' || st.state === 'finishing');
+    }
+
+    function renderDevice() {
+        el('releases-link').href = device.releases_url;
+
+        if (device.reported) {
+            el('dev-type').textContent = device.type + ' (' + device.dev + ', ' + device.chip + ')';
+            el('dev-version').textContent = (device.version || '?') + ', build ' + (device.build || '?');
+            el('needed-file').textContent = device.needed_file;
+            el('needed-line').style.display = '';
+        } else {
+            el('dev-type').textContent = 'unknown';
+            el('dev-version').textContent = device.version || 'unknown';
+            el('needed-line').style.display = 'none';
+        }
+
+        el('dev-connected').innerHTML = device.connected ? '<span class="ok">yes</span>' : '<span class="err">no</span>';
+
+        var notes = [];
+        if (device.state === 'trial') {
+            notes.push('<span class="warn">This firmware is new and not confirmed yet - it gets confirmed once the device stays connected to the host for 10 seconds. If it doesn\'t, the device goes back to the previous firmware after 3 tries.</span>');
+        } else if (device.state === 'rolled_back') {
+            notes.push('<span class="err">The last update didn\'t work - the new firmware didn\'t connect to the host, so the device went back to its previous firmware.</span>');
+        }
+        if (!device.reported) {
+            notes.push('<span class="warn">This device didn\'t report its firmware details - its firmware is too old to be updated from here. Update it once via USB (hold BOOTSEL while plugging in, then copy the .uf2 onto the drive that appears).</span>');
+        } else if (!device.ota) {
+            notes.push('<span class="warn">The firmware in this device was built without the file system needed for the update. Update it once via USB.</span>');
+        }
+        el('dev-notes').innerHTML = notes.join('<br>');
+    }
+
+    function renderProgress() {
+        var st = updateState();
+
+        if (isRunning(st)) {
+            shownUpdate = true;     // also when the page was opened while an update runs
+        }
+
+        if (!watching && !shownUpdate) {
+            el('progress-section').style.display = 'none';
+            el('abort-button').style.display = 'none';
+            return;
+        }
+
+        el('progress-section').style.display = '';
+        var running = isRunning(st);
+        el('abort-button').style.display = running ? '' : 'none';
+        setDropEnabled(!running && !(st && st.state === 'rebooting' && watching));
+
+        var pct = st ? (st.progress || 0) : 0;
+        var msg = '';
+        var cls = '';
+
+        if (!st) {
+            msg = 'Waiting for the update to start...';
+        } else if (st.state === 'requested') {
+            msg = 'Waiting for the core to start the update...';
+            if (!watchStart) watchStart = Date.now();       // page opened while waiting
+            if (Date.now() - watchStart > REQUEST_TIMEOUT_MS) {
+                msg = 'The core (ce_cores) didn\'t start the update - is it running and connected to the device?';
+                cls = 'err';
+                watching = false;
+            }
+        } else if (st.state === 'starting') {
+            msg = 'Starting the update...';
+        } else if (st.state === 'sending') {
+            msg = 'Sending the firmware: ' + pct + ' % (' + st.sent + ' of ' + st.total + ' bytes)';
+        } else if (st.state === 'finishing') {
+            msg = 'The device is checking the firmware...';
+            pct = 100;
+        } else if (st.state === 'rebooting') {
+            pct = 100;
+            if (device.pending_runs && device.state === 'trial') {
+                msg = 'The device runs the new firmware, confirming it (it must stay connected to the host for 10 seconds)...';
+                rebootSeenAt = Date.now();      // it's back - no timeout while it confirms itself
+            } else if (device.pending_runs) {
+                msg = 'Done - the device runs the new firmware (' + (device.version || '') + ', build ' + (device.build || '?') + ').';
+                cls = 'ok';
+                watching = false;
+            } else if (device.state === 'rolled_back' && device.connected) {
+                msg = 'The new firmware didn\'t work - the device went back to its previous firmware.';
+                cls = 'err';
+                watching = false;
+            } else if (watching) {
+                if (!rebootSeenAt) rebootSeenAt = Date.now();
+                msg = 'The device is restarting with the new firmware - this takes a few seconds...';
+                if (Date.now() - rebootSeenAt > REBOOT_TIMEOUT_MS) {
+                    msg = 'The device didn\'t come back with the new firmware yet. If the new firmware can\'t connect to the host, ' +
+                          'the device goes back to the previous one after 3 tries (up to 10 minutes). If it doesn\'t come back at all, update it via USB.';
+                    cls = 'err';
+                    watching = false;
+                }
+            } else {
+                msg = 'The last update finished, the device was restarted.';
+            }
+        } else if (st.state === 'failed') {
+            msg = 'The update failed: ' + (st.message || 'unknown error') + '. The device keeps its current firmware.';
+            cls = 'err';
+            watching = false;
+        } else if (st.state === 'aborted') {
+            msg = 'The update was aborted. The device keeps its current firmware.';
+            cls = 'warn';
+            watching = false;
+        }
+
+        el('progress-inner').style.width = pct + '%';
+        el('progress-text').innerHTML = cls ? '<span class="' + cls + '">' + text(msg) + '</span>' : text(msg);
+        el('progress-note').style.display = running ? '' : 'none';
+
+        if (!watching && !running) {
+            setDropEnabled(true);
+        }
+    }
+
+    function refresh() {
+        return fetch(apiBase)
+            .then(function(res) {
+                if (!res.ok) throw new Error('GET failed ' + res.status);
+                return res.json();
+            })
+            .then(function(info) {
+                device = info;
+                renderDevice();
+                renderProgress();
+
+                var keepPolling = watching || isRunning(updateState());
+                schedulePoll(keepPolling ? 1000 : 5000);
+            })
+            .catch(function(err) {
+                console.log('Error loading firmware info:', err);
+                schedulePoll(3000);
+            });
+    }
+
+    function schedulePoll(ms) {
+        if (pollTimer) clearTimeout(pollTimer);
+        pollTimer = setTimeout(refresh, ms);
+    }
+
+    function setDropEnabled(enabled) {
+        el('drop-zone').classList.toggle('disabled', !enabled);
+        el('browse-button').disabled = !enabled;
+    }
+
+    function showCheckResult(res, fileName) {
+        var html = '';
+        if (res.file && res.file.dev) {
+            html += '<div><b>' + text(fileName) + '</b>: ' + text(res.file.dev + ' ' + res.file.type + ', ' + res.file.chip +
+                    ', build ' + (res.file.build || '?') + ', ' + res.file.size + ' bytes') + '</div>';
+        } else {
+            html += '<div><b>' + text(fileName) + '</b></div>';
+        }
+
+        if (res.ok) {
+            html += '<div class="ok" style="margin-top: 6px;">This firmware can go into the device - press Update.</div>';
+        } else {
+            html += '<ul class="problems err">';
+            (res.problems || []).forEach(function(p) { html += '<li>' + text(p) + '</li>'; });
+            html += '</ul>';
+        }
+
+        el('check-result').innerHTML = html;
+        fileOk = !!res.ok;
+        el('update-button').disabled = !fileOk;
+    }
+
+    function checkFile(file) {
+        if (el('browse-button').disabled) return;
+
+        fileOk = false;
+        shownUpdate = false;
+        el('update-button').disabled = true;
+        renderProgress();
+
+        if (!/\.uf2$/i.test(file.name)) {
+            el('check-result').innerHTML = '<span class="err">' + text(file.name + ' is not a .uf2 file.') + '</span>';
+            return;
+        }
+
+        el('check-result').textContent = 'Checking ' + file.name + '...';
+
+        fetch(apiBase + '/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: file
+        })
+        .then(function(res) {
+            if (!res.ok) return res.text().then(function(t) { throw new Error(t || ('check failed ' + res.status)); });
+            return res.json();
+        })
+        .then(function(res) { showCheckResult(res, file.name); })
+        .catch(function(err) {
+            el('check-result').innerHTML = '<span class="err">' + text('Checking the file failed: ' + err.message) + '</span>';
+        });
+    }
+
+    function startUpdate() {
+        if (!fileOk) return;
+        el('update-button').disabled = true;
+
+        fetch(apiBase + '/update', { method: 'POST' })
+            .then(function(res) {
+                if (!res.ok) return res.text().then(function(t) { throw new Error(t || ('update failed ' + res.status)); });
+                fileOk = false;
+                watching = true;
+                shownUpdate = true;
+                watchStart = Date.now();
+                rebootSeenAt = 0;
+                el('check-result').innerHTML = '';
+                refresh();
+            })
+            .catch(function(err) {
+                el('check-result').innerHTML = '<span class="err">' + text('The update didn\'t start: ' + err.message) + '</span>';
+            });
+    }
+
+    function abortUpdate() {
+        if (!confirm('Abort the update? The device keeps its current firmware.')) return;
+
+        fetch(apiBase + '/abort', { method: 'POST' })
+            .then(function() { refresh(); })
+            .catch(function(err) { alert('Abort failed: ' + err.message); });
+    }
+
+    if (!mac) {
+        el('device-section').innerHTML = '<p class="err">Error: No MAC address specified. Please go back and select a device.</p>';
+    } else {
+        el('browse-button').onclick = function() { el('file-input').click(); };
+        el('file-input').onchange = function() {
+            if (this.files.length) checkFile(this.files[0]);
+            this.value = '';        // the same file can be chosen again
+        };
+
+        var dz = el('drop-zone');
+        ['dragenter', 'dragover'].forEach(function(ev) {
+            dz.addEventListener(ev, function(e) { e.preventDefault(); dz.classList.add('drag-over'); });
+        });
+        ['dragleave', 'drop'].forEach(function(ev) {
+            dz.addEventListener(ev, function(e) { e.preventDefault(); dz.classList.remove('drag-over'); });
+        });
+        dz.addEventListener('drop', function(e) {
+            if (e.dataTransfer.files.length) checkFile(e.dataTransfer.files[0]);
+        });
+
+        // a file dropped elsewhere on the page must not open it in the browser
+        window.addEventListener('dragover', function(e) { e.preventDefault(); });
+        window.addEventListener('drop', function(e) { e.preventDefault(); });
+
+        el('update-button').onclick = startUpdate;
+        el('abort-button').onclick = abortUpdate;
+
+        refresh();
+    }
+
+    function logout() {
+        fetch('/auth/logout', { method: 'POST', credentials: 'include' })
+            .then(function() {
+                if (localStorage.getItem('auth_token')) localStorage.removeItem('auth_token');
+                window.location.href = '/login.html';
+            })
+            .catch(function() { window.location.href = '/login.html'; });
+    }
+</script>
+<script src="/js/server_check.js"></script>
+</body>
+</html>

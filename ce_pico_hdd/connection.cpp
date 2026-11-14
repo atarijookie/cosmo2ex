@@ -6,6 +6,7 @@
 #include "utils.h"
 #include "ipc.h"
 #include "sting_net.h"
+#include "fw_update.h"
 
 #define SERVER_UDP_PORT 7200 // port number where CE listens for client requests
 #define CLIENT_UDP_PORT 7201 // port where this client should listen for CE responses
@@ -242,6 +243,7 @@ void connectToCEhost(void)
 
         hddHeader.syncTag = 0;          // new stream - don't use anything left from the previous connection
         hddHeaderPending = false;
+        fwInfoResetSent();              // the host gets the firmware info again on this connection
     }
     else if(++connectFailCount >= CONNECT_FAILS_BEFORE_REDISCOVERY)
     {
@@ -343,6 +345,7 @@ void connectToHost(void)
             connAttempts = 0;
             debug("connectToHost - CONNECTION LOST at %u ms\n", connLostAt);
             logSockets("connection lost");
+            fwUpdateAbort("connection lost");
         }
     }
 
@@ -639,6 +642,10 @@ uint32_t payloadSizeToWaitFor(const THeader* header)
         return 0;
     }
 
+    if(fwUpdateIsCommand(header->cmdCode)) {        // firmware data chunks are bigger, fwUpdateCommand() reads them as they come
+        return fwUpdatePayloadToWaitFor(header->cmdCode, header->len);
+    }
+
     return MIN(header->len, PAYLOAD_MAX_WAIT_SIZE);
 }
 
@@ -681,6 +688,10 @@ void handleIncommingData(void)
         case CMD_PIO_READ: handlePioRead(hddHeader.len); break;
         case CMD_PIO_WRITE: handlePioWriteStart(); break;
         case CMD_DATA_WRITE_PACED: handleWritePacedStart(hddHeader.len); break;
+        case CMD_FW_UPDATE_START:
+        case CMD_FW_UPDATE_DATA:
+        case CMD_FW_UPDATE_END:
+        case CMD_FW_UPDATE_ABORT: fwUpdateCommand(hddHeader.cmdCode, hddHeader.len); break;
         default: debug("unknown cmdCode %d\n", hddHeader.cmdCode); break;
     }
 }

@@ -20,6 +20,8 @@ extern int fakeHostDisconnects;                         // hostDisconnect() call
 
 void fakeHostReceive(const std::vector<uint8_t>& data); // data arrives from host
 
+extern std::vector<uint16_t> fakeFwUpdateCommands;     // cmd codes passed to fwUpdateCommand() (fw_update.cpp fake)
+
 void fakeHostReset(void);
 
 #endif

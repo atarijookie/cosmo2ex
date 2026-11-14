@@ -121,6 +121,17 @@ extern InterProcessEvents events;
 void fddActionPush(int action, const std::string& mac);     // called by command socket thread
 bool fddActionPop(int& action, std::string& mac);           // called by FDD thread, false if no action is waiting
 
+// firmware update requests from the web UI (command socket thread) to the HDD / FDD thread - see FwUpdateSender
+typedef struct {
+    std::string dev;        // "hdd" or "fdd" - which core handles it
+    std::string mac;        // 12 hex chars
+    std::string md5;        // MD5 of the .bin, 32 hex chars
+    bool        abort;      // abort the running update instead
+} FwUpdateRequest;
+
+void fwUpdateRequestPush(const FwUpdateRequest& req);
+bool fwUpdateRequestPop(const std::string& dev, FwUpdateRequest& req);   // the oldest request for this core
+
 class ImageStorage;
 
 typedef struct {

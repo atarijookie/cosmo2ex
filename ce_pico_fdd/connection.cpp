@@ -12,6 +12,7 @@
 #include "neopixel.h"
 #include "ipc.h"
 #include "host_receive.h"
+#include "fw_update.h"
 
 #define SERVER_UDP_PORT 7200 // port number where CE listens for client requests
 #define CLIENT_UDP_PORT 7201 // port where this client should listen for CE responses
@@ -341,8 +342,10 @@ void connectToHost(void)
             imageState = IMAGE_NOT_LOADED;
             showRunningStateOnDisplay();
             beep(BEEP_HOST_CONNECTED_MS);
+            fwInfoResetSent();      // the host gets the firmware info again on this connection
         } else {
             beep(BEEP_HOST_LOST_MS);
+            fwUpdateAbort("connection lost");
         }
     }
 

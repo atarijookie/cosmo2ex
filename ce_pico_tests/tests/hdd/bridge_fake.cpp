@@ -96,3 +96,13 @@ void ledSetRunningColors(const uint8_t* acsiRgb, const uint8_t* scsiRgb)
     memcpy(fakeLedAcsi, acsiRgb, 3);
     memcpy(fakeLedScsi, scsiRgb, 3);
 }
+
+//--------------------------------------------------------
+// ce_pico_hdd/fw_update.cpp (needs Updater / LittleFS of arduino-pico) - not tested here, connection.cpp just calls it
+#include "fw_update.h"
+
+void fwInfoResetSent(void) {}
+void fwUpdateAbort(const char*) {}
+bool fwUpdateIsCommand(uint16_t cmdCode) { return cmdCode >= CMD_FW_UPDATE_START && cmdCode <= CMD_FW_UPDATE_ABORT; }
+uint32_t fwUpdatePayloadToWaitFor(uint16_t, uint32_t len) { return len < 64 ? len : 64; }
+void fwUpdateCommand(uint16_t, uint32_t) {}

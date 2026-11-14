@@ -7,7 +7,7 @@
 ## Compiling under Linux
 
 - from the repo root: `firmware/build.sh ce_pico_fdd`, needs just docker - see firmware/README.md
-- the result is firmware/out/ce_pico_fdd.uf2
+- the result is firmware/out/ce_pico_fdd_PICO-2W.uf2
 
 ## Compiling under Windows and Arduino env
 
@@ -27,7 +27,7 @@
 - debug level: None
 - debug port: Disabled (this is only for the debug of the arduino core; debug strings don't use it, see Notes)
 - C++ exceptions: disabled
-- flash size: 4MB (no FS)
+- flash size: 4MB (Sketch: 2MB, FS: 2MB) - the FS holds the new firmware during the update from the web UI, and the previous one for the rollback
 - CPU speed: 150 MHz (the MFM stream and write capture dividers are calculated from the clock, so other speeds keep the timing)
 - IP/Bluetooth stack: IPv4 Only
 - optimize: Small (-Os) (standard)
@@ -174,3 +174,11 @@
 ## License
 
 Open design, non-commercial license - see the License section of the [main README](../README.md#license).
+
+## Firmware update from the web UI (OTA)
+
+The same as on the HDD (see [ce_pico_hdd/readme.md](../ce_pico_hdd/readme.md), Firmware update) - `fw_update.cpp` is
+the same file except its "platform" part: the image comes over the FDD connection (`host_receive.cpp` passes the
+CMD_FW_UPDATE_* messages), the display shows the progress, and core 1 doesn't need parking by hand - it's started via
+setup1() / loop1(), so the arduino core idles it for each flash write (the floppy streaming pauses meanwhile).
+Release file: `ce_pico_fdd_PICO-2W.uf2`. The 2 MB file system holds the new and the previous firmware (rollback).

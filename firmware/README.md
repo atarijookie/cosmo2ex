@@ -9,13 +9,17 @@ firmware/build.sh                       # all of them
 firmware/build.sh ce_pico_hdd           # just one
 
 The results are in firmware/out/:
-ce_pico_hdd.uf2
+ce_pico_hdd_W6100-EVB-PICO.uf2
                                             - hold BOOTSEL while plugging in the Pico,
                                               then copy the .uf2 onto the RPI-RP2 drive
-ce_pico_fdd.uf2                             - the same on the Pico 2 W, its drive is RP2350
-ce_pico_display.uf2                         - the same on the RP2040-Zero (hold BOOT), its drive is RPI-RP2
-ce_pico_hdd.elf,  ce_pico_fdd.elf,
-ce_pico_display.elf                         - for flashing / debugging with a debug probe
+ce_pico_fdd_PICO-2W.uf2                     - the same on the Pico 2 W, its drive is RP2350
+ce_pico_display_RP2040-ZERO.uf2             - the same on the RP2040-Zero (hold BOOT), its drive is RPI-RP2
+*.elf (same names)                          - for flashing / debugging with a debug probe
+
+The part after the project name is the device type (board), in capitals - the HDD / FDD device reports it and the
+web UI (device page, Update) shows which file the device needs. It comes from FW_DEVICE_TYPE in fw_update.h of each
+project. HDD and FDD can be updated from the web UI too (once they run a firmware with the file system partition).
+The firmware identity contains a build id - git describe (e.g. v1.0.0), or CE_BUILD_ID env var.
 
 ce_pico_hdd is for the v40_pico_hdd board (ACSI or SCSI variant, detected on boot).
 

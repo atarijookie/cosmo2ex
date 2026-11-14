@@ -47,6 +47,14 @@
 #define ATN_INSERT_IMAGE        0x07        // insert image from that folder by name, the host replies with INSERT_IMAGE_*
 #define ATN_DEVICE_SETTINGS     0x08        // host -> device only: settings flags (1 B, DEV_SETTING_* in settings.h) from the web UI
 #define ATN_LED_COLORS          0x09        // host -> device only: neopixel color while running - R, G, B (3 B), from the web UI
+#define ATN_FW_INFO             0x0a        // identity, size + MD5 of the running image, FS position - once per connection, see fw_update.cpp
+#define ATN_FW_UPDATE_STATUS    0x0b        // answer to each CMD_FW_UPDATE_* - see fw_update.cpp
+
+// firmware update (OTA) from the web UI, host -> device - the same codes as on HDD, see fw_update.cpp
+#define CMD_FW_UPDATE_START     0xf0        // image size (4 B), MD5 of the image (16 B)
+#define CMD_FW_UPDATE_DATA      0xf1        // offset (4 B), data (max FWU_CHUNK_MAX B)
+#define CMD_FW_UPDATE_END       0xf2        // check identity, layout, MD5, then reboot into the OTA stub
+#define CMD_FW_UPDATE_ABORT     0xf3
 
 #define INSERT_IMAGE_OK         0           // found, loading - the image follows as on ATN_SEND_WHOLE_IMAGE
 #define INSERT_IMAGE_NOT_FOUND  1           // no such image in the folder (anymore)

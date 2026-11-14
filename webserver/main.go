@@ -243,6 +243,10 @@ func newServer() *Server {
 		protected.Put("/device/{mac}/name", s.handlePutDeviceName)
 		protected.Delete("/device/{mac}", s.handleDeleteDevice)
 		protected.Get("/device/{mac}/features", s.handleGetDeviceFeatures)
+		protected.Get("/device/{mac}/firmware", s.handleGetFirmware)
+		protected.Post("/device/{mac}/firmware/check", s.handlePostFirmwareCheck)	// body: the .uf2 file
+		protected.Post("/device/{mac}/firmware/update", s.handlePostFirmwareUpdate)
+		protected.Post("/device/{mac}/firmware/abort", s.handlePostFirmwareAbort)
 		protected.Get("/screen/{mac}", s.handleGetScreen)
 		protected.Post("/screen/{mac}/screenshot", s.handlePostScreenScreenshot)
 		protected.Post("/screen/{mac}/stop", s.handlePostScreenStop)

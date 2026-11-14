@@ -21,6 +21,7 @@
 #include "browser/browsermodule.h"
 #include "media/mediamodule.h"
 #include "media/hosttools.h"
+#include "../chipinterface/fwupdatesender.h"
 
 extern DebugVars    dbgVars;
 
@@ -106,6 +107,16 @@ bool HddClient::handleHdd(uint8_t* inBuff)
     switch(inBuff[3]) {
         case ATN_FW_VERSION:
             handleFwVersion_hans();
+            break;
+
+        case ATN_FW_INFO:
+            chipInterface->storeFwInfo(ci);
+            break;
+
+        case ATN_FW_UPDATE_STATUS:
+            if(fwSender) {
+                fwSender->onStatus(ci);
+            }
             break;
 
         case ATN_ACSI_COMMAND:
@@ -287,6 +298,10 @@ bool HddClient::slmWaitForCommand(uint32_t timeoutMs, uint8_t* cmd)
 
         if(atnCode == ATN_FW_VERSION) {
             handleFwVersion_hans();
+        }
+
+        if(atnCode == ATN_FW_UPDATE_STATUS && fwSender) {   // update running while printing
+            fwSender->onStatus(ci);
         }
 
         chipInterface->dropRestOfData(ci, inBuf, INBUF_SIZE);

@@ -19,6 +19,7 @@ typedef struct {
     int         deviceSettings;     // DEV_SETTING_* bits from the last FW report, -1 = not reported (older firmware)
     int         deviceSettingsSeen; // deviceSettings already handled by fdd_syncDeviceSettings(), -1 = none since connect
     bool        ledColorsSent;      // LED colors sent on this connection (sendLedColors())
+    char        fwVersion[16];      // YYYY-MM-DD from the last FW report, "" = not reported yet
     int         floppySlotIndex;    // which floppy slot this IP is using
     uint32_t    lastMs;             // value of getCurrentMs() when was last time anything was received from this client
 
@@ -70,6 +71,10 @@ public:
     uint8_t getFWversion(ClientInfo* ci, bool hddNotFdd);
     uint8_t getFWversionHdd(ClientInfo* ci);
     bool getFWversionFdd(ClientInfo* ci);
+
+    // ATN_FW_INFO - identity, size + MD5 of the running firmware, FS position; stored to the device's settings dir
+    // (FW_* keys) for the firmware update in the web UI
+    void storeFwInfo(ClientInfo* ci);
 
     // FDD device settings (beep on step, device IKBD): the device keeps them (EEPROM, its captive portal), the web UI
     // changes them in the per-device settings (FDD_SETTING_* keys) and asks the FDD core to send them to the device.

@@ -93,6 +93,7 @@ function getCurrentPageName(path) {
         '/ikbd.html': 'IKBD',
         '/ikbd': 'IKBD', // Handle both with and without .html
         '/status.html': 'Status',
+        '/firmware_update.html': 'Firmware Update',
         '/remote.html': 'ScreenCast',
         '/remote_input.html': 'Remote Input',
         '/credits.html': 'Credits',

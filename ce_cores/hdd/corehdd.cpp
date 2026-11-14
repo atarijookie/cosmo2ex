@@ -22,6 +22,7 @@
 #include "../misc/utils.h"
 #include "../misc/statusreport.h"
 #include "../chipinterface/chipinterface.h"
+#include "../chipinterface/fwupdatesender.h"
 #include "../discovery/discovery.h"
 
 extern DebugVars    dbgVars;
@@ -54,10 +55,14 @@ void CoreHdd::run(void)
 
     ScreencastAcsiCommand::frameInit();
 
+    // firmware update from the web UI - over the same connections
+    FwUpdateSender* fwSender = new FwUpdateSender(ciHdd, LOGFILE_HDD, CMD_FW_UPDATE_START, CMD_FW_UPDATE_DATA, CMD_FW_UPDATE_END, CMD_FW_UPDATE_ABORT);
+
     // create hdd clients, 1 hdd client per each tcp client
     for(int i=0; i<MAX_CLIENTS; i++) {
         ClientInfo* ci = ciHdd->clientGetByIndex(i);
         hddClients[i] = new HddClient(ciHdd, ci);
+        hddClients[i]->setFwUpdateSender(fwSender);
     }
 
     //------------------------------
@@ -72,6 +77,12 @@ void CoreHdd::run(void)
             events.hddLedColors = false;
             ciHdd->sendLedColorsToAll(true);
         }
+
+        FwUpdateRequest fwReq;
+        while(fwUpdateRequestPop("hdd", fwReq)) {   // firmware update started / aborted in the web UI
+            fwSender->handleRequest(fwReq.mac, "", fwReq.md5, fwReq.abort);
+        }
+        fwSender->tick();
 
         if(!someClientActive) {
             Utils::sleepMs(1);      // intentional sleep to not utilize cpu to max when looping too much before client disconnect
@@ -145,6 +156,8 @@ void CoreHdd::run(void)
     for(int i=0; i<MAX_CLIENTS; i++) {
         delete hddClients[i];
     }
+
+    delete fwSender;
 
     // destroy chip interface
     ciHdd->ciClose();

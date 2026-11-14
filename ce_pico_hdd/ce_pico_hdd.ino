@@ -1,3 +1,36 @@
+/*
+    ce_pico_hdd - CosmosEx HDD (ACSI / SCSI, detected on boot) on the W6100-EVB-Pico
+
+    Arduino IDE settings needed to compile it (the same as FQBN_HDD in firmware/compile.sh and in readme.md - keep
+    them in sync; the release file is ce_pico_hdd_W6100-EVB-PICO.uf2):
+
+    - core: Raspberry Pi Pico/RP2040/RP2350 by Earle F. Philhower (arduino-pico), version 5.4.2
+            (Boards Manager URL: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json)
+    - library: the patched Ethernet library from third_party/Ethernet - symlink it into the Arduino libraries dir, e.g.
+            mklink /D "%USERPROFILE%\Documents\Arduino\libraries\Ethernet" "<repo>\third_party\Ethernet"
+            (must win over the stock Ethernet library)
+
+    Tools menu:
+    - Board:                Raspberry Pi Pico
+    - Flash Size:           2MB (Sketch: 1536KB, FS: 512KB)  - the FS is needed for the firmware update from the web UI;
+                                                                another FS size = different flash layout, the web update
+                                                                refuses it and the device must be flashed via USB
+    - CPU Speed:            133 MHz
+    - Optimize:             Small (-Os) (standard)
+    - Operating System:     None
+    - Profiling:            Disabled
+    - RTTI:                 Disabled
+    - Stack Protector:      Disabled
+    - C++ Exceptions:       Disabled
+    - Debug Port:           Disabled
+    - Debug Level:          None
+    - USB Stack:            No USB
+    - IP/Bluetooth Stack:   IPv4 Only
+    - Upload Method:        Picoprobe/Debugprobe (CMSIS-DAP)  - or hold BOOTSEL and copy the .uf2 onto the RPI-RP2 drive
+
+    After changing a .pio file run firmware/pioasm.sh ce_pico_hdd - the Arduino IDE doesn't regenerate the *.pio.h.
+*/
+
 #include <Ethernet.h>
 #include <EEPROM.h>
 
@@ -14,8 +47,9 @@
 #include "neopixel.h"
 #include "sting_net.h"
 #include "pin_test.h"
+#include "fw_update.h"
 
-uint16_t version[2] = {0xa026, 0x1022}; // this means: hAns, 2026-10-22
+uint16_t version[2] = {0xa026, 0x1114}; // this means: hAns, 2026-11-14
 
 uint8_t atnSendFwVersion[ATN_SENDFWVERSION_LEN_TX];
 uint8_t atnSendACSIcommand[ATN_SENDACSICOMMAND_LEN_TX];
@@ -104,6 +138,9 @@ void setup(void)
     loadSettings();
     debug("enabledIDs: %02X\n", settings.enabledIDs);
 
+    fwInfoInit();       // identity, size + MD5 of this firmware for the update in the web UI; counts the boots of a new firmware
+                        // (before core 1 starts - it may write to flash)
+
     setupAtnBuffers(); // fill the ATN buffers with needed headers and terminators
     ipcInit();
 
@@ -170,6 +207,7 @@ void loop(void)
                 // report FW version to host
                 case STATE_SEND_FW_VER:
                     sendHeaderAndDataToHost(SOCK_HDD, atnSendFwVersion, ATN_SENDFWVERSION_LEN_TX - TX_HEADER_SIZE);
+                    fwInfoSendIfNeeded();   // once per connection - after the FW version, which tells the host our MAC
                     break;
 
                 // send ACSI command to host
@@ -206,5 +244,7 @@ void loop(void)
         ikbdProcessing();
 
         stingNetProcess();      // raw ethernet frames for STinG
+
+        fwTrialLoop(connected); // new firmware after an update: confirm it once connected to host, or reboot (rollback)
     }
 }

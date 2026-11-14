@@ -1,3 +1,36 @@
+/*
+    ce_pico_fdd - CosmosEx FDD on the Raspberry Pi Pico 2 W
+
+    Arduino IDE settings needed to compile it (the same as FQBN_FDD in firmware/compile.sh and in readme.md - keep
+    them in sync; the release file is ce_pico_fdd_PICO-2W.uf2):
+
+    - core: Raspberry Pi Pico/RP2040/RP2350 by Earle F. Philhower (arduino-pico), version 5.4.2
+            (Boards Manager URL: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json)
+    - no extra libraries - all used ones come with the core
+
+    Tools menu:
+    - Board:                Raspberry Pi Pico 2W
+    - CPU Architecture:     ARM
+    - Flash Size:           4MB (Sketch: 2MB, FS: 2MB)  - the FS is needed for the firmware update from the web UI (new +
+                                                          previous firmware); another FS size = different flash layout,
+                                                          the web update refuses it and the device must be flashed via USB
+    - CPU Speed:            150 MHz
+    - Optimize:             Small (-Os) (standard)
+    - Operating System:     None
+    - Profiling:            Disabled
+    - RTTI:                 Disabled
+    - Stack Protector:      Disabled
+    - C++ Exceptions:       Disabled
+    - Debug Port:           Disabled
+    - Debug Level:          None
+    - USB Stack:            Pico SDK  - NOT "No USB": with it the WiFi connection to the host stalls (see readme.md)
+    - IP/Bluetooth Stack:   IPv4 Only
+    - WiFi Region:          Worldwide
+    - Upload Method:        Picoprobe/Debugprobe (CMSIS-DAP)  - or hold BOOTSEL and copy the .uf2 onto the RP2350 drive
+
+    After changing a .pio file run firmware/pioasm.sh ce_pico_fdd - the Arduino IDE doesn't regenerate the *.pio.h.
+*/
+
 #include <WiFi.h>
 
 #include "pico/stdlib.h"
@@ -11,6 +44,7 @@
 #include "core1_main.h"
 #include "mfm_write.h"
 #include "psram.h"
+#include "fw_update.h"
 #include "defs.h"
 #include "utils.h"
 #include "settings.h"
@@ -34,7 +68,7 @@ bool core1_separate_stack = true;   // core 1 gets its own 8 kB stack instead of
 extern volatile bool core1running;
 volatile bool core0ready = false;   // pins set up, IPC ready - core 1 may start using them
 
-uint16_t version[2] = {0xf025, 0x0901}; // this means: Franz, 2025-09-01
+uint16_t version[2] = {0xf026, 0x1114}; // this means: Franz, 2026-11-14
 uint8_t atnSendFwVersion[ATN_SENDFWVERSION_LEN_TX];
 uint8_t atnSendTrackRequest[ATN_SENDTRACK_REQ_LEN_TX];
 uint8_t atnSendWholeImageRequest[TX_HEADER_SIZE];
@@ -94,6 +128,7 @@ void setup(void)
     gpio_set_function(PIN_TXD_DEBUG, UART_FUNCSEL_NUM(uart0, PIN_TXD_DEBUG));
 
     debug("\n\nsetup() starting\n");
+    debug("firmware: %s\n", fwIdent + FW_IDENT_PREFIX_LEN);
     diagPrintBootInfo();
 
     #define INPUTS_COUNT 6
@@ -124,6 +159,8 @@ void setup(void)
     displayInit();
 
     loadSettingsFromEeprom();
+
+    fwInfoInit();       // identity, size + MD5 of this firmware for the update in the web UI; counts the boots of a new firmware
 
     setupAtnBuffers();
 
@@ -179,6 +216,7 @@ void sendFwReport(uint32_t now)
     lastSendFwTime = now;
     atnSendFwVersion[TX_HEADER_SIZE + 12] = deviceSettingsFlags();     // the current settings - may be changed in the captive portal
     sendHeaderAndDataToHost(atnSendFwVersion, ATN_SENDFWVERSION_LEN_TX - TX_HEADER_SIZE);
+    fwInfoSendIfNeeded();   // once per connection - after the FW version, which tells the host our MAC
 }
 
 void loop(void)
@@ -288,6 +326,9 @@ void loop(void)
 
         // keyboard data: to / from the host when IKBD is enabled (otherwise passed to the ST in the uart IRQ)
         ikbdProcessing();
+
+        // new firmware after an update: confirm it once connected to host, or reboot (rollback)
+        fwTrialLoop(connectedToHost);
     }
 }
 

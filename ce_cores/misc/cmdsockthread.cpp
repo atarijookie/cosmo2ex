@@ -265,6 +265,20 @@ void handleGenericAction(std::string& action, json& data, int sock, const struct
     } else if(action == "led_colors") {        // LED colors changed in the web UI - HDD and FDD cores send them
         events.hddLedColors = true;
         events.fddLedColors = true;
+    } else if(action == "fw_update" || action == "fw_update_abort") {
+        // {"module":"all","action":"fw_update","dev":"hdd","mac":"AABBCCDDEEFF","md5":"..."} - the image is the
+        // FW_UPDATE_BIN file in the device's settings dir (stored there by the webserver after checking the .uf2)
+        FwUpdateRequest req;
+        req.dev   = data.value("dev", "");
+        req.mac   = data.value("mac", "");
+        req.md5   = data.value("md5", "");
+        req.abort = (action == "fw_update_abort");
+
+        if((req.dev != "hdd" && req.dev != "fdd") || req.mac.empty() || (!req.abort && req.md5.empty())) {
+            logHdd(LOG_WARNING, "handleGenericAction: %s - missing / unsupported dev, mac or md5, ignoring message!", action.c_str());
+        } else {
+            fwUpdateRequestPush(req);
+        }
     } else if(action == "get_loglevel") {
         sendLogLevel(sock, from);
     } else if(action == "set_loglevel") {

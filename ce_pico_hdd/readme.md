@@ -31,10 +31,33 @@ and does ARP for it. The other sockets (HDD, IKBD, UDP) keep working as before. 
 
 The MiNTnet driver [CE_ETH.XIF](../ce_mintnet_xif_driver/README.md) uses the same commands in frame mode: whole ethernet frames, ARP is done by MiNT.
 
+## Firmware update from the web UI (OTA)
+
+`fw_update.cpp` - uses arduino-pico's `Updater` + `PicoOTA`: the new image goes into a file in LittleFS, the OTA stub
+(first 12 kB of every arduino-pico image) copies it over the app on the next boot. A power loss during the copy just
+restarts the copy. The BOOTSEL / USB update always stays possible.
+
+- needs the flash size setting with the file system (512 kB) - a firmware built without it reports OTA as not possible
+- the image comes over the existing HDD connection: CMD_FW_UPDATE_START / DATA (1 kB chunks, each confirmed with
+  ATN_FW_UPDATE_STATUS) / END / ABORT, host side: `ce_cores/chipinterface/fwupdatesender.cpp`
+- on END the device refuses the image when its identity (`fwIdent`: `CEFWID:dev=HDD;type=W6100-EVB-PICO;...`) is for
+  another device / board, when its flash layout block (FS / EEPROM position at 0x2ff0) differs from the running one,
+  or when the MD5 doesn't match
+- once per connection the device reports `ATN_FW_INFO` - identity, size + MD5 of the running image, FS position - the
+  host stores it in the device's settings dir (`FW_*` keys) for the web UI
+- the device type (`FW_DEVICE_TYPE` in fw_update.h) is also in the release file name: `ce_pico_hdd_W6100-EVB-PICO.uf2`
+- while the image is written to flash, core 1 is parked (as for the settings) - the drive doesn't answer the ST for
+  ~50 ms per 4 kB
+- rollback: before the reboot the running image is stored as `fw_prev.bin` + `fw_state.bin` (trial, boot count). The new
+  firmware counts its boots in setup(), runs a watchdog (8 s) from the main loop and confirms itself after 10 s connected
+  to the host; not confirmed in 3 min = reboot. After 3 unconfirmed boots `fw_prev.bin` goes to the OTA stub - the
+  previous firmware runs again and reports it (ATN_FW_INFO flags, web UI shows it). A hang in setup() needs a power cycle
+  (that counts as a boot too). A firmware that can't reach the host (e.g. host off) also gets rolled back.
+
 ## Compiling under Linux
 
 - from the repo root: `make firmware` (or `firmware/build.sh ce_pico_hdd`), needs just docker - see firmware/README.md
-- the result is firmware/out/ce_pico_hdd.uf2
+- the result is firmware/out/ce_pico_hdd_W6100-EVB-PICO.uf2
 
 ## Compiling under Windows and Arduino env
 
@@ -55,7 +78,7 @@ The MiNTnet driver [CE_ETH.XIF](../ce_mintnet_xif_driver/README.md) uses the sam
 - debug level: None
 - debug port: disabled
 - C++ exceptions: disabled
-- flash size: 2MB (no FS)
+- flash size: 2MB (Sketch: 1536KB, FS: 512KB) - the FS holds the new firmware during the update from the web UI, and the previous one for the rollback
 - CPU speed: 133 MHz
 - IP/Bluetooth stack: IPv4 only
 - optimize: Small (-Os)

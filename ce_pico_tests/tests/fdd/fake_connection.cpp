@@ -18,6 +18,7 @@ void fakeHostReset(void)
     fakeHostSendStopsAfter = 0;
     fakeHostSentPartial.clear();
     fakeHostRx.clear();
+    fakeFwUpdateCommands.clear();
     fakeHostDisconnects = 0;
 }
 
@@ -79,4 +80,18 @@ bool sendHeaderAndDataToHost(uint8_t *bfr, uint32_t dataSizeBytes)
 
     fakeHostSent.push_back(std::vector<uint8_t>(bfr, bfr + TX_HEADER_SIZE + dataSizeBytes));
     return true;
+}
+
+//--------------------------------------------------------
+// ce_pico_fdd/fw_update.cpp (needs Updater / LittleFS of arduino-pico) - not tested here, host_receive.cpp just calls it
+#include "fw_update.h"
+
+bool readMessageData(uint8_t* bfr, uint32_t bfrSize, uint32_t len);     // host_receive.cpp
+
+std::vector<uint16_t> fakeFwUpdateCommands;     // cmd codes passed to fwUpdateCommand()
+
+void fwUpdateCommand(uint16_t cmdCode, uint32_t len)
+{
+    fakeFwUpdateCommands.push_back(cmdCode);
+    readMessageData(NULL, 0, len);              // as the real one - reads the whole payload
 }

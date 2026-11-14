@@ -21,6 +21,7 @@ class SlmPrinter;
 class NetAdapter;
 class BrowserModule;
 class MediaModule;
+class FwUpdateSender;
 
 class HddClient
 {
@@ -37,6 +38,8 @@ public:
     void onMacUpdated(void);
     void onClientConnected(void);
 
+    void setFwUpdateSender(FwUpdateSender* sender) { fwSender = sender; }
+
 private:
 
     ChipInterface* chipInterface;
@@ -50,6 +53,7 @@ private:
     NetAdapter* netAdapter;         // network module of the fake STinG (ce_fakesting) - HOSTMOD_NETWORK_ADAPTER
     BrowserModule* browser;         // web browser (CE_BROWS.PRG) - HOSTMOD_BROWSER
     MediaModule* media;             // video / audio player (CE_VIDEO.TTP, CE_AUDIO.TTP) - HOSTMOD_MEDIA_STREAMING
+    FwUpdateSender* fwSender = NULL;    // firmware update from the web UI, shared by all clients (owned by CoreHdd)
 
     //-----------------------------------
     // hard disk stuff

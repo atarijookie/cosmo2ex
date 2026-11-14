@@ -24,6 +24,8 @@ typedef struct {
 
 void *fddThreadCode(void *ptr);     // floppy core thread
 
+class FwUpdateSender;
+
 class CoreFdd
 {
 public:
@@ -39,6 +41,7 @@ private:
     bool running;
 
     ChipInterface* ciFdd;
+    FwUpdateSender* fwSender;           // firmware update from the web UI
     ImageSilo* imageSilo;
 
     //-----------------------------------

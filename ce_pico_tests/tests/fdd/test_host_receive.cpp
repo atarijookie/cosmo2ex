@@ -298,6 +298,19 @@ TEST_CASE_FIXTURE(HostReceiveFixture, "LED color from the host is applied, the n
     CHECK(fakeHostRx.empty());
 }
 
+TEST_CASE_FIXTURE(HostReceiveFixture, "firmware update messages go to fw_update.cpp, the next message is found right after them") {
+    std::vector<uint8_t> chunk(4 + 1024, 0xab);
+    fakeHostReceive(message(CMD_FW_UPDATE_START, std::vector<uint8_t>(20, 1), 20));
+    fakeHostReceive(message(CMD_FW_UPDATE_DATA, chunk, chunk.size()));
+    fakeHostReceive(message(CMD_FW_UPDATE_END, {}, 0));
+    fakeHostReceive(message(ATN_SEND_WHOLE_IMAGE, imageData(false, "GAME.ST"), imageData(false, "GAME.ST").size()));
+    mainLoop(4);
+
+    CHECK(fakeFwUpdateCommands == std::vector<uint16_t>{ CMD_FW_UPDATE_START, CMD_FW_UPDATE_DATA, CMD_FW_UPDATE_END });
+    CHECK(std::string(imageFileName) == "GAME.ST");
+    CHECK(fakeHostRx.empty());
+}
+
 TEST_CASE_FIXTURE(HostReceiveFixture, "LED color message too short is ignored") {
     receivedLedColor.clear();
     fakeHostReceive(message(ATN_LED_COLORS, { 0x10, 0x20 }, 2));

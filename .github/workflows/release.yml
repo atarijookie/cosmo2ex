@@ -296,6 +296,7 @@ jobs:
       - name: Build Pico firmwares
         env:
           PICO_BUILDER_IMAGE: ${{ needs.pico-builder.outputs.image }}
+          CE_BUILD_ID: ${{ github.ref_name }}               # the tag (v1.0.0) - into the firmware identity
         run: |
           docker pull "$PICO_BUILDER_IMAGE"
           firmware/build.sh

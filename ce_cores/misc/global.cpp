@@ -60,6 +60,42 @@ bool fddActionPop(int& action, std::string& mac)
     return got;
 }
 
+static std::deque<FwUpdateRequest> fwUpdateRequests;
+static pthread_mutex_t fwUpdateRequestsMutex = PTHREAD_MUTEX_INITIALIZER;
+
+#define FW_UPDATE_REQUESTS_MAX  8
+
+void fwUpdateRequestPush(const FwUpdateRequest& req)
+{
+    pthread_mutex_lock(&fwUpdateRequestsMutex);
+
+    if(fwUpdateRequests.size() >= FW_UPDATE_REQUESTS_MAX) {    // core doesn't take them? drop the oldest
+        fwUpdateRequests.pop_front();
+    }
+
+    fwUpdateRequests.push_back(req);
+    pthread_mutex_unlock(&fwUpdateRequestsMutex);
+}
+
+bool fwUpdateRequestPop(const std::string& dev, FwUpdateRequest& req)
+{
+    bool got = false;
+
+    pthread_mutex_lock(&fwUpdateRequestsMutex);
+
+    for(auto it = fwUpdateRequests.begin(); it != fwUpdateRequests.end(); ++it) {
+        if(it->dev == dev) {
+            req = *it;
+            fwUpdateRequests.erase(it);
+            got = true;
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&fwUpdateRequestsMutex);
+    return got;
+}
+
 void preloadGlobalsFromDotEnv(void)
 {
     corePath = Utils::dotEnvValue("BIN_DIR");     // path to where the core service is stored
