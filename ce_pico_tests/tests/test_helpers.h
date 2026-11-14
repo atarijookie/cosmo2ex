@@ -35,6 +35,7 @@ extern queue_t fifoToCore1;
 extern EthernetUDP    udp;
 extern bool           udpInitialized;
 extern EthernetClient clientHdd;
+extern uint8_t fakeLedAcsi[3], fakeLedScsi[3];   // tests/hdd/bridge_fake.cpp - last ledSetRunningColors()
 extern EthernetClient clientFdd;
 extern EthernetClient clientIkbd;
 extern uint8_t        hostIp[4];

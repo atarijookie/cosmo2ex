@@ -247,6 +247,15 @@ void handleDeviceSettingsReceived(void)
     }
 }
 
+void handleLedColorsReceived(void)
+{
+    uint8_t rgb[3];
+
+    if(readMessageData(rgb, sizeof(rgb), fddHeader.len) && fddHeader.len >= sizeof(rgb)) {
+        ledColorReceived(rgb);
+    }
+}
+
 void handleIncommingData(void)
 {
     if(!hostConnected()) {          // not connected? forget the message we were in, the next connection starts from scratch
@@ -287,6 +296,11 @@ void handleIncommingData(void)
 
         case ATN_DEVICE_SETTINGS:
             handleDeviceSettingsReceived();
+            headerPending = false;
+            break;
+
+        case ATN_LED_COLORS:
+            handleLedColorsReceived();
             headerPending = false;
             break;
 

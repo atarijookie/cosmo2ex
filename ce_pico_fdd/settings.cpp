@@ -5,10 +5,32 @@
 #include "utils.h"
 #include "settings.h"
 #include "beeper.h"
+#include "neopixel.h"
 
 #define EEPROM_SIZE     256     // must hold Settings_t
 
 Settings_t Settings;
+
+static uint8_t ledColorCheck(void)
+{
+    return LED_COLOR_CHECK ^ Settings.ledRunning[0] ^ Settings.ledRunning[1] ^ Settings.ledRunning[2];
+}
+
+static bool isBlack(const uint8_t* rgb)
+{
+    return (rgb[0] | rgb[1] | rgb[2]) == 0;
+}
+
+// garbage (not stored yet) or black (LED would look dead)? the default - in RAM only, stored when the host sends a color
+static void ledColorValidate(void)
+{
+    if(Settings.ledCheck != ledColorCheck() || isBlack(Settings.ledRunning)) {
+        Settings.ledRunning[0] = (uint8_t) (LED_RUNNING_DEFAULT >> 16);
+        Settings.ledRunning[1] = (uint8_t) (LED_RUNNING_DEFAULT >> 8);
+        Settings.ledRunning[2] = (uint8_t) LED_RUNNING_DEFAULT;
+        Settings.ledCheck = ledColorCheck();
+    }
+}
 
 // load settings from eeprom into struct
 void loadSettingsFromEeprom(void)
@@ -30,12 +52,14 @@ void loadSettingsFromEeprom(void)
         Settings.beepOnStep = 1;
     }
 
+    ledColorValidate();             // own check, not the layout - the byte after beepOnStep was padding before
     applySettings();
 }
 
 void applySettings(void)
 {
     beeperSetStepClick(Settings.beepOnStep != 0);
+    ledSetRunningColor(Settings.ledRunning);
 }
 
 uint8_t deviceSettingsFlags(void)
@@ -59,6 +83,26 @@ void deviceSettingsReceived(uint8_t flags)
     applySettings();
 
     debug("settings from host - ikbd: %d, beep on step: %d\n", ikbd, beep);
+}
+
+// From the host on each connect, and when changed in the web UI. Stored only when different - the flash write pauses
+// the floppy streaming.
+void ledColorReceived(const uint8_t* rgb)
+{
+    if(isBlack(rgb)) {              // the host doesn't send black, so something's wrong - keep what we have
+        return;
+    }
+
+    if(memcmp(Settings.ledRunning, rgb, 3) == 0) {
+        return;
+    }
+
+    memcpy(Settings.ledRunning, rgb, 3);
+    Settings.ledCheck = ledColorCheck();
+    saveSettingsToEeprom();
+    applySettings();
+
+    debug("led color from host - %02X%02X%02X\n", rgb[0], rgb[1], rgb[2]);
 }
 
 // EEPROM.commit() stops core 1 while the flash is written (core 1 is started via setup1() / loop1(), so the arduino

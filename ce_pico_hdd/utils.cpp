@@ -8,6 +8,7 @@
 
 #include "utils.h"
 #include "defs.h"
+#include "neopixel.h"
 
 volatile bool hasTimedOut = false;
 volatile uint8_t timerRunning = false;
@@ -207,6 +208,63 @@ void makeMacFromBoardId(uint8_t *mac)
     mac[0] = (mac[0] & 0xFC) | 0x02;    // locally administered + unicast
 }
 
+static uint8_t ledColorsCheck(void)
+{
+    uint8_t check = LED_COLORS_CHECK;
+
+    for(int i=0; i<3; i++) {
+        check ^= settings.ledAcsi[i] ^ settings.ledScsi[i];
+    }
+
+    return check;
+}
+
+static bool isBlack(const uint8_t* rgb)
+{
+    return (rgb[0] | rgb[1] | rgb[2]) == 0;
+}
+
+static void storeRgb(uint8_t* rgb, uint32_t color)
+{
+    rgb[0] = (uint8_t) (color >> 16);
+    rgb[1] = (uint8_t) (color >> 8);
+    rgb[2] = (uint8_t) color;
+}
+
+// garbage (not stored yet) or black (LED would look dead)? the defaults - in RAM only, stored when the host sends colors
+static void ledColorsValidate(void)
+{
+    if(settings.ledCheck != ledColorsCheck() || isBlack(settings.ledAcsi) || isBlack(settings.ledScsi)) {
+        storeRgb(settings.ledAcsi, LED_RUNNING_ACSI_DEFAULT);
+        storeRgb(settings.ledScsi, LED_RUNNING_SCSI_DEFAULT);
+        settings.ledCheck = ledColorsCheck();
+    }
+
+    ledSetRunningColors(settings.ledAcsi, settings.ledScsi);
+}
+
+// From the host on each connect, and when changed in the web UI. Stored only when different - the flash write pauses core 1.
+void ledColorsReceived(const uint8_t* acsiRgb, const uint8_t* scsiRgb)
+{
+    if(isBlack(acsiRgb) || isBlack(scsiRgb)) {      // the host doesn't send black, so something's wrong - keep what we have
+        return;
+    }
+
+    if(memcmp(settings.ledAcsi, acsiRgb, 3) == 0 && memcmp(settings.ledScsi, scsiRgb, 3) == 0) {
+        return;                                     // the same - no flash write
+    }
+
+    memcpy(settings.ledAcsi, acsiRgb, 3);
+    memcpy(settings.ledScsi, scsiRgb, 3);
+    settings.ledCheck = ledColorsCheck();
+    ledSetRunningColors(settings.ledAcsi, settings.ledScsi);
+
+    debug("ledColorsReceived - storing ACSI: %02X%02X%02X, SCSI: %02X%02X%02X\n", acsiRgb[0], acsiRgb[1], acsiRgb[2],
+          scsiRgb[0], scsiRgb[1], scsiRgb[2]);
+
+    saveSettings();
+}
+
 void loadSettings(void)
 {
     EEPROM.begin(512);
@@ -224,8 +282,13 @@ void loadSettings(void)
 
         makeMacFromBoardId(settings.mac);
 
+        settings.ledCheck = ~ledColorsCheck();      // not valid - the defaults below
+        ledColorsValidate();
+
         saveSettings();
     }
+
+    ledColorsValidate();
 }
 
 void debugInit(void)

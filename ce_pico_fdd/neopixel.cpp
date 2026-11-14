@@ -17,7 +17,6 @@ static volatile bool resendWanted = false;
 // colors at full brightness of the status - the WS2812C-2020 is bright, so these are far from 255 (as on ce_pico_hdd)
 #define ORANGE_R            96
 #define ORANGE_G            28
-#define GREEN_G             48
 #define RED_R               64
 #define NO_IMAGE_RGB        6       // dim white - connected, no image yet
 #define PORTAL_B            64
@@ -28,6 +27,20 @@ static volatile bool resendWanted = false;
 #define ERR_BLINK_ON_MS     250
 #define ERR_BLINK_OFF_MS    250
 #define ERR_PAUSE_MS        1500
+
+static uint32_t toGrb(uint8_t r, uint8_t g, uint8_t b)
+{
+    return (((uint32_t) g) << 16) | (((uint32_t) r) << 8) | b;
+}
+
+// running with an image - one 32-bit value, so the other core never sees half of a change
+static volatile uint32_t runningGrb = toGrb((uint8_t) (LED_RUNNING_DEFAULT >> 16), (uint8_t) (LED_RUNNING_DEFAULT >> 8),
+                                            (uint8_t) LED_RUNNING_DEFAULT);
+
+void ledSetRunningColor(const uint8_t* rgb)
+{
+    runningGrb = toGrb(rgb[0], rgb[1], rgb[2]);
+}
 
 void ledSetInitStep(uint8_t step)
 {
@@ -80,10 +93,6 @@ void ledSetFromConnection(bool ssidStored, bool wifiFailed, bool wifiConnected, 
     }
 }
 
-static uint32_t toGrb(uint8_t r, uint8_t g, uint8_t b)
-{
-    return (((uint32_t) g) << 16) | (((uint32_t) r) << 8) | b;
-}
 
 static uint32_t currentColor(uint32_t now)
 {
@@ -93,7 +102,7 @@ static uint32_t currentColor(uint32_t now)
 
     switch(ledState) {
         case LED_STATE_RUNNING:
-            return ledImageLoaded ? toGrb(0, GREEN_G, 0) : toGrb(NO_IMAGE_RGB, NO_IMAGE_RGB, NO_IMAGE_RGB);
+            return ledImageLoaded ? runningGrb : toGrb(NO_IMAGE_RGB, NO_IMAGE_RGB, NO_IMAGE_RGB);
 
         case LED_STATE_PORTAL:
             return toGrb(0, 0, PORTAL_B);

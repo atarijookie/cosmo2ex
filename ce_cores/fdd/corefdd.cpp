@@ -93,6 +93,11 @@ void CoreFdd::run(void)
             handleFddAction(fddAction, fddMac);
         }
 
+        if(events.fddLedColors) {       // LED colors changed in the web UI
+            events.fddLedColors = false;
+            ciFdd->sendLedColorsToAll(false);
+        }
+
         ciFdd->clientsDisconnectInactive();
 
         if(Utils::elapsedMs(lastImageListCheck) >= IMAGE_LIST_CHECK_MS) {
@@ -275,6 +280,7 @@ void CoreFdd::handleFwVersion_franz(ClientInfo* ci)
     }
 
     ciFdd->fdd_syncDeviceSettings(ci);      // settings changed on the device (captive portal)? store them for the web UI
+    ciFdd->sendLedColorsIfNotSent(ci, false);   // after the other settings, once per connection
 }
 
 void CoreFdd::handleSendTrack(ClientInfo* ci)

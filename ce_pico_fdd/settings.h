@@ -17,7 +17,12 @@ typedef struct {
     uint8_t ikbdEnabled;    // keyboard + mouse via the host
     uint8_t layout;         // SETTINGS_LAYOUT - otherwise the fields below get their defaults
     uint8_t beepOnStep;     // the beeper clicks on every head step
+    uint8_t ledRunning[3];  // neopixel R, G, B while running with an image - from the host (web UI)
+    uint8_t ledCheck;       // LED_COLOR_CHECK ^ the 3 bytes above - not matching: not stored yet (new board, older
+                            // firmware left garbage there), the default is used
 } Settings_t;
+
+#define LED_COLOR_CHECK 0xA5
 
 extern Settings_t Settings;
 
@@ -31,5 +36,6 @@ void applySettings(void);                       // the current settings to the p
 
 uint8_t deviceSettingsFlags(void);              // DEV_SETTING_* of the current settings
 void deviceSettingsReceived(uint8_t flags);     // from the host: apply, store if changed
+void ledColorReceived(const uint8_t* rgb);       // from the host (ATN_LED_COLORS): apply, store if changed
 
 #endif

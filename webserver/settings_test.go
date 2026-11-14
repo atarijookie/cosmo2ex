@@ -166,3 +166,52 @@ func TestSlmPaperSetting(t *testing.T) {
 		t.Errorf("garbage stored = %s", got)
 	}
 }
+
+// LED colors: defaults when not stored / garbage, stored to SETTINGS_DIR/LED_COLOR_*, invalid values rejected
+func TestLedColorsSetting(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SETTINGS_DIR", dir)
+	t.Setenv("CMD_UDP_PORT", "") // no core - the colors get stored anyway
+	s := &Server{}
+
+	get := func() string {
+		rec := httptest.NewRecorder()
+		s.handleGetLedColors(rec, httptest.NewRequest(http.MethodGet, "/settings/leds", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET status %d", rec.Code)
+		}
+		return strings.TrimSpace(rec.Body.String())
+	}
+	put := func(body string) int {
+		rec := httptest.NewRecorder()
+		s.handlePutLedColors(rec, httptest.NewRequest(http.MethodPut, "/settings/leds", strings.NewReader(body)))
+		return rec.Code
+	}
+
+	defaults := `"defaults":{"acsi":"003000","scsi":"000040","fdd":"003000"}`
+	if got := get(); got != `{"acsi":"003000","scsi":"000040","fdd":"003000",`+defaults+`}` {
+		t.Errorf("default = %s", got)
+	}
+
+	if code := put(`{"acsi":"300000","scsi":"0000FF","fdd":"101010"}`); code != http.StatusOK {
+		t.Fatalf("PUT status %d", code)
+	}
+	if got := get(); got != `{"acsi":"300000","scsi":"0000ff","fdd":"101010",`+defaults+`}` {
+		t.Errorf("after PUT = %s", got)
+	}
+	if content, _ := os.ReadFile(filepath.Join(dir, "LED_COLOR_SCSI")); string(content) != "0000ff" {
+		t.Errorf("stored %q", content)
+	}
+
+	for _, bad := range []string{`{"acsi":"000000","scsi":"0000ff","fdd":"101010"}`, `{"acsi":"30000","scsi":"0000ff","fdd":"101010"}`,
+		`{"acsi":"30000g","scsi":"0000ff","fdd":"101010"}`, `{"acsi":"300000"}`, `not json`} {
+		if code := put(bad); code != http.StatusBadRequest {
+			t.Errorf("PUT %s status %d, want 400", bad, code)
+		}
+	}
+
+	os.WriteFile(filepath.Join(dir, "LED_COLOR_FDD"), []byte("garbage\n"), 0o644)
+	if got := get(); got != `{"acsi":"300000","scsi":"0000ff","fdd":"003000",`+defaults+`}` {
+		t.Errorf("garbage stored = %s", got)
+	}
+}

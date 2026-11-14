@@ -316,6 +316,8 @@ void HddClient::handleFwVersion_hans(void)
     config[1] = getIdBits();        // get the enabled IDs
     chipInterface->sendHeaderAndDataToChip(ci->fdClient, CMD_ACSI_CONFIG, config, 2);
 
+    chipInterface->sendLedColorsIfNotSent(ci, true);    // after the other settings, once per connection
+
     //----------------------------------
     // if HW info changed
     if(hwConfig.changed) {

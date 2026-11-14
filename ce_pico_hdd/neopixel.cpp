@@ -18,8 +18,6 @@ static volatile uint8_t ledErrorCode = 0;
 // colors at full brightness of the status - the WS2812C-2020 is bright, so these are far from 255
 #define ORANGE_R            96
 #define ORANGE_G            28
-#define GREEN_G             48      // running on ACSI
-#define BLUE_B              64      // running on SCSI - the blue looks dimmer than the green at the same value
 #define RED_R               64
 
 // error blinking: code x (on + off), then pause
@@ -35,6 +33,24 @@ static volatile uint8_t ledErrorCode = 0;
 #define T1L_NS              600
 
 static uint32_t cyclesT0H, cyclesT0L, cyclesT1H, cyclesT1L;
+
+static uint32_t toGrb(uint8_t r, uint8_t g, uint8_t b)
+{
+    return (((uint32_t) g) << 16) | (((uint32_t) r) << 8) | b;
+}
+
+static uint32_t rgbToGrb(uint32_t rgb)
+{
+    return toGrb((uint8_t) (rgb >> 16), (uint8_t) (rgb >> 8), (uint8_t) rgb);
+}
+
+static volatile uint32_t runningGrb = 0;    // 0 = not set yet - the default of the variant
+
+void ledSetRunningColors(const uint8_t* acsiRgb, const uint8_t* scsiRgb)
+{
+    const uint8_t* rgb = IS_ACSI ? acsiRgb : scsiRgb;
+    runningGrb = toGrb(rgb[0], rgb[1], rgb[2]);     // one 32-bit write - core 1 never sees half of it
+}
 
 void ledSetInitStep(uint8_t step)
 {
@@ -73,16 +89,15 @@ void haltWithError(uint8_t code)
     }
 }
 
-static uint32_t toGrb(uint8_t r, uint8_t g, uint8_t b)
-{
-    return (((uint32_t) g) << 16) | (((uint32_t) r) << 8) | b;
-}
 
 static uint32_t currentColor(uint32_t now)
 {
     switch(ledState) {
         case LED_STATE_RUNNING:
-            return IS_ACSI ? toGrb(0, GREEN_G, 0) : toGrb(0, 0, BLUE_B);   // the color tells the variant
+            if(runningGrb != 0) {
+                return runningGrb;
+            }
+            return rgbToGrb(IS_ACSI ? LED_RUNNING_ACSI_DEFAULT : LED_RUNNING_SCSI_DEFAULT);     // the color tells the variant
 
         case LED_STATE_ERROR: {
             uint32_t code = ledErrorCode;

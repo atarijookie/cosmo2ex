@@ -170,3 +170,116 @@ func (s *Server) handlePutSlm(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, SlmSettings{Paper: req.Paper})
 }
+
+//-------------------------------------------------------------------------------------------------
+// Neopixel LED colors while running - global settings (for all devices), stored as RGB hex ("rrggbb", the values sent
+// to the LED as they are). ce_cores reads them (chipinterface.cpp, LED_COLOR_SETTING_*) and sends them to the devices
+// on connect and after the 'led_colors' command. Defaults are the same as in ce_pico_hdd / ce_pico_fdd neopixel.cpp.
+
+type LedColors struct {
+	Acsi string `json:"acsi"`
+	Scsi string `json:"scsi"`
+	Fdd  string `json:"fdd"`
+}
+
+type LedColorsResponse struct {
+	LedColors
+	Defaults LedColors `json:"defaults"`
+}
+
+var ledColorDefaults = LedColors{Acsi: "003000", Scsi: "000040", Fdd: "003000"}
+
+const (
+	ledColorAcsiFileName = "LED_COLOR_ACSI" // same as LED_COLOR_SETTING_ACSI in ce_cores
+	ledColorScsiFileName = "LED_COLOR_SCSI" // same as LED_COLOR_SETTING_SCSI in ce_cores
+	ledColorFddFileName  = "LED_COLOR_FDD"  // same as LED_COLOR_SETTING_FDD in ce_cores
+)
+
+// isValidLedColor accepts 6 hex chars, but not black - the LED would look dead
+func isValidLedColor(color string) bool {
+	if len(color) != 6 || color == "000000" {
+		return false
+	}
+	for _, c := range color {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
+			return false
+		}
+	}
+	return true
+}
+
+func settingsFilePath(fileName string) string {
+	settingsDir := os.Getenv("SETTINGS_DIR")
+	if settingsDir == "" {
+		settingsDir = "."
+	}
+	return filepath.Join(settingsDir, fileName)
+}
+
+func loadLedColor(fileName, def string) string {
+	content, err := os.ReadFile(settingsFilePath(fileName))
+	if err != nil {
+		return def
+	}
+
+	color := strings.ToLower(strings.TrimSpace(string(content)))
+	if !isValidLedColor(color) {
+		return def
+	}
+	return color
+}
+
+func loadLedColors() LedColors {
+	return LedColors{
+		Acsi: loadLedColor(ledColorAcsiFileName, ledColorDefaults.Acsi),
+		Scsi: loadLedColor(ledColorScsiFileName, ledColorDefaults.Scsi),
+		Fdd:  loadLedColor(ledColorFddFileName, ledColorDefaults.Fdd),
+	}
+}
+
+// writeSettingFile writes via temp file + rename - ce_cores might read it just now
+func writeSettingFile(fileName, value string) error {
+	path := settingsFilePath(fileName)
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, []byte(value), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
+}
+
+func (s *Server) handleGetLedColors(w http.ResponseWriter, r *http.Request) {
+	logDebugf("handleGetLedColors %s %s", r.Method, r.URL.Path)
+	writeJSON(w, http.StatusOK, LedColorsResponse{LedColors: loadLedColors(), Defaults: ledColorDefaults})
+}
+
+// handlePutLedColors stores all 3 colors and asks ce_cores to send them to the connected devices
+func (s *Server) handlePutLedColors(w http.ResponseWriter, r *http.Request) {
+	logDebugf("handlePutLedColors %s %s", r.Method, r.URL.Path)
+
+	var req LedColors
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil ||
+		!isValidLedColor(req.Acsi) || !isValidLedColor(req.Scsi) || !isValidLedColor(req.Fdd) {
+		logWarningf("handlePutLedColors - invalid request body")
+		http.Error(w, "acsi, scsi and fdd must be RGB colors as 6 hex chars, not black", http.StatusBadRequest)
+		return
+	}
+
+	files := []struct{ name, value string }{
+		{ledColorAcsiFileName, strings.ToLower(req.Acsi)},
+		{ledColorScsiFileName, strings.ToLower(req.Scsi)},
+		{ledColorFddFileName, strings.ToLower(req.Fdd)},
+	}
+	for _, f := range files {
+		if err := writeSettingFile(f.name, f.value); err != nil {
+			logErrorf("handlePutLedColors - error writing %s: %v", f.name, err)
+			http.Error(w, "cannot write setting", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if err := sendToCmdSocket(`{"module":"all","action":"led_colors"}`); err != nil {
+		logErrorf("handlePutLedColors - failed to send cmd socket: %v", err) // stored anyway, devices get it on connect
+	}
+
+	writeJSON(w, http.StatusOK, LedColorsResponse{LedColors: loadLedColors(), Defaults: ledColorDefaults})
+}

@@ -1,3 +1,4 @@
+#include <cstring>
 // Replacement of ce_pico_hdd/bridge.cpp + bridge_acsi.cpp + bridge_scsi.cpp, see bridge_fake.h
 
 #include "bridge_fake.h"
@@ -88,3 +89,10 @@ void DMA_readBlock(const uint8_t* bfr, uint32_t cnt)
 
 void DMA_read_waitForEnd(void) { brStat = fakeBridge.waitForEndFails ? E_TimeOut : E_OK; }
 void neopixelOutput(uint32_t) {}
+
+uint8_t fakeLedAcsi[3], fakeLedScsi[3];         // last ledSetRunningColors() - neopixel.cpp isn't compiled in
+void ledSetRunningColors(const uint8_t* acsiRgb, const uint8_t* scsiRgb)
+{
+    memcpy(fakeLedAcsi, acsiRgb, 3);
+    memcpy(fakeLedScsi, scsiRgb, 3);
+}

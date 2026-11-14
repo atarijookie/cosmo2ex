@@ -68,6 +68,11 @@ void CoreHdd::run(void)
     while(sigintReceived == 0) {
         handleEvents();
 
+        if(events.hddLedColors) {       // LED colors changed in the web UI
+            events.hddLedColors = false;
+            ciHdd->sendLedColorsToAll(true);
+        }
+
         if(!someClientActive) {
             Utils::sleepMs(1);      // intentional sleep to not utilize cpu to max when looping too much before client disconnect
         }

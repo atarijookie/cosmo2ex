@@ -48,6 +48,7 @@
 #define CMD_FLOPPY_CONFIG                   0x70
 #define CMD_FLOPPY_SWITCH                   0x80
 #define CMD_DATA_MARKER                     0xda
+#define CMD_LED_COLORS                      0xe0    // neopixel colors while running: ACSI R, G, B, SCSI R, G, B (6 B), from the web UI
 
 // ACSI only - for the SLM laser printer emulation on host (ce_cores/hdd/slm/)
 #define CMD_PIO_READ                        0x90    // send the payload bytes to ST with CS / INT handshake (status + EXTENDED STATUS PHASE), then wait for next command

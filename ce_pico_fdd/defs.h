@@ -46,6 +46,7 @@
 #define ATN_GET_IMAGE_LIST      0x06        // page of image names in the folder of the current image - see image_browser.h
 #define ATN_INSERT_IMAGE        0x07        // insert image from that folder by name, the host replies with INSERT_IMAGE_*
 #define ATN_DEVICE_SETTINGS     0x08        // host -> device only: settings flags (1 B, DEV_SETTING_* in settings.h) from the web UI
+#define ATN_LED_COLORS          0x09        // host -> device only: neopixel color while running - R, G, B (3 B), from the web UI
 
 #define INSERT_IMAGE_OK         0           // found, loading - the image follows as on ATN_SEND_WHOLE_IMAGE
 #define INSERT_IMAGE_NOT_FOUND  1           // no such image in the folder (anymore)

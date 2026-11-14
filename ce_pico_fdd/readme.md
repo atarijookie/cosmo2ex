@@ -151,6 +151,13 @@
   while the device wasn't connected (FDD_SETTINGS_PENDING) - sent when it connects, the web UI wins then
 - the device stores them only when they changed - the flash write pauses the floppy streaming for a moment
 
+## LED color while running
+
+- green by default, can be changed on the web Settings page (color + brightness) - global for all floppy devices
+- the host sends it (ATN_LED_COLORS 0x09, R G B) after the FW report on each connect and when changed in the web UI
+- stored in EEPROM (`Settings_t.ledRunning` + `ledCheck` - not matching on a new board / after older firmware: the
+  default is used), only when it differs from the stored one
+
 ## Notes
 
 - debug strings: debug() writes directly to uart0 on GP0 (TX0), 115200 baud. They're on by default, DEBUG_STRINGS 0 in

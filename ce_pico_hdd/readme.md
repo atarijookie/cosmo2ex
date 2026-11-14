@@ -9,6 +9,9 @@
 
 - orange - initializing, brighter with each step: setup started, bus handling running, waiting for ethernet link + DHCP, got IP, looking for / connecting to host
 - green (ACSI) / blue (SCSI) - connected to host, the color shows which variant the board runs
+  - both colors (and brightness) can be changed on the web Settings page - global for all devices. The host sends them
+    (CMD_LED_COLORS, ACSI R G B + SCSI R G B) after the ACSI config on each connect and when changed; the device stores
+    them in EEPROM (TSettings.ledAcsi / ledScsi, own check byte - garbage = defaults) only when they differ
 - red blinks - error, the count of blinks is the error code, then a longer pause:
   - 1 - ethernet chip not found (halted)
   - 2 - ethernet cable not connected (keeps retrying)

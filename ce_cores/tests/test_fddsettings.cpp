@@ -207,3 +207,75 @@ TEST_CASE("fdd settings: nothing stored for the device yet - both settings defau
     CHECK(d.ci->fdd_sendDeviceSettings(d.client));
     CHECK(d.receivedSettings() == BOTH);
 }
+
+//-------------------------------------------------------------------------------------------------
+// LED colors - global settings (LED_COLOR_SETTING_*), sent to HDD (CMD_LED_COLORS) and FDD (ATN_LED_COLORS) devices
+
+namespace {
+
+// the message the device got: cmd code + payload, cmd -1 = nothing received
+int receivedMsg(int sock, std::vector<uint8_t>& payload)
+{
+    struct pollfd p = {sock, POLLIN, 0};
+    if(poll(&p, 1, 100) != 1) {
+        return -1;
+    }
+
+    uint8_t head[10];
+    REQUIRE(read(sock, head, 10) == 10);
+    uint32_t len = Utils::getDword(head + 6);
+    payload.resize(len);
+    REQUIRE(read(sock, payload.data(), len) == (ssize_t) len);
+    return Utils::getWord(head + 4);
+}
+
+}   // namespace
+
+TEST_CASE("led colors: defaults when not stored or garbage")
+{
+    TempSettingsDir dir;
+    Settings s;
+
+    CHECK(ChipInterface::ledColorFromSettings(LED_COLOR_SETTING_FDD, LED_COLOR_DEFAULT_FDD) == LED_COLOR_DEFAULT_FDD);
+
+    for(const char* bad : {"garbage", "00300", "0030000", "000000", "00300g"}) {
+        s.setString(LED_COLOR_SETTING_FDD, bad);
+        CHECK(ChipInterface::ledColorFromSettings(LED_COLOR_SETTING_FDD, LED_COLOR_DEFAULT_FDD) == LED_COLOR_DEFAULT_FDD);
+    }
+
+    s.setString(LED_COLOR_SETTING_FDD, "a0B0c0");
+    CHECK(ChipInterface::ledColorFromSettings(LED_COLOR_SETTING_FDD, LED_COLOR_DEFAULT_FDD) == 0xa0b0c0);
+}
+
+TEST_CASE("led colors: FDD gets its color once per connection, again when changed")
+{
+    FddDevice d;
+    std::vector<uint8_t> payload;
+
+    d.ci->sendLedColorsIfNotSent(d.client, false);      // nothing stored - the defaults
+    REQUIRE(receivedMsg(d.sock[0], payload) == ATN_LED_COLORS);
+    CHECK(payload == std::vector<uint8_t>({0x00, 0x30, 0x00}));
+
+    d.ci->sendLedColorsIfNotSent(d.client, false);      // already sent on this connection
+    CHECK(receivedMsg(d.sock[0], payload) == -1);
+
+    Settings s;
+    s.setString(LED_COLOR_SETTING_FDD, "102030");
+    d.ci->sendLedColorsToAll(false);                    // changed in the web UI
+    REQUIRE(receivedMsg(d.sock[0], payload) == ATN_LED_COLORS);
+    CHECK(payload == std::vector<uint8_t>({0x10, 0x20, 0x30}));
+}
+
+TEST_CASE("led colors: HDD gets ACSI + SCSI color")
+{
+    FddDevice d;                                        // the socket part is the same for HDD
+    std::vector<uint8_t> payload;
+
+    Settings s;
+    s.setString(LED_COLOR_SETTING_ACSI, "400000");      // SCSI not stored - default
+
+    CHECK(d.ci->sendLedColors(d.client, true));
+    REQUIRE(receivedMsg(d.sock[0], payload) == CMD_LED_COLORS);
+    CHECK(payload == std::vector<uint8_t>({0x40, 0x00, 0x00, 0x00, 0x00, 0x40}));
+    CHECK(d.client->ledColorsSent);
+}

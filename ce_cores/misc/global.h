@@ -109,6 +109,9 @@ typedef struct {
     volatile bool hddReloadTranslated;
 
     volatile bool ikbdReloadConfig;
+
+    volatile bool hddLedColors;         // LED colors changed in the web UI - send them to the devices
+    volatile bool fddLedColors;
 } InterProcessEvents;
 
 extern InterProcessEvents events;

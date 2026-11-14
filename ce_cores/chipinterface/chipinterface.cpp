@@ -350,6 +350,77 @@ bool ChipInterface::fdd_sendDeviceSettings(ClientInfo* ci)
     return true;
 }
 
+uint32_t ChipInterface::ledColorFromSettings(const char* key, uint32_t defColor)
+{
+    Settings s;
+    std::string str = s.getString(key, "");
+
+    if(str.length() != 6 || str.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos) {
+        return defColor;
+    }
+
+    uint32_t color = (uint32_t) strtoul(str.c_str(), NULL, 16);
+    return (color != 0) ? color : defColor;     // black would look like a dead LED
+}
+
+static void storeRgb(uint8_t* bfr, uint32_t color)
+{
+    bfr[0] = (uint8_t) (color >> 16);
+    bfr[1] = (uint8_t) (color >> 8);
+    bfr[2] = (uint8_t) color;
+}
+
+bool ChipInterface::sendLedColors(ClientInfo* ci, bool hddNotFdd)
+{
+    if(ci->fdClient == FD_EMPTY) {
+        return false;
+    }
+
+    uint8_t data[6];
+    uint32_t len;
+    uint16_t cmd;
+
+    if(hddNotFdd) {
+        storeRgb(data,     ledColorFromSettings(LED_COLOR_SETTING_ACSI, LED_COLOR_DEFAULT_ACSI));
+        storeRgb(data + 3, ledColorFromSettings(LED_COLOR_SETTING_SCSI, LED_COLOR_DEFAULT_SCSI));
+        len = 6;
+        cmd = CMD_LED_COLORS;
+    } else {
+        storeRgb(data,     ledColorFromSettings(LED_COLOR_SETTING_FDD, LED_COLOR_DEFAULT_FDD));
+        len = 3;
+        cmd = ATN_LED_COLORS;
+    }
+
+    if(!sendHeaderAndDataToChip(ci->fdClient, cmd, data, len)) {
+        Debug::out(whichLog, LOG_WARNING, "sendLedColors - failed to send");
+        return false;
+    }
+
+    ci->ledColorsSent = true;
+    if(hddNotFdd) {
+        Debug::out(whichLog, LOG_DEBUG, "sendLedColors - sent ACSI: %02X%02X%02X, SCSI: %02X%02X%02X", data[0], data[1], data[2], data[3], data[4], data[5]);
+    } else {
+        Debug::out(whichLog, LOG_DEBUG, "sendLedColors - sent: %02X%02X%02X", data[0], data[1], data[2]);
+    }
+    return true;
+}
+
+void ChipInterface::sendLedColorsIfNotSent(ClientInfo* ci, bool hddNotFdd)
+{
+    if(!ci->ledColorsSent) {
+        sendLedColors(ci, hddNotFdd);
+    }
+}
+
+void ChipInterface::sendLedColorsToAll(bool hddNotFdd)
+{
+    for(int i=0; i<MAX_CLIENTS; i++) {
+        if(clients[i].fdClient != FD_EMPTY) {
+            sendLedColors(&clients[i], hddNotFdd);
+        }
+    }
+}
+
 void ChipInterface::storeDeviceFeatures(uint8_t* mac, uint8_t featureBits)
 {
     std::string featureString;
@@ -818,6 +889,7 @@ void ChipInterface::clientsClearOne(ClientInfo* info)
     info->features = 0;
     info->deviceSettings = -1;
     info->deviceSettingsSeen = -1;
+    info->ledColorsSent = false;
     info->bufReader.reset();    // drop any partial header / remaining data size from previous connection
 }
 
@@ -918,6 +990,7 @@ void ChipInterface::clientsStoreOne(ClientInfo* info, int newSock, uint32_t ipAd
     memcpy(info->mac, mac, 6);
     info->deviceSettings = -1;          // the new connection reports them again - and they're the truth then
     info->deviceSettingsSeen = -1;
+    info->ledColorsSent = false;        // the new connection gets them again
 
     if(isFdd) {         // floppy: reconnected device keeps its slot, new device gets a free one
         info->floppySlotIndex = (oldFloppySlot != FD_EMPTY) ? oldFloppySlot : clientsGetFreeFloppySlot();

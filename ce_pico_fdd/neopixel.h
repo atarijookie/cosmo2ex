@@ -5,7 +5,8 @@
 
 // Status shown on the neopixel (LED2), like on ce_pico_hdd:
 // - orange during init, brighter with each step (LED_STEP_*)
-// - green when connected to the host and an image is loaded, dim white when connected without an image
+// - green when connected to the host and an image is loaded (or the color set in the web UI - ledSetRunningColor()),
+//   dim white when connected without an image
 // - blue while the captive portal (WiFi setup) runs
 // - light blue while the button is held long enough, over any other status
 // - red blinks with the error code (count of blinks, then a longer pause) on error (LED_ERR_*)
@@ -30,6 +31,10 @@ void ledSetInitStep(uint8_t step);      // also clears the error
 void ledSetError(uint8_t code);
 void ledSetRunning(bool imageLoaded);
 void ledSetCaptivePortal(void);
+void ledSetRunningColor(const uint8_t* rgb);    // R, G, B while running with an image
+
+#define LED_RUNNING_DEFAULT     0x003000    // 0xRRGGBB - green, when none was set from the web UI
+
 void ledSetButtonArmed(bool armed);     // light blue, until armed again false - the status stays as it was under it
 
 // the status from the connection state - called from the core 0 main loop, outside of the captive portal

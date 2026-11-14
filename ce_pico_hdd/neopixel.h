@@ -5,7 +5,7 @@
 
 // Status shown on the neopixels (LED2 top, LED3 bottom - both get the same data):
 // - orange during init, brighter with each step (LED_STEP_*)
-// - once connected to the host: green on ACSI, blue on SCSI
+// - once connected to the host: green on ACSI, blue on SCSI - or the colors set in the web UI (ledSetRunningColors())
 // - red blinks with the error code (count of blinks, then a longer pause) on error (LED_ERR_*)
 
 #define LED_STEP_SETUP          1       // core 0 setup started
@@ -26,7 +26,12 @@
 void ledSetInitStep(uint8_t step);      // also clears the error
 void ledSetError(uint8_t code);
 void ledSetRunning(void);
-void haltWithError(uint8_t code);       // show the error and stop this core forever
+void haltWithError(uint8_t code);
+void ledSetRunningColors(const uint8_t* acsiRgb, const uint8_t* scsiRgb);     // the color of this variant is used
+
+// running colors when none were set from the web UI (0xRRGGBB) - the WS2812C-2020 is bright, so these are far from 255
+#define LED_RUNNING_ACSI_DEFAULT    0x003000    // green
+#define LED_RUNNING_SCSI_DEFAULT    0x000040    // blue - looks dimmer than the green at the same value       // show the error and stop this core forever
 
 // output - on core 1, only while the bus is idle (the neopixel pin is shared with SCSI signals)
 void neopixelInit(void);

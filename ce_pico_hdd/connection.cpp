@@ -457,6 +457,28 @@ void handleAcsiConfig(uint32_t len)
     }
 }
 
+// CMD_LED_COLORS - sent by the host once per connection (after the ACSI config) and when changed in the web UI
+void handleLedColors(uint32_t len)
+{
+    uint8_t data[6];
+    memset(data, 0, sizeof(data));
+    uint32_t readLen = MIN(sizeof(data), len);
+
+    clientHdd.read(data, readLen);
+
+    for(uint32_t i=readLen; i<len; i++)     // drop the rest (newer host?), so the next header can be found
+    {
+        clientHdd.read();
+    }
+
+    if(readLen < sizeof(data)) {
+        debug("handleLedColors - only %d bytes, ignored\n", (int) readLen);
+        return;
+    }
+
+    ledColorsReceived(data, data + 3);
+}
+
 void handleSendStatus(void)
 {
     uint8_t status = clientHdd.read();
@@ -650,6 +672,7 @@ void handleIncommingData(void)
 
     switch(hddHeader.cmdCode) {
         case CMD_ACSI_CONFIG: handleAcsiConfig(hddHeader.len); break;
+        case CMD_LED_COLORS: handleLedColors(hddHeader.len); break;
         case CMD_DATA_READ_WITH_STATUS: handleReadStart(true); break;
         case CMD_DATA_READ_WITHOUT_STATUS: handleReadStart(false); break;
         case CMD_DATA_MARKER: handleReadDataReceived(); break;

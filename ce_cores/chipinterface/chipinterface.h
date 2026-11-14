@@ -18,6 +18,7 @@ typedef struct {
     uint8_t     features;           // DEV_FEATURE_ bits
     int         deviceSettings;     // DEV_SETTING_* bits from the last FW report, -1 = not reported (older firmware)
     int         deviceSettingsSeen; // deviceSettings already handled by fdd_syncDeviceSettings(), -1 = none since connect
+    bool        ledColorsSent;      // LED colors sent on this connection (sendLedColors())
     int         floppySlotIndex;    // which floppy slot this IP is using
     uint32_t    lastMs;             // value of getCurrentMs() when was last time anything was received from this client
 
@@ -30,6 +31,15 @@ typedef struct {
 #define FDD_SETTING_IKBD_ENABLED        "FDD_IKBD_ENABLED"
 #define FDD_SETTING_BEEP_ON_STEP        "FDD_BEEP_ON_STEP"
 #define FDD_SETTING_PENDING             "FDD_SETTINGS_PENDING"     // 1 = changed in the web UI, not sent to the device yet
+
+// neopixel colors while running - global settings shared with the webserver (webserver/settings.go), RGB hex "rrggbb";
+// the defaults are the same as in the devices (ce_pico_hdd / ce_pico_fdd neopixel.cpp)
+#define LED_COLOR_SETTING_ACSI          "LED_COLOR_ACSI"
+#define LED_COLOR_SETTING_SCSI          "LED_COLOR_SCSI"
+#define LED_COLOR_SETTING_FDD           "LED_COLOR_FDD"
+#define LED_COLOR_DEFAULT_ACSI          0x003000        // green
+#define LED_COLOR_DEFAULT_SCSI          0x000040        // blue
+#define LED_COLOR_DEFAULT_FDD           0x003000        // green
 
 class ChipInterface
 {
@@ -65,6 +75,13 @@ public:
     // changes them in the per-device settings (FDD_SETTING_* keys) and asks the FDD core to send them to the device.
     void fdd_syncDeviceSettings(ClientInfo* ci);    // after a FW report: store the device's settings when they changed there
     bool fdd_sendDeviceSettings(ClientInfo* ci);    // send the stored settings to the device, clears the pending flag
+
+    // LED colors (global settings from the web UI) to the device: HDD gets ACSI + SCSI color (CMD_LED_COLORS), FDD its
+    // color (ATN_LED_COLORS). The device stores them only when they differ from what it has.
+    bool sendLedColors(ClientInfo* ci, bool hddNotFdd);
+    void sendLedColorsIfNotSent(ClientInfo* ci, bool hddNotFdd);   // once per connection - after the FW report
+    void sendLedColorsToAll(bool hddNotFdd);                        // changed in the web UI
+    static uint32_t ledColorFromSettings(const char* key, uint32_t defColor);   // 0xRRGGBB, default if missing / invalid
 
     //----------------
     // HDD: READ/WRITE functions for large (>1 MB) block transfers (Scsi::readSectors(), Scsi::writeSectors()) and also by the convenient functions above

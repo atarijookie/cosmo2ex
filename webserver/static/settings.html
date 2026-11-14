@@ -158,6 +158,47 @@
             button.delete-device-button:hover {
                 background-color: #a93226;
             }
+            .led-row {
+                display: flex;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 8px 12px;
+                margin: 14px 0;
+            }
+            .led-row label {
+                min-width: 120px;
+                margin: 0;
+                font-weight: bold;
+            }
+            .led-swatches {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+            .led-swatch {
+                width: 24px;
+                height: 24px;
+                padding: 0;
+                border-radius: 50%;
+                border: 2px solid #ccc;
+                cursor: pointer;
+                box-sizing: border-box;
+            }
+            .led-swatch.selected {
+                border: 3px solid #333;
+                box-shadow: 0 0 0 2px #fff inset;
+            }
+            .led-brightness {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 13px;
+                color: #666;
+            }
+            .led-brightness input {
+                width: 140px;
+                margin: 0;
+            }
             .footer-links {
                 margin-top: 40px;
                 padding-top: 20px;
@@ -445,7 +486,195 @@
                 }, true);
             }
 
+            // Neopixel colors while running. Stored as RGB hex - the values sent to the LED. The UI picks one of the basic
+            // colors (at full brightness here) and a brightness level, the stored value is the color scaled by the level.
+            // The LED shows the colors only roughly anyway, so a few basic ones are enough.
+            var ledPalette = [
+                { name: 'red',    rgb: [255,   0,   0] },
+                { name: 'orange', rgb: [255, 127,   0] },
+                { name: 'yellow', rgb: [255, 255,   0] },
+                { name: 'green',  rgb: [  0, 255,   0] },
+                { name: 'cyan',   rgb: [  0, 255, 255] },
+                { name: 'blue',   rgb: [  0,   0, 255] },
+                { name: 'purple', rgb: [128,   0, 255] },
+                { name: 'pink',   rgb: [255, 192, 203] },
+                { name: 'white',  rgb: [255, 255, 255] }
+            ];
+            // brightness levels - the LED is very bright, so mostly low values; 48 and 64 are the default green and blue
+            var ledLevels = [4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 255];
+            var ledKeys = ['acsi', 'scsi', 'fdd'];
+            var ledState = {};          // key -> { color: palette index, level: ledLevels index }
+            var ledDefaults = null;
+            var ledSaveTimer = null;
+
+            function ledScaled(paletteIndex, levelIndex) {
+                var level = ledLevels[levelIndex];
+                return ledPalette[paletteIndex].rgb.map(function(c) {
+                    return Math.round(c * level / 255);
+                });
+            }
+
+            function ledToHex(rgb) {
+                return rgb.map(function(c) { return ('0' + c.toString(16)).slice(-2); }).join('');
+            }
+
+            // stored hex -> nearest level (by the brightest channel) and nearest basic color at that level
+            function ledFromHex(hex) {
+                var rgb = [0, 2, 4].map(function(i) { return parseInt(hex.substr(i, 2), 16) || 0; });
+                var max = Math.max(rgb[0], rgb[1], rgb[2]);
+
+                var level = 0;
+                ledLevels.forEach(function(l, i) {
+                    if (Math.abs(l - max) < Math.abs(ledLevels[level] - max)) {
+                        level = i;
+                    }
+                });
+
+                var color = 0, best = Infinity;
+                ledPalette.forEach(function(p, i) {
+                    var scaled = ledScaled(i, level);
+                    var dist = 0;
+                    for (var c = 0; c < 3; c++) {
+                        dist += (scaled[c] - rgb[c]) * (scaled[c] - rgb[c]);
+                    }
+                    if (dist < best) {
+                        best = dist;
+                        color = i;
+                    }
+                });
+                return { color: color, level: level };
+            }
+
+            function showLedStatus(text, isError) {
+                var el = document.getElementById('led-status');
+                el.textContent = text;
+                el.className = 'setting-status ' + (isError ? 'error' : 'ok');
+            }
+
+            // the selected swatch, slider and preview of one LED - preview gets dimmer with the level, but stays visible
+            function showLed(key) {
+                var st = ledState[key];
+                var swatches = document.querySelectorAll('#led-' + key + ' .led-swatch');
+                for (var i = 0; i < swatches.length; i++) {
+                    swatches[i].className = 'led-swatch' + (i === st.color ? ' selected' : '');
+                }
+                document.getElementById('led-' + key + '-level').value = st.level;
+                document.getElementById('led-' + key + '-level-text').textContent =
+                    (st.level + 1) + ' / ' + ledLevels.length;
+            }
+
+            function buildLedRow(key) {
+                var box = document.querySelector('#led-' + key + ' .led-swatches');
+                ledPalette.forEach(function(p, i) {
+                    var b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'led-swatch';
+                    b.title = p.name;
+                    b.style.backgroundColor = 'rgb(' + p.rgb.join(',') + ')';
+                    b.onclick = function() {
+                        ledState[key].color = i;
+                        showLed(key);
+                        saveLedColors(0);
+                    };
+                    box.appendChild(b);
+                });
+
+                var slider = document.getElementById('led-' + key + '-level');
+                slider.max = ledLevels.length - 1;
+                slider.oninput = function() {           // just the text while dragging
+                    ledState[key].level = parseInt(slider.value, 10);
+                    showLed(key);
+                };
+                slider.onchange = function() {          // released - send it (the device writes flash on each change)
+                    ledState[key].level = parseInt(slider.value, 10);
+                    showLed(key);
+                    saveLedColors(300);
+                };
+            }
+
+            function applyLedColors(colors) {
+                ledKeys.forEach(function(key) {
+                    ledState[key] = ledFromHex(colors[key]);
+                    showLed(key);
+                });
+                if (colors.defaults) {
+                    ledDefaults = colors.defaults;
+                }
+            }
+
+            function setLedControlsDisabled(disabled) {
+                var els = document.querySelectorAll('#led-section button, #led-section input');
+                for (var i = 0; i < els.length; i++) {
+                    els[i].disabled = disabled;
+                }
+            }
+
+            function loadLedColors() {
+                setLedControlsDisabled(true);
+                fetch('/settings/leds', { credentials: 'include' })
+                .then(function(response) {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(function(colors) {
+                    applyLedColors(colors);
+                    setLedControlsDisabled(false);
+                })
+                .catch(function(error) {
+                    console.error('Load LED colors error:', error);
+                    showLedStatus('Failed to load LED colors: ' + error.message, true);
+                });
+            }
+
+            function putLedColors(body) {
+                fetch('/settings/leds', {
+                    method: 'PUT',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                })
+                .then(function(response) {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(function(colors) {
+                    applyLedColors(colors);
+                    showLedStatus('LED colors saved and sent to the connected devices.', false);
+                })
+                .catch(function(error) {
+                    console.error('Set LED colors error:', error);
+                    showLedStatus('Failed to save LED colors: ' + error.message, true);
+                });
+            }
+
+            // short delay merges quick changes into one (each one is a flash write on the device)
+            function saveLedColors(delayMs) {
+                if (ledSaveTimer) {
+                    clearTimeout(ledSaveTimer);
+                }
+                ledSaveTimer = setTimeout(function() {
+                    ledSaveTimer = null;
+                    var body = {};
+                    ledKeys.forEach(function(key) {
+                        body[key] = ledToHex(ledScaled(ledState[key].color, ledState[key].level));
+                    });
+                    putLedColors(body);
+                }, delayMs);
+            }
+
+            function resetLedColors() {
+                if (ledDefaults) {
+                    putLedColors({ acsi: ledDefaults.acsi, scsi: ledDefaults.scsi, fdd: ledDefaults.fdd });
+                }
+            }
+
             document.addEventListener('DOMContentLoaded', function() {
+                ledKeys.forEach(buildLedRow);
+                loadLedColors();
                 loadLogLevel();
                 loadSlmPaper();
                 loadDevices();
@@ -519,6 +748,47 @@
                 Signum and Papyrus use the selected size.
             </div>
             <div id="slm-status" class="setting-status"></div>
+        </div>
+
+        <div class="settings-section" id="led-section">
+            <h4>Status LED colors</h4>
+            <div class="led-row" id="led-acsi">
+                <label>ACSI running</label>
+                <div class="led-swatches"></div>
+                <div class="led-brightness">
+                    <span>brightness</span>
+                    <input type="range" id="led-acsi-level" min="0" max="12" step="1">
+                    <span id="led-acsi-level-text"></span>
+                </div>
+            </div>
+            <div class="led-row" id="led-scsi">
+                <label>SCSI running</label>
+                <div class="led-swatches"></div>
+                <div class="led-brightness">
+                    <span>brightness</span>
+                    <input type="range" id="led-scsi-level" min="0" max="12" step="1">
+                    <span id="led-scsi-level-text"></span>
+                </div>
+            </div>
+            <div class="led-row" id="led-fdd">
+                <label>Floppy running</label>
+                <div class="led-swatches"></div>
+                <div class="led-brightness">
+                    <span>brightness</span>
+                    <input type="range" id="led-fdd-level" min="0" max="12" step="1">
+                    <span id="led-fdd-level-text"></span>
+                </div>
+            </div>
+            <div class="setting-row">
+                <button class="btn" onclick="resetLedColors()">Reset to defaults</button>
+            </div>
+            <div class="setting-hint">
+                Color of the LED once the device is connected and running (on the floppy: with an image loaded), for all
+                devices. Sent to the connected devices right away, others get it when they connect. The LED shows the
+                colors only roughly. Other colors stay as they are: orange while starting, red blinking on error, and on
+                the floppy blue in WiFi setup and light blue while the button is held.
+            </div>
+            <div id="led-status" class="setting-status"></div>
         </div>
 
         <div class="settings-section">

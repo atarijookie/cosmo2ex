@@ -262,6 +262,9 @@ void handleGenericAction(std::string& action, json& data, int sock, const struct
 {
     if(action == "generate_status") {
         StatusReport::createReportFiles();
+    } else if(action == "led_colors") {        // LED colors changed in the web UI - HDD and FDD cores send them
+        events.hddLedColors = true;
+        events.fddLedColors = true;
     } else if(action == "get_loglevel") {
         sendLogLevel(sock, from);
     } else if(action == "set_loglevel") {

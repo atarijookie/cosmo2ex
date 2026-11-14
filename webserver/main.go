@@ -255,6 +255,8 @@ func newServer() *Server {
 		protected.Put("/settings/loglevel", s.handlePutLogLevel)
 		protected.Get("/settings/slm", s.handleGetSlm)
 		protected.Put("/settings/slm", s.handlePutSlm)
+		protected.Get("/settings/leds", s.handleGetLedColors)
+		protected.Put("/settings/leds", s.handlePutLedColors)
 		protected.Get("/printouts", s.handleGetPrintouts)
 		protected.Get("/printouts/file/{name}", s.handleGetPrintoutFile)
 		protected.Get("/settings/logs", s.handleGetLogs)

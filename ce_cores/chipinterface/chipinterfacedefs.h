@@ -40,6 +40,9 @@
 #define ATN_DEVICE_SETTINGS             0x08        // host -> device only: settings flags (1 B, DEV_SETTING_*) changed in the web UI;
                                                     //   the device reports its flags in the FW report (byte 12 of the data)
 
+#define ATN_LED_COLORS                  0x09        // host -> device only: neopixel color while running - R, G, B (3 B), from the web UI
+                                                    //   (global settings, LED_COLOR_SETTING_*); sent once per connection and on change
+
 #define DEV_SETTING_IKBD                0x01        // device IKBD (keyboard / mouse via the host) enabled
 #define DEV_SETTING_BEEP_ON_STEP        0x02        // beeper clicks on every head step
 
@@ -61,6 +64,8 @@
 #define CMD_GET_LICENSE                 0xa0
 #define CMD_DO_UPDATE                   0xb0
 #define CMD_DATA_MARKER                 0xda
+#define CMD_LED_COLORS                  0xe0        // neopixel colors while running: ACSI R, G, B, SCSI R, G, B (6 B) - the device
+                                                    //   uses the one of its variant; sent once per connection and on change
 
 // Hans (HDD) - ACSI only, for the SLM laser printer emulation (hdd/slm/)
 #define CMD_PIO_READ                    0x90        // send the payload bytes to ST one by one with CS / INT handshake (status + EXTENDED STATUS PHASE), then wait for the next command; no payload = just wait for the next command

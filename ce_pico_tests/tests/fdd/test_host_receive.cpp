@@ -29,6 +29,13 @@ void deviceSettingsReceived(uint8_t flags)
     receivedSettings.push_back(flags);
 }
 
+static std::vector<uint8_t> receivedLedColor;
+
+void ledColorReceived(const uint8_t* rgb)
+{
+    receivedLedColor.assign(rgb, rgb + 3);
+}
+
 namespace {
 
 std::vector<uint8_t> message(uint16_t cmd, const std::vector<uint8_t>& data, uint32_t len)
@@ -277,6 +284,26 @@ TEST_CASE_FIXTURE(HostReceiveFixture, "device settings message without data is i
     mainLoop();
 
     CHECK(receivedSettings.empty());
+    CHECK(fakeHostRx.empty());
+}
+
+TEST_CASE_FIXTURE(HostReceiveFixture, "LED color from the host is applied, the next message is found right after it") {
+    receivedLedColor.clear();
+    fakeHostReceive(message(ATN_LED_COLORS, { 0x10, 0x20, 0x30 }, 3));
+    fakeHostReceive(message(ATN_SEND_WHOLE_IMAGE, imageData(false, "GAME.ST"), imageData(false, "GAME.ST").size()));
+    mainLoop(2);
+
+    CHECK(receivedLedColor == std::vector<uint8_t>{ 0x10, 0x20, 0x30 });
+    CHECK(std::string(imageFileName) == "GAME.ST");
+    CHECK(fakeHostRx.empty());
+}
+
+TEST_CASE_FIXTURE(HostReceiveFixture, "LED color message too short is ignored") {
+    receivedLedColor.clear();
+    fakeHostReceive(message(ATN_LED_COLORS, { 0x10, 0x20 }, 2));
+    mainLoop();
+
+    CHECK(receivedLedColor.empty());
     CHECK(fakeHostRx.empty());
 }
 

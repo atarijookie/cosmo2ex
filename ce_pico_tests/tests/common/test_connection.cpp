@@ -111,6 +111,38 @@ TEST_CASE_FIXTURE(FirmwareFixture, "CMD_ACSI_CONFIG stores new enabled IDs") {
     CHECK(hddHeader.syncTag == 0);      // cleared for the next header
 }
 
+TEST_CASE_FIXTURE(FirmwareFixture, "CMD_LED_COLORS stores new colors, the same ones don't write flash") {
+    setConnected();
+    loadSettings();                     // the default colors
+    EEPROM.commitCount = 0;
+    clientHdd.pushRx(concat(hostHeader(CMD_LED_COLORS, 6), { 0x20, 0x00, 0x20, 0x00, 0x00, 0x40 }));
+
+    handleIncommingData();
+
+    CHECK(settings.ledAcsi[0] == 0x20); CHECK(settings.ledAcsi[1] == 0x00); CHECK(settings.ledAcsi[2] == 0x20);
+    CHECK(fakeLedAcsi[0] == 0x20);
+    CHECK(EEPROM.commitCount == 1);
+    CHECK(clientHdd.rx.empty());
+
+    clientHdd.pushRx(concat(hostHeader(CMD_LED_COLORS, 6), { 0x20, 0x00, 0x20, 0x00, 0x00, 0x40 }));
+    handleIncommingData();
+    CHECK(EEPROM.commitCount == 1);
+}
+
+TEST_CASE_FIXTURE(FirmwareFixture, "CMD_LED_COLORS too short is ignored, next header still found") {
+    setConnected();
+    loadSettings();
+    EEPROM.commitCount = 0;
+    clientHdd.pushRx(concat(hostHeader(CMD_LED_COLORS, 3), { 0x20, 0x00, 0x20 }));
+    clientHdd.pushRx(concat(hostHeader(CMD_ACSI_CONFIG, 2), { CMD_ACSI_CONFIG, 0x05 }));
+
+    handleIncommingData();
+    handleIncommingData();
+
+    CHECK(settings.ledAcsi[0] == 0x00);
+    CHECK(settings.enabledIDs == 0x05);
+}
+
 TEST_CASE_FIXTURE(FirmwareFixture, "CMD_ACSI_CONFIG with unchanged IDs does not write flash") {
     setConnected();
     settings.enabledIDs = 0x05;

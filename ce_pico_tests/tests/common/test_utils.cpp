@@ -192,11 +192,14 @@ TEST_CASE_FIXTURE(FirmwareFixture, "longTimeout_basedOnSectorCount gives 3 s per
 }
 
 TEST_CASE_FIXTURE(FirmwareFixture, "TSettings layout in EEPROM is stable") {
-    CHECK(sizeof(TSettings) == 12);         // changing it would make the stored settings of existing devices invalid
+    CHECK(sizeof(TSettings) == 19);         // changing it would make the stored settings of existing devices invalid
     CHECK(offsetof(TSettings, magic) == 0);
     CHECK(offsetof(TSettings, mac) == 4);
     CHECK(offsetof(TSettings, enabledIDs) == 10);
     CHECK(offsetof(TSettings, ikbdEnabled) == 11);
+    CHECK(offsetof(TSettings, ledAcsi) == 12);      // added later - only appended, so the older fields stay where they were
+    CHECK(offsetof(TSettings, ledScsi) == 15);
+    CHECK(offsetof(TSettings, ledCheck) == 18);
 }
 
 TEST_CASE_FIXTURE(FirmwareFixture, "loadSettings on erased EEPROM stores defaults") {
@@ -263,6 +266,9 @@ TEST_CASE_FIXTURE(FirmwareFixture, "loadSettings keeps valid stored settings and
     memcpy(stored.mac, mac, 6);
     stored.enabledIDs  = 0x81;
     stored.ikbdEnabled = 1;
+    stored.ledAcsi[0] = 0x40;                               // red on ACSI, white on SCSI
+    memset(stored.ledScsi, 0x10, 3);
+    stored.ledCheck = LED_COLORS_CHECK ^ 0x40 ^ 0x10 ^ 0x10 ^ 0x10;
     memcpy(EEPROM.bytes, &stored, sizeof(stored));
 
     memset(&settings, 0, sizeof(settings));
@@ -270,6 +276,83 @@ TEST_CASE_FIXTURE(FirmwareFixture, "loadSettings keeps valid stored settings and
 
     CHECK(memcmp(&settings, &stored, sizeof(stored)) == 0);
     CHECK(EEPROM.commitCount == 0);
+    CHECK(memcmp(fakeLedAcsi, stored.ledAcsi, 3) == 0);   // the stored colors are used
+    CHECK(memcmp(fakeLedScsi, stored.ledScsi, 3) == 0);
+}
+
+static const uint8_t defaultAcsi[3] = { 0x00, 0x30, 0x00 };
+static const uint8_t defaultScsi[3] = { 0x00, 0x00, 0x40 };
+
+TEST_CASE_FIXTURE(FirmwareFixture, "loadSettings on erased EEPROM stores the default LED colors") {
+    loadSettings();
+
+    CHECK(memcmp(settings.ledAcsi, defaultAcsi, 3) == 0);
+    CHECK(memcmp(settings.ledScsi, defaultScsi, 3) == 0);
+    CHECK(memcmp(fakeLedAcsi, defaultAcsi, 3) == 0);
+    CHECK(memcmp(fakeLedScsi, defaultScsi, 3) == 0);
+
+    TSettings stored;                                       // valid in flash - next boot uses them as they are
+    memcpy(&stored, EEPROM.bytes, sizeof(stored));
+    CHECK(memcmp(&stored, &settings, sizeof(settings)) == 0);
+}
+
+TEST_CASE_FIXTURE(FirmwareFixture, "loadSettings - garbage LED colors (stored by older firmware) give defaults, nothing written") {
+    TSettings stored;
+    memset(&stored, 0xff, sizeof(stored));                  // the LED bytes as erased flash / whatever was there
+    stored.magic = SETTINGS_MAGIC;
+    stored.enabledIDs = 0x03;
+    memcpy(EEPROM.bytes, &stored, sizeof(stored));
+
+    for (uint8_t garbage : { 0xff, 0x00, 0x5a }) {
+        CAPTURE(garbage);
+        memset(EEPROM.bytes + 12, garbage, 7);
+        EEPROM.commitCount = 0;
+
+        loadSettings();
+
+        CHECK(settings.enabledIDs == 0x03);                 // the older settings are kept
+        CHECK(memcmp(settings.ledAcsi, defaultAcsi, 3) == 0);
+        CHECK(memcmp(settings.ledScsi, defaultScsi, 3) == 0);
+        CHECK(memcmp(fakeLedAcsi, defaultAcsi, 3) == 0);
+        CHECK(EEPROM.commitCount == 0);
+    }
+}
+
+TEST_CASE_FIXTURE(FirmwareFixture, "loadSettings - valid check but black LED color gives defaults") {
+    loadSettings();
+    memset(settings.ledAcsi, 0, 3);                         // check matching the black - stored by something wrong
+    settings.ledCheck = LED_COLORS_CHECK ^ settings.ledScsi[0] ^ settings.ledScsi[1] ^ settings.ledScsi[2];
+    saveSettings();
+
+    loadSettings();
+    CHECK(memcmp(settings.ledAcsi, defaultAcsi, 3) == 0);
+}
+
+TEST_CASE_FIXTURE(FirmwareFixture, "ledColorsReceived stores only changed colors") {
+    loadSettings();
+    EEPROM.commitCount = 0;
+
+    ledColorsReceived(defaultAcsi, defaultScsi);            // the same as it has - no flash write
+    CHECK(EEPROM.commitCount == 0);
+
+    const uint8_t red[3] = { 0x40, 0x00, 0x00 };
+    ledColorsReceived(red, defaultScsi);
+    CHECK(EEPROM.commitCount == 1);
+    CHECK(memcmp(fakeLedAcsi, red, 3) == 0);
+
+    ledColorsReceived(red, defaultScsi);                    // again the same
+    CHECK(EEPROM.commitCount == 1);
+
+    const uint8_t black[3] = { 0, 0, 0 };
+    ledColorsReceived(black, defaultScsi);                  // never black - ignored
+    CHECK(EEPROM.commitCount == 1);
+    CHECK(memcmp(settings.ledAcsi, red, 3) == 0);
+
+    memset(&settings, 0, sizeof(settings));                 // after reboot
+    loadSettings();
+    CHECK(memcmp(settings.ledAcsi, red, 3) == 0);
+    CHECK(memcmp(settings.ledScsi, defaultScsi, 3) == 0);
+    CHECK(EEPROM.commitCount == 1);
 }
 
 TEST_CASE_FIXTURE(FirmwareFixture, "saveSettings writes all settings bytes with magic and commits") {

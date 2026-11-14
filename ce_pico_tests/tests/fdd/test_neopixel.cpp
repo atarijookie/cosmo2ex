@@ -123,6 +123,28 @@ TEST_CASE_FIXTURE(NeopixelFixture, "connected - green with an image, dim white w
     CHECK(red(c) < 16);                     // dim
 }
 
+TEST_CASE_FIXTURE(NeopixelFixture, "running color from the web UI - used with an image, sent once on change") {
+    ledSetRunning(true);
+    run(10);
+    CHECK(last() == grb(0, 0x30, 0));       // the default
+
+    const uint8_t purple[3] = { 0x20, 0x00, 0x40 };
+    ledSetRunningColor(purple);
+    run(10);
+    CHECK(last() == grb(0x20, 0x00, 0x40));
+    size_t frames = fakeNeopixelFrames.size();
+    run(100);
+    CHECK(fakeNeopixelFrames.size() == frames);
+
+    ledSetRunning(false);                   // no image - still dim white
+    run(10);
+    CHECK(red(last()) == blue(last()));
+    CHECK(green(last()) == blue(last()));
+
+    const uint8_t def[3] = { 0x00, 0x30, 0x00 };
+    ledSetRunningColor(def);                // back to the default for the other tests
+}
+
 TEST_CASE_FIXTURE(NeopixelFixture, "captive portal - blue") {
     ledSetCaptivePortal();
     run(10);

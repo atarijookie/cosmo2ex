@@ -27,12 +27,19 @@ struct __attribute__((packed)) TSettings
     uint8_t mac[6];
     uint8_t enabledIDs;
     uint8_t ikbdEnabled;
+    uint8_t ledAcsi[3];     // neopixel R, G, B while running on ACSI - from the host (web UI)
+    uint8_t ledScsi[3];     // the same on SCSI
+    uint8_t ledCheck;       // LED_COLORS_CHECK ^ the 6 bytes above - not matching: not stored yet (new board, older
+                            // firmware left garbage there), the defaults are used
 };
+
+#define LED_COLORS_CHECK    0xA5
 
 extern TSettings settings;
 void loadSettings(void);
 void makeMacFromBoardId(uint8_t *mac);
 void saveSettings(void);
+void ledColorsReceived(const uint8_t* acsiRgb, const uint8_t* scsiRgb);    // from the host: apply, store if changed
 
 void debugInit(void);
 void debug(const char *fmt, ...);
