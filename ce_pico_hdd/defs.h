@@ -7,9 +7,10 @@
 #define LOG_LED     1
 // #define LOG_UART    1
 
-// DEBUG_TO_IKBD 0 (default): LOG_LED debug output goes to the LED pin (GP25) of the W6100-EVB-Pico.
-// DEBUG_TO_IKBD 1: LOG_LED debug output goes to GP22 (KEYB_TX) at 115200 baud instead, IKBD output to the Atari is disabled.
-//                  For debugging boards where the LED pin is not reachable.
+// LOG_LED debug output goes to the LED pin (GP25) of the W6100-EVB-Pico by default.
+// It goes to GP22 (KEYB_TX, J1 pin 2) at 115200 baud instead, with the IKBD functionality off, when:
+//   - the debug dongle (J1 pin 2 shorted to J1 pin 3) is detected on boot - see debugDongleDetect() in utils.cpp, or
+//   - DEBUG_TO_IKBD is 1 - forced, without the dongle.
 #ifndef DEBUG_TO_IKBD
     #define DEBUG_TO_IKBD   0
 #endif
@@ -113,11 +114,8 @@
 #define PIN_KEYB_TX         22
 #define PIN_KEYB_TX_ORIG    27
 
-#if DEBUG_TO_IKBD
-    #define PIN_DEBUG_TX    PIN_KEYB_TX     // with LOG_LED + DEBUG_TO_IKBD - debug strings on KEYB_TX, IKBD output disabled
-#else
-    #define PIN_DEBUG_TX    25              // with LOG_LED - the LED pin of the module, not on its edge pins
-#endif
+#define PIN_DEBUG_TX_LED    25          // LOG_LED debug output by default - the LED pin of the module, not on its edge pins
+                                        // (with the debug dongle / DEBUG_TO_IKBD it's PIN_KEYB_TX instead, see debugToIkbd)
 
 // SCSI variant
 #define PIN_SEL_IO_DP_DS    8

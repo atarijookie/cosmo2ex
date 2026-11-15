@@ -34,23 +34,14 @@ static queue_t fifoUartKeybTx;
 
 static int8_t pioIrqUartRx;
 
-// With DEBUG_TO_IKBD the KEYB_TX pin carries the debug output (see utils.cpp), so nothing is sent to the Atari - the data is just dropped.
 static inline bool keybTxCanSend(void)
 {
-#if DEBUG_TO_IKBD
-    return true;
-#else
     return !pio_sm_is_tx_fifo_full(pioUartKeybTx, smUartKeybTx);
-#endif
 }
 
 static inline void keybTxPut(uint8_t data)
 {
-#if !DEBUG_TO_IKBD
     uart_tx_program_putc(pioUartKeybTx, smUartKeybTx, data);
-#else
-    (void) data;
-#endif
 }
 
 static volatile uint32_t fifoFullCount = 0;    // incremented in IRQ (no debug() there), reported in ikbdProcessing()
@@ -182,6 +173,10 @@ void ikbdConnectDisconnect(void)
 
 void ikbdProcessing(void)
 {
+    if(debugToIkbd) {                   // KEYB_TX carries the debug output, IKBD functionality is off
+        return;
+    }
+
     static uint32_t lastStatus = 0;
     static uint32_t lastRun = 0;
 
@@ -246,14 +241,17 @@ void ikbdInit(void)
     uint offset;
     bool success;
 
-#if DEBUG_TO_IKBD
-    debug("DEBUG_TO_IKBD - KEYB_TX is used for debug output, IKBD output to Atari disabled\n");
-#else
+    // The debug dongle (J1 pin 2-3 loopback) detected on boot / DEBUG_TO_IKBD - KEYB_TX carries the debug output.
+    // IKBD is off completely: no UARTs (KEYB_RX would just read back the debug output), no connection to host.
+    if(debugToIkbd) {
+        debug("debug output on KEYB_TX (J1 pin 2) - IKBD functionality is off\n");
+        return;
+    }
+
     // for KEYB_TX
     success = pio_claim_free_sm_and_add_program_for_gpio_range(&uart_tx_program, &pioUartKeybTx, &smUartKeybTx, &offset, PIN_KEYB_TX, 1, true);
     if(!success) { debug("HALT! Failed to claim PIO SM for UART\n"); haltWithError(LED_ERR_PIO); }
     uart_tx_program_init(pioUartKeybTx, smUartKeybTx, offset, PIN_KEYB_TX, IKBD_BAUD_RATE);
-#endif
 
     // for KEYB_RX
     success = pio_claim_free_sm_and_add_program_for_gpio_range(&uart_rx_program, &pioUartKeybRx, &smUartKeybRx, &offset, PIN_KEYB_RX, 1, true);

@@ -41,6 +41,8 @@ void makeMacFromBoardId(uint8_t *mac);
 void saveSettings(void);
 void ledColorsReceived(const uint8_t* acsiRgb, const uint8_t* scsiRgb);    // from the host: apply, store if changed
 
+extern bool debugToIkbd;            // debug output on KEYB_TX, IKBD off
+bool debugDongleDetect(void);       // first thing in setup() - J1 pin 2-3 loopback = debug output to KEYB_TX
 void debugInit(void);
 void debug(const char *fmt, ...);
 

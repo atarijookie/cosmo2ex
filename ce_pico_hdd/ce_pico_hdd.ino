@@ -126,11 +126,13 @@ void ethernetInit(void)
 
 void setup(void)
 {
+    debugDongleDetect();    // first - before anything that can hang; ~5 ms; J1 pin 2-3 loopback = debug output to KEYB_TX, IKBD off
     detectHwVariant();  // before anything touches the bus pins - their function depends on the variant
     ledSetInitStep(LED_STEP_SETUP);
 
     debugInit();
     debug("\n\n------------\nCORE 0 setup - %s variant\n", IS_ACSI ? "ACSI" : "SCSI");
+    debug("debug output: %s\n", debugToIkbd ? "KEYB_TX (debug dongle / DEBUG_TO_IKBD)" : "LED pin");
 
     // TEMPORARY - endless test of the bus pins (shorts / open pins), uncomment only for testing the board
     // if(IS_ACSI) pinTestAcsi();

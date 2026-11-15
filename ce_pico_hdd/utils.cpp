@@ -19,6 +19,9 @@ mutex_t debugMutex;
 
 struct TSettings settings;
 
+// true: the debug output goes to KEYB_TX at 115200 baud, IKBD functionality is off (debug dongle detected / DEBUG_TO_IKBD)
+bool debugToIkbd = false;
+
 #ifdef LOG_LED
 #include "uart_tx.pio.h"
 
@@ -291,6 +294,76 @@ void loadSettings(void)
     ledColorsValidate();
 }
 
+// Debug dongle detection - J1 pin 2 (KEYB_TX, to the Atari) shorted to J1 pin 3 (KEYB_RX, from the Atari).
+// Call it first in setup(), before anything that can hang. Takes ~5 ms, touches only GP22 and GP15.
+// Sends 3 bytes at the IKBD baud rate on KEYB_TX (bit-banged) and checks that every bit (incl. start / stop and the idle
+// before them) comes back on KEYB_RX. The bytes are key break codes (ESC, SPACE, RETURN) - if a powered Atari is
+// connected instead of the dongle, TOS ignores the release of a key that wasn't pressed.
+// No false detection: a powered Atari drives KEYB_RX itself (idle H), an unpowered one holds it L, nothing connected = H (R2).
+bool debugDongleDetect(void)
+{
+#if DEBUG_TO_IKBD
+    debugToIkbd = true;                 // forced at compile time
+    return true;
+#elif !defined(LOG_LED)
+    return false;                       // no debug output to redirect, keep IKBD working
+#else
+    static const uint8_t pattern[3] = {0x81, 0xB9, 0x9C};  // break codes: ESC, SPACE, RETURN
+    const uint32_t bitUs = 128;         // 1 / IKBD_BAUD_RATE (7812) = 128 us
+
+    gpio_init(PIN_KEYB_RX);
+    gpio_set_dir(PIN_KEYB_RX, GPIO_IN);
+    gpio_pull_up(PIN_KEYB_RX);
+
+    gpio_init(PIN_KEYB_TX);
+    gpio_put(PIN_KEYB_TX, 1);           // idle H
+    gpio_set_dir(PIN_KEYB_TX, GPIO_OUT);
+
+    // the bit stream: 10 bits idle (lets the receiver see an idle line), then each byte as 8N1, LSB first
+    uint8_t bits[10 + 3 * 10];
+    int cnt = 0;
+
+    for(int i=0; i<10; i++) {
+        bits[cnt++] = 1;
+    }
+
+    for(int b=0; b<3; b++) {
+        bits[cnt++] = 0;                                // start bit
+        for(int i=0; i<8; i++) {
+            bits[cnt++] = (pattern[b] >> i) & 1;        // data bits
+        }
+        bits[cnt++] = 1;                                // stop bit
+    }
+
+    bool match = true;
+    uint32_t start = time_us_32();
+
+    for(int i=0; i<cnt; i++) {
+        uint32_t bitStart = start + i * bitUs;      // absolute deadlines - no drift of the baud rate
+
+        gpio_put(PIN_KEYB_TX, bits[i]);
+
+        while((int32_t) (time_us_32() - (bitStart + bitUs / 2)) < 0);  // sample in the middle of the bit
+        if(gpio_get(PIN_KEYB_RX) != bits[i]) {
+            match = false;
+        }
+
+        while((int32_t) (time_us_32() - (bitStart + bitUs)) < 0);       // till the end of the bit
+
+        // On mismatch stop early, but only on the idle line or after a stop bit - the Atari never gets a broken frame.
+        bool idleOrStop = (i < 10) || ((i - 10) % 10) == 9;
+        if(!match && idleOrStop) {
+            break;
+        }
+    }
+
+    gpio_put(PIN_KEYB_TX, 1);           // leave KEYB_TX idle H till ikbdInit() / debugInit() take it over
+
+    debugToIkbd = match;
+    return match;
+#endif
+}
+
 void debugInit(void)
 {
     mutex_init(&debugMutex);
@@ -303,10 +376,12 @@ void debugInit(void)
 #ifdef LOG_LED
     uint offset;
 
-    bool success = pio_claim_free_sm_and_add_program_for_gpio_range(&uart_tx_program, &pioUartDebugTx, &smUartDebugTx, &offset, PIN_DEBUG_TX, 1, true);
+    uint pin = debugToIkbd ? PIN_KEYB_TX : PIN_DEBUG_TX_LED;
+
+    bool success = pio_claim_free_sm_and_add_program_for_gpio_range(&uart_tx_program, &pioUartDebugTx, &smUartDebugTx, &offset, pin, 1, true);
     if(!success) { debug("Failed to claim PIO SM for UART\n"); while(1); }
 
-    uart_tx_program_init(pioUartDebugTx, smUartDebugTx, offset, PIN_DEBUG_TX, 115200);
+    uart_tx_program_init(pioUartDebugTx, smUartDebugTx, offset, pin, 115200);
 
     queue_init(&fifoDebug, 1, 1024);
 #endif

@@ -23,6 +23,32 @@ The LED gets updated only between commands, when its color changes. ACSI sends t
 H except for the LED update, so the bus activity doesn't get to the LED. On SCSI the device ignores the bus until it's
 connected to the host (the Atari doesn't see the drive till then).
 
+## Debug output
+
+The firmware writes debug messages as a serial stream, **115200 baud, 8N1, 3.3V levels**. By default they go to the
+LED pin (GP25) of the W6100-EVB-Pico. To use it, open the case and solder a wire to that pin.
+
+### Debug dongle on the keyboard header J1 (no opening, no recompile)
+
+J1 pins: 1 = KEYB_TX_ORIG (from the keyboard), 2 = KEYB_TX (to the Atari), 3 = KEYB_RX (from the Atari), 4 = GND.
+
+1. Unplug the keyboard / Atari keyboard cable from J1.
+2. **Short J1 pin 2 with J1 pin 3** (a jumper wire).
+3. Connect a 3.3V USB-serial adapter: its **RX to J1 pin 2**, its **GND to J1 pin 4**. Leave its TX unconnected.
+4. Open a terminal on the adapter at 115200 8N1 and power the device on (or reset it).
+
+The device checks for the dongle on every boot, as the first step of `setup()` (`debugDongleDetect()` in utils.cpp, takes
+~5 ms). It sends 3 bytes on KEYB_TX at the IKBD baud rate (7812) and checks that each bit comes back on KEYB_RX.
+The bytes are the key break codes of ESC, SPACE and RETURN, so an Atari that's connected instead of the dongle ignores them.
+- **loopback detected**: all the debug output goes to J1 pin 2 at 115200 baud, and the IKBD functionality is off
+  (no keyboard / mouse pass-through, no IKBD connection to the host). The first lines say `debug output: KEYB_TX ...`.
+- **not detected**: debug output stays on the LED pin, and IKBD works normally.
+
+A real Atari can't trigger it. When powered, it drives KEYB_RX itself. When off, it holds KEYB_RX low. With nothing connected,
+KEYB_RX is pulled high by R2. None of those echo the test bytes. Remove the jumper and reset to go back to normal operation.
+
+Compiling with `DEBUG_TO_IKBD 1` (defs.h) forces the KEYB_TX output without the dongle.
+
 ## Network for STinG
 
 `sting_net.cpp` answers the HOSTMOD 7 (`HOSTMOD_RAW_NET`) ACSI / SCSI commands of the STinG driver `CE_ETH.STX` itself,
