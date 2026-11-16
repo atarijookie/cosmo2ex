@@ -6251,23 +6251,6 @@ design rules under a new name.</description>
 <wire x1="4.35" y1="71.74" x2="4.626875" y2="72.016875" width="0.254" layer="1"/>
 </signal>
 </signals>
-<errors>
-<approved hash="2,20,db8cf8fcfda6ded6"/>
-<approved hash="6,1,7093d7a1504f110e"/>
-<approved hash="6,1,5ec35bdb52e157f9"/>
-<approved hash="4,1,59e53355360f5cbf"/>
-<approved hash="19,1,ee2ffb44fd386d8b"/>
-<approved hash="19,1,b503127c5304f3b9"/>
-<approved hash="19,1,f4fe0f802f08afa5"/>
-<approved hash="19,1,1de748888d00d5b3"/>
-<approved hash="19,1,e6edf1b81b38738e"/>
-<approved hash="19,1,bfd9c29b5d1d2d81"/>
-<approved hash="19,1,c2bdb584a300d3e5"/>
-<approved hash="19,1,17638a989d183d3f"/>
-<approved hash="19,1,6154748b1d0d4d0c"/>
-<approved hash="6,16,28a6b6f077cb4453"/>
-<approved hash="4,16,59e53355360f5cbf"/>
-</errors>
 </board>
 </drawing>
 </eagle>
