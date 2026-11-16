@@ -8,7 +8,7 @@
 </settings>
 <grid distance="0.25" unitdist="mm" unit="mm" style="dots" multiple="1" display="yes" altdistance="0.079375" altunitdist="mm" altunit="mm"/>
 <layers>
-<layer number="1" name="Top" color="4" fill="1" visible="no" active="yes"/>
+<layer number="1" name="Top" color="4" fill="1" visible="yes" active="yes"/>
 <layer number="2" name="Route2" color="1" fill="3" visible="no" active="no"/>
 <layer number="3" name="Route3" color="4" fill="3" visible="no" active="no"/>
 <layer number="4" name="Route4" color="1" fill="4" visible="no" active="no"/>
@@ -23,15 +23,15 @@
 <layer number="13" name="Route13" color="4" fill="5" visible="no" active="no"/>
 <layer number="14" name="Route14" color="1" fill="6" visible="no" active="no"/>
 <layer number="15" name="Route15" color="4" fill="6" visible="no" active="no"/>
-<layer number="16" name="Bottom" color="1" fill="1" visible="yes" active="yes"/>
+<layer number="16" name="Bottom" color="1" fill="1" visible="no" active="yes"/>
 <layer number="17" name="Pads" color="2" fill="1" visible="yes" active="yes"/>
 <layer number="18" name="Vias" color="2" fill="1" visible="yes" active="yes"/>
 <layer number="19" name="Unrouted" color="6" fill="1" visible="yes" active="yes"/>
 <layer number="20" name="Dimension" color="15" fill="1" visible="yes" active="yes"/>
-<layer number="21" name="tPlace" color="7" fill="1" visible="no" active="yes"/>
-<layer number="22" name="bPlace" color="7" fill="1" visible="yes" active="yes"/>
-<layer number="23" name="tOrigins" color="15" fill="1" visible="no" active="yes"/>
-<layer number="24" name="bOrigins" color="15" fill="1" visible="yes" active="yes"/>
+<layer number="21" name="tPlace" color="7" fill="1" visible="yes" active="yes"/>
+<layer number="22" name="bPlace" color="7" fill="1" visible="no" active="yes"/>
+<layer number="23" name="tOrigins" color="15" fill="1" visible="yes" active="yes"/>
+<layer number="24" name="bOrigins" color="15" fill="1" visible="no" active="yes"/>
 <layer number="25" name="tNames" color="7" fill="1" visible="no" active="yes"/>
 <layer number="26" name="bNames" color="7" fill="1" visible="no" active="yes"/>
 <layer number="27" name="tValues" color="7" fill="1" visible="no" active="yes"/>
@@ -58,8 +58,8 @@
 <layer number="48" name="Document" color="7" fill="1" visible="no" active="yes"/>
 <layer number="49" name="Reference" color="7" fill="1" visible="no" active="yes"/>
 <layer number="50" name="dxf" color="7" fill="1" visible="no" active="no"/>
-<layer number="51" name="tDocu" color="7" fill="1" visible="no" active="yes"/>
-<layer number="52" name="bDocu" color="7" fill="1" visible="yes" active="yes"/>
+<layer number="51" name="tDocu" color="7" fill="1" visible="yes" active="yes"/>
+<layer number="52" name="bDocu" color="7" fill="1" visible="no" active="yes"/>
 <layer number="53" name="tGND_GNDA" color="7" fill="9" visible="no" active="no"/>
 <layer number="54" name="bGND_GNDA" color="1" fill="9" visible="no" active="no"/>
 <layer number="56" name="wert" color="7" fill="1" visible="no" active="no"/>
@@ -187,7 +187,7 @@
 <text x="34.242375" y="73.81875" size="1.016" layer="26" font="vector" ratio="20" rot="MR180">RX</text>
 <text x="34.242375" y="71.262875" size="1.016" layer="26" font="vector" ratio="20" rot="MR180">TX</text>
 <text x="40.370125" y="67.72275" size="1.016" layer="26" font="vector" ratio="20" rot="MR0">TX_ORIG</text>
-<text x="6.461125" y="83.31525" size="1.27" layer="25" font="vector" ratio="20">Cosmo2ex HDD 4.05</text>
+<text x="11.302375" y="77.56525" size="1.27" layer="25" font="vector" ratio="20">Cosmo2ex ACSI 4.05</text>
 <circle x="40.3425" y="75.815" radius="3.435203125" width="0" layer="39"/>
 <circle x="40.3425" y="75.815" radius="3.458053125" width="0" layer="40"/>
 <circle x="40.3425" y="75.815" radius="3.44984375" width="0" layer="41"/>
@@ -196,19 +196,9 @@
 <circle x="40.421875" y="75.894375" radius="3.53998125" width="0.254" layer="21"/>
 <text x="36.55625" y="73.398125" size="1.016" layer="25" font="vector" ratio="20" rot="R270">IKBD</text>
 <text x="34.29" y="68.341875" size="1.016" layer="25" font="vector" ratio="20">TX_ORIG</text>
-<circle x="-30.818125" y="-47.30125" radius="3.435203125" width="0" layer="39"/>
-<circle x="-30.818125" y="-47.30125" radius="3.458053125" width="0" layer="40"/>
-<circle x="-30.818125" y="-47.30125" radius="3.44984375" width="0" layer="41"/>
-<circle x="-30.818125" y="-47.30125" radius="3.460784375" width="0" layer="42"/>
-<hole x="-30.818125" y="-47.30125" drill="2.8"/>
-<circle x="-30.73875" y="-47.221875" radius="3.53998125" width="0.254" layer="21"/>
 <text x="34.242375" y="70.342125" size="1.016" layer="25" font="vector" ratio="20">TX</text>
 <text x="34.242375" y="72.86625" size="1.016" layer="25" font="vector" ratio="20">RX</text>
 <text x="34.3535" y="75.422125" size="1.016" layer="25" font="vector" ratio="20">GND</text>
-<circle x="-20.025" y="88.065" radius="3.435203125" width="0" layer="39"/>
-<circle x="-20.025" y="88.065" radius="3.458053125" width="0" layer="40"/>
-<circle x="-20.025" y="88.065" radius="3.44984375" width="0" layer="41"/>
-<circle x="-20.025" y="88.065" radius="3.460784375" width="0" layer="42"/>
 <rectangle x1="36.35375" y1="65.7225" x2="38.496875" y2="67.6275" layer="41"/>
 <wire x1="-32.54375" y1="79.771875" x2="44.211875" y2="79.771875" width="0" layer="20"/>
 <wire x1="44.211875" y1="79.771875" x2="44.29125" y2="9.2075" width="0" layer="20"/>
@@ -3647,17 +3637,6 @@ design rules under a new name.</description>
 <wire x1="8.766875" y1="72.233125" x2="8.766875" y2="70.623125" width="0.3048" layer="1"/>
 </signal>
 </signals>
-<errors>
-<approved hash="19,1,75180b8972ee790a"/>
-<approved hash="19,1,d31b4583c7fc760c"/>
-<approved hash="19,1,ff150d955a0343fb"/>
-<approved hash="19,1,8d1ceb81291842f3"/>
-<approved hash="19,1,63243db09414b5c9"/>
-<approved hash="19,1,dd1b77be0b22acf3"/>
-<approved hash="19,1,b318d5c3104651eb"/>
-<approved hash="19,1,ad05271d6385d4eb"/>
-<approved hash="19,1,f518eb393dae76fb"/>
-</errors>
 </board>
 </drawing>
 </eagle>
