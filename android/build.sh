@@ -36,7 +36,13 @@ docker run --rm \
         mkdir /tmp/build
         cd /src && tar cf - --exclude=.gradle-cache . | tar xf - -C /tmp/build
         cd /tmp/build
-        gradle --no-daemon --console=plain assembleRelease
+        # retried: Maven Central answers 429 Too Many Requests to busy CI runners, what got downloaded stays in the cache
+        for try in 1 2 3; do
+            gradle --no-daemon --console=plain assembleRelease && break
+            [ $try -lt 3 ] || exit 1
+            echo "gradle failed (attempt $try), retrying in 60 s"
+            sleep 60
+        done
         cp app/build/outputs/apk/release/app-release.apk /out/ce_floppy.apk'
 
 ls -l "$OUT/ce_floppy.apk"

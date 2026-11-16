@@ -79,7 +79,14 @@ typedef struct { uint8_t id[PICO_UNIQUE_BOARD_ID_SIZE_BYTES]; } pico_unique_boar
 void pico_get_unique_board_id(pico_unique_board_id_t *id_out);
 
 //--------------------------------------------------------
-// gpio - no-ops, the tested code uses them only through the LED macros
+// gpio - no-ops, the tested code uses them only through the LED macros and debugDongleDetect()
+// (gpio_get() always 0 = no loopback dongle seen)
+#define GPIO_IN     false
+#define GPIO_OUT    true
+
+inline void gpio_init(uint) {}
+inline void gpio_set_dir(uint, bool) {}
+inline void gpio_pull_up(uint) {}
 inline void gpio_put(uint, bool) {}
 inline bool gpio_get(uint) { return false; }
 inline bool gpio_get_out_level(uint) { return false; }

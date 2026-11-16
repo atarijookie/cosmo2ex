@@ -95,6 +95,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: actions/cache@v4                  # Gradle dependencies - Maven Central answers 429 to runners that download them every run
+        with:
+          path: android/.gradle-cache/caches/modules-2
+          key: gradle-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle.properties', 'android/Dockerfile') }}
+          restore-keys: gradle-
+
       - name: Build Android app
         run: VERSION="${GITHUB_REF_NAME#v}" android/build.sh
 
