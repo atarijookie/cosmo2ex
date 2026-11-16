@@ -6,7 +6,7 @@
 <setting alwaysvectorfont="no"/>
 <setting verticaltext="up"/>
 </settings>
-<grid distance="0.05" unitdist="inch" unit="inch" style="lines" multiple="1" display="yes" altdistance="0.1" altunitdist="mm" altunit="mm"/>
+<grid distance="0.05" unitdist="inch" unit="inch" style="lines" multiple="1" display="yes" altdistance="0.025" altunitdist="inch" altunit="inch"/>
 <layers>
 <layer number="1" name="Top" color="4" fill="1" visible="yes" active="yes"/>
 <layer number="2" name="Route2" color="1" fill="3" visible="yes" active="yes"/>
@@ -413,8 +413,8 @@ PN21LENA03QE</description>
 <wire x1="7" y1="2.7" x2="7" y2="6.7" width="0.8128" layer="46"/>
 <smd name="P$2" x="7" y="4.7" dx="6" dy="3" layer="16" rot="R90"/>
 <wire x1="11.5" y1="0.7" x2="11.5" y2="1.3" width="0.127" layer="21"/>
-<rectangle x1="5.4" y1="1.6" x2="13.1" y2="7.8" layer="39"/>
-<rectangle x1="5.4" y1="1.7" x2="13.1" y2="7.8" layer="41"/>
+<smd name="P$3" x="6.9954" y="4.7" dx="6" dy="3" layer="1" rot="R90"/>
+<smd name="P$4" x="11.5124" y="4.7" dx="6" dy="3" layer="1" rot="R90"/>
 </package>
 </packages>
 <symbols>
@@ -880,8 +880,8 @@ Pätica; Montáž: SMT,horizontálne; Rozmer: CR2032,DL2032; H: 5,5mm</descripti
 <devices>
 <device name="" package="SMRS-1">
 <connects>
-<connect gate="G$1" pin="P$1" pad="P$1"/>
-<connect gate="G$1" pin="P$2" pad="P$2"/>
+<connect gate="G$1" pin="P$1" pad="P$1 P$4"/>
+<connect gate="G$1" pin="P$2" pad="P$2 P$3"/>
 </connects>
 <technologies>
 <technology name=""/>
