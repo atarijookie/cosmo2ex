@@ -8,6 +8,7 @@
 #include "scsi.h"
 #include "ipc.h"
 #include "pico/time.h"
+#include "boot_status.h"
 
 extern EthernetClient clientHdd;
 extern EthernetClient clientIkbd;
@@ -18,6 +19,7 @@ void getCmdLengthFromCmdBytesAcsi(void);
 void getCmdLengthFromCmdBytesScsi(uint8_t cmd);
 
 extern uint8_t atnSendACSIcommand[ATN_SENDACSICOMMAND_LEN_TX];
+extern volatile bool connected;
 
 //----------
 uint8_t cmd[17];   // received command bytes - up to 16 B CDB + 1 B ICD marker
@@ -30,6 +32,12 @@ uint8_t onGetCommand(void)
     uint8_t good = IS_ACSI ? onGetCommandAcsi() : onGetCommandScsi();
 
     if (!good)  // if failed to get the cmd, quit
+    {
+        timeoutClear();
+        return STATE_GET_COMMAND;
+    }
+
+    if (!connected && bootStatusCommand(cmd, cmdLen))   // no host yet - answered here (boot status sector, not ready)
     {
         timeoutClear();
         return STATE_GET_COMMAND;

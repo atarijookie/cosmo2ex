@@ -10,6 +10,7 @@ struct AcsiFixture : FirmwareFixture {
     AcsiFixture() {
         fakeBridge = FakeBridge();
         hwVariant = VARIANT_ACSI;     // merged firmware - run the ACSI code paths
+        connected = true;             // commands go to host - not connected is in tests/hdd/test_boot_status.cpp
     }
 };
 

@@ -11,6 +11,7 @@ struct ScsiFixture : FirmwareFixture {
     ScsiFixture() {
         fakeBridge = FakeBridge();
         hwVariant = VARIANT_SCSI;     // merged firmware - run the SCSI code paths
+        connected = true;             // commands go to host - not connected is in tests/hdd/test_boot_status.cpp
     }
 };
 

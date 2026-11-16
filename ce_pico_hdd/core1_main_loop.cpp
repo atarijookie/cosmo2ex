@@ -63,6 +63,8 @@ void core1_setup(void)
     pioConfigAll();     // configure all PIO state machines
 
     resetBridge();
+
+    busStartListening(); // SCSI too answers right away - while not connected with the boot status (boot_status.cpp)
 }
 
 // ACSI: got the 1st command byte? SCSI: is the selection happening?
@@ -80,15 +82,8 @@ void core1_main_loop(void)
     debug("CORE 1 main\n");
     core1running = true;
 
-    bool listening = false;
-
     while(1)
     {
-        if(!listening && connected) {           // connected to host - start answering the Atari (SCSI doesn't touch the bus until then)
-            listening = true;
-            busStartListening();
-        }
-
         if(IS_ACSI && BIT_IS_L(PIN_RESET)) {   // when ACSI RESET is L, enter reset mode - no PIO transfers
             core1state = STATE_GET_COMMAND;
             pioConfig(MODE_RESET);

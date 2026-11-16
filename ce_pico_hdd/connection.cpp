@@ -7,6 +7,7 @@
 #include "ipc.h"
 #include "sting_net.h"
 #include "fw_update.h"
+#include "boot_status.h"
 
 #define SERVER_UDP_PORT 7200 // port number where CE listens for client requests
 #define CLIENT_UDP_PORT 7201 // port where this client should listen for CE responses
@@ -316,6 +317,9 @@ void dhcpMaintain(void)
 
             debug("dhcpMaintain - ip changed from %s to %s, reconnecting\n", ipBefore.toString().c_str(), ipNow.toString().c_str());
 
+            uint8_t ipBytes[4] = {ipNow[0], ipNow[1], ipNow[2], ipNow[3]};
+            bootStatusSetOwnIp(ipBytes);
+
             clientHdd.stop();
             connected = false;
             break;
@@ -373,6 +377,11 @@ void connectToHost(void)
 
     // connect to CE server
     connectToCEhost();
+
+    if(!connected) {    // for the boot status sector - shown while not connected
+        bool hostKnown = hostIp[0] != 0 && hostPortHdd != 0;
+        bootStatusSet(hostKnown ? BOOTST_CONNECTING : BOOTST_SEARCHING, hostKnown ? hostIp : NULL);
+    }
 }
 
 bool getIncommingHeader(EthernetClient* client, uint32_t expectedSyncTag, THeader* header)

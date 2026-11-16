@@ -53,8 +53,10 @@ bool isAtnAsserted(void)
     return res;
 }
 
-// False until connected to host (scsiStartListening()), stays true then. Till then the bus is ignored: the input chip stays disabled
-// and RST_CD_REQ is driven L, so the device doesn't react to the bus (e.g. floating lines without TERMPWR) before it can serve it.
+// False until the end of core 1 setup (scsiStartListening()), stays true then. Till then the bus is ignored: the input chip stays
+// disabled and RST_CD_REQ is driven L, so the PIO / pin setup doesn't react to the bus. From then on the device answers also
+// while not connected to the host (boot status, see boot_status.cpp). The neopixel can't disturb that: it's sent only between
+// commands, and its gate (OUT_LE1 AND OUT_LE2) is never open otherwise - see scsiNeopixelOutput().
 static bool scsiListening = false;
 
 // for reset / selection phases
@@ -75,7 +77,7 @@ static void setScsiPhaseForSelection(void)
     gpio_set_function(PIN_RST_CD_REQ_CP, GPIO_FUNC_SIO);
     gpio_set_function(PIN_ATN_MSG, GPIO_FUNC_SIO);
 
-    if(!scsiListening) {            // not listening yet - input chip disabled, neopixel pin L
+    if(!scsiListening) {            // not listening yet - input chip disabled, RST_CD_REQ driven L
         gpio_put(PIN_IN_OE, 1);
         gpio_put(PIN_RST_CD_REQ_CP, 0);
         gpio_set_dir(PIN_RST_CD_REQ_CP, GPIO_OUT);

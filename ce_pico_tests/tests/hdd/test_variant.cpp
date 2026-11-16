@@ -8,7 +8,7 @@
 namespace {
 
 struct VariantFixture : FirmwareFixture {
-    VariantFixture() { fakeBridge = FakeBridge(); }
+    VariantFixture() { fakeBridge = FakeBridge(); connected = true; }     // commands go to host
 };
 
 }

@@ -20,8 +20,29 @@
 
 The LED gets updated only between commands, when its color changes. ACSI sends the data on GP9
 (IC6 gate held open by R151). SCSI sends it on OUT_LE1 (IC6.A) with OUT_LE2 (IC6.B) as the gate - the firmware never has both
-H except for the LED update, so the bus activity doesn't get to the LED. On SCSI the device ignores the bus until it's
-connected to the host (the Atari doesn't see the drive till then).
+H except for the LED update, so the bus activity doesn't get to the LED. Both variants answer the bus right from the end of
+the core 1 setup - before the connection to the host with the boot status (below).
+
+## Boot status (before the host is connected)
+
+When the Atari boots sooner than the device gets connected to the host, it would just not see the drive. So while not
+connected, core 1 answers the ACSI / SCSI commands of the enabled IDs itself (`boot_status.cpp`):
+
+- the lowest enabled ID: READ of sector 0 gives the boot status root sector (`boot_status/status.s`), sector 1 the status
+  (`CE2XSTAT`, code, change counter, VT52 text - same layout as the status sector of ce_pico_fdd). Other sectors: CHECK CONDITION.
+- REQUEST SENSE: NOT READY, becoming ready. HOSTMOD_RAW_NET (STinG / MiNTnet): to core 0 as before. Anything else: CHECK CONDITION.
+
+The root sector reads sectors 0 + 1 once a second (DMAread on TOS 2.00+, direct ACSI DMA on TOS 1.x) and prints the text
+when it changes: starting, no cable, waiting for IP / no DHCP, looking for the host, connecting to the host (with the IPs).
+Once sector 1 isn't the status any more, the host answers: the real sector 0 is in the buffer already, and when it's
+executable it's run with the registers from TOS - e.g. the CE_DD boot sector of a translated drive, so the boot goes on
+without a reset. SPACE stops the waiting, 3 failed reads in a row too.
+
+After changing `boot_status/status.s` run `python3 boot_status/make_bootsector.py` (needs m68k-atari-mint binutils) - it
+regenerates `boot_status_data.h`, which is committed, as Arduino can't run it. The code must stay below 0x1c2 (partition table).
+
+Note: if the lowest enabled ACSI ID is an SLM printer, the root sector would go to the printer ID - keep the printer on a
+higher ID than the drives (as usual: drives from 0, printer on 7).
 
 ## Debug output
 

@@ -48,6 +48,7 @@
 #include "sting_net.h"
 #include "pin_test.h"
 #include "fw_update.h"
+#include "boot_status.h"
 
 uint16_t version[2] = {0xa026, 0x1114}; // this means: hAns, 2026-11-14
 
@@ -89,12 +90,14 @@ void ethernetInit(void)
     ledSetInitStep(LED_STEP_ETHERNET);
 
     Ethernet.init(17);              // WIZnet W6100-EVB-Pico
+    bootStatusSet(BOOTST_WAIT_IP);
 
     while(true) {
         int gotIp = Ethernet.begin(settings.mac, 10000);    // set mac, get IP via DHCP, wait at most 10 s
 
         if(Ethernet.hardwareStatus() == EthernetNoHardware) {
             debug("No ethernet. HALT!\n");
+            bootStatusSet(BOOTST_NO_ETHERNET);
             haltWithError(LED_ERR_NO_ETHERNET);
         }
 
@@ -106,9 +109,11 @@ void ethernetInit(void)
         if(Ethernet.linkStatus() == LinkOFF) {
             debug("cable not connected\n");
             ledSetError(LED_ERR_NO_LINK);
+            bootStatusSet(BOOTST_NO_LINK);
         } else {
             debug("no IP from DHCP, retrying\n");
             ledSetError(LED_ERR_NO_DHCP);
+            bootStatusSet(BOOTST_NO_DHCP);
         }
 
         sleep_ms(500);
@@ -116,6 +121,11 @@ void ethernetInit(void)
 
     debug("eth ip: %s\n", Ethernet.localIP().toString().c_str());
     ledSetInitStep(LED_STEP_GOT_IP);
+
+    IPAddress ip = Ethernet.localIP();
+    uint8_t ipBytes[4] = {ip[0], ip[1], ip[2], ip[3]};
+    bootStatusSetOwnIp(ipBytes);
+    bootStatusSet(BOOTST_SEARCHING);
 
     // store mac to fw version buffer
     memcpy(atnSendFwVersion + TX_HEADER_SIZE + 6, settings.mac, 6);
