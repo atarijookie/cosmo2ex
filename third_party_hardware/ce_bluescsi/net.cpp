@@ -1,4 +1,4 @@
-// Network for the host connection - see net.h. WiFi on the Pico W / Pico 2 W, the W6100 (EVB-Pico) is not done yet.
+// Network for the host connection - see net.h. WiFi on the Pico W / Pico 2 W, W6100 on the W6100-EVB-Pico / -Pico2.
 
 #include "defs.h"
 #include "board.h"
@@ -13,11 +13,14 @@
     #define NET_HAS_WIFI    0
 #endif
 
+
 // The WiFi credentials - for now from secrets.h, which is NOT in git (see .gitignore and secrets.example.h).
 // Without it the device has no network (captive portal on SW1 will come later).
 #if __has_include("secrets.h")
     #include "secrets.h"
 #endif
+#include "net_w6100.h"   // the W6100 part - in its own file, its Ethernet.h can't meet WiFi.h (both define EthernetLinkStatus)
+
 #ifndef WIFI_SSID
     #define WIFI_SSID       ""
 #endif
@@ -31,6 +34,7 @@
 #define LINK_LOSS_GRACE_MS      5000    // the WiFi link gone for less than this - keep the host connection, the chip may get it back
 
 static uint8_t state = NETST_STARTING;
+
 
 static const char* ssid = WIFI_SSID;
 static const char* password = WIFI_PASSWORD;
@@ -155,6 +159,7 @@ static void wifiProcess(void)
 
 #endif
 
+
 //--------------------------------------------------------
 
 bool netStart(void)
@@ -175,18 +180,36 @@ bool netStart(void)
     }
 #endif
 
-    debug("net - %s: W6100 not supported yet\n", board.name);
+    if(!BOARD_IS_WIFI) {
+        state = w6100Start() ? NETST_WAIT_IP : NETST_NO_HW;
+        return state != NETST_NO_HW;
+    }
+
+    debug("net - %s: built without WiFi support\n", board.name);   // Pico 2 W on the Pico 2 (W6100-EVB-Pico2) build
     state = NETST_NO_HW;
     return false;
 }
 
 void netProcess(void)
 {
+    if(state == NETST_NO_CONFIG || state == NETST_NO_HW) {
+        return;
+    }
+
 #if NET_HAS_WIFI
-    if(BOARD_IS_WIFI && state != NETST_NO_CONFIG && state != NETST_NO_HW) {
+    if(BOARD_IS_WIFI) {
         wifiProcess();
+        return;
     }
 #endif
+
+    if(!BOARD_IS_WIFI) {
+        uint8_t newState = w6100Process(state);
+        if(newState != state) {
+            debug("net - state %d -> %d\n", state, newState);
+            state = newState;
+        }
+    }
 }
 
 uint8_t netState(void)
@@ -211,8 +234,12 @@ void netLogLinkInfo(void)
     if(BOARD_IS_WIFI) {
         debug("net - WiFi status %d, state %d, RSSI %d dBm, link losses %u, ready %u ms ago\n", (int) WiFi.status(), state,
               (int) WiFi.RSSI(), linkLossCount, millis() - lastReadyMs);
+        return;
     }
 #endif
+    if(!BOARD_IS_WIFI) {
+        debug("net - W6100 link %s, state %d\n", w6100LinkUp() ? "up" : "down", state);
+    }
 }
 
 const char* netName(void)
@@ -232,6 +259,9 @@ IPAddress netLocalIP(void)
         return WiFi.localIP();
     }
 #endif
+    if(state == NETST_READY) {
+        return w6100LocalIP();
+    }
     return IPAddress(0, 0, 0, 0);
 }
 
@@ -242,6 +272,9 @@ IPAddress netSubnetMask(void)
         return WiFi.subnetMask();
     }
 #endif
+    if(state == NETST_READY) {
+        return w6100SubnetMask();
+    }
     return IPAddress(0, 0, 0, 0);
 }
 
@@ -253,7 +286,7 @@ void netGetMac(uint8_t* mac)
         return;
     }
 #endif
-    memcpy(mac, settings.mac, 6);   // W6100 - our own MAC
+    memcpy(mac, settings.mac, 6);   // W6100 - our own MAC (from the board ID, see loadSettings())
 }
 
 Client& netHddClient(void)
@@ -263,6 +296,9 @@ Client& netHddClient(void)
         return wifiClientHdd;
     }
 #endif
+    if(!BOARD_IS_WIFI) {
+        return w6100Client();
+    }
     return nullClient;
 }
 
@@ -271,8 +307,10 @@ void netBeforeConnect(void)
 #if NET_HAS_WIFI
     if(BOARD_IS_WIFI) {
         wifiClientHdd.setTimeout(CONNECT_TIMEOUT_MS);   // for connect() - netAfterConnect() changes it for write()
+        return;
     }
 #endif
+    w6100BeforeConnect();
 }
 
 UDP& netUdp(void)
@@ -282,6 +320,9 @@ UDP& netUdp(void)
         return wifiUdp;
     }
 #endif
+    if(!BOARD_IS_WIFI) {
+        return w6100Udp();
+    }
     return nullUdp;
 }
 
@@ -294,4 +335,9 @@ void netAfterConnect(void)
         // not setSync(true) like FDD: it would wait for the ACK of each write - too slow for the sector data
     }
 #endif
+}
+
+bool netHasRawNet(void)
+{
+    return !BOARD_IS_WIFI && state != NETST_NO_HW;
 }

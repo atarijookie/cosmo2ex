@@ -2,8 +2,16 @@
 
 TBoard board;
 
+#if defined(PICO_RP2350)
+    #define NAME_WIFI   "Pico 2 W"
+    #define NAME_EVB    "W6100-EVB-Pico2"
+#else
+    #define NAME_WIFI   "Pico W"
+    #define NAME_EVB    "W6100-EVB-Pico"
+#endif
+
 static const TBoard boardPicoW = {
-    BOARD_PICO_W, "Pico W",
+    BOARD_PICO_W, NAME_WIFI,
     19,     // REQ
     18,     // C/D + SEL
     20,     // MSG + BSY in
@@ -16,7 +24,7 @@ static const TBoard boardPicoW = {
 };
 
 static const TBoard boardW6100Evb = {
-    BOARD_W6100_EVB, "W6100-EVB-Pico",
+    BOARD_W6100_EVB, NAME_EVB,
     10,     // REQ          - wire from BlueSCSI GP19
     11,     // C/D + SEL    - wire from BlueSCSI GP18
     12,     // MSG + BSY in - wire from BlueSCSI GP20
@@ -30,8 +38,8 @@ static const TBoard boardW6100Evb = {
 
 // The arduino core decides before setup() whether the WiFi chip is there and starts it:
 // - RP2040 built for Pico W: checked at runtime (GP29 / GP25), so this build runs also on a plain Pico / W6100-EVB-Pico.
-// - RP2350 built for Pico 2 W: no runtime check, the WiFi chip is always assumed - the W6100-EVB-Pico2 will need its
-//   own build (board: Raspberry Pi Pico 2).
+// - RP2350 built for Pico 2 W: no runtime check, the WiFi chip is always assumed - the W6100-EVB-Pico2 has its own
+//   build (board: Raspberry Pi Pico 2), where isPicoW() is always false.
 void boardDetect(void)
 {
     board = rp2040.isPicoW() ? boardPicoW : boardW6100Evb;

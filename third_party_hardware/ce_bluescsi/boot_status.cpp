@@ -7,7 +7,8 @@
 //   within sectors 0..1 - anything else, e.g. the 32 sectors CE_DD's boot sector loads from sector 1 when the connection
 //   drops right after the chain to it, gets CHECK CONDITION, so nothing runs the status data as code.
 // - REQUEST SENSE: NOT READY, logical unit is becoming ready.
-// - HOSTMOD_RAW_NET (STinG / MiNTnet) commands: no raw network on this board (yet), CHECK CONDITION as anything else.
+// - HOSTMOD_RAW_NET (STinG / MiNTnet) commands: on the W6100 boards not handled here, core 0 answers them also without
+//   the host (sting_net.cpp). On WiFi there's no raw network - CHECK CONDITION as anything else.
 // - anything else: CHECK CONDITION.
 // Once connected, all of it goes to the host as before.
 
@@ -19,6 +20,7 @@
 #include "command_handling.h"
 #include "scsi.h"
 #include "net.h"
+#include "sting_net.h"
 #include "boot_status.h"
 #include "boot_status_data.h"
 
@@ -116,6 +118,14 @@ static void makeStatusSector(uint8_t id)
             snprintf(state, sizeof(state), " Waiting for an IP address (DHCP)...");
             break;
 
+        case BOOTST_NET_NO_LINK:
+            snprintf(state, sizeof(state), " Ethernet cable not connected.");
+            break;
+
+        case BOOTST_NET_NO_DHCP:
+            snprintf(state, sizeof(state), " No IP address from DHCP yet,\r\n still trying...");
+            break;
+
         case BOOTST_SEARCHING:
             snprintf(state, sizeof(state), " IP address: %d.%d.%d.%d\r\n\r\n Looking for the Cosmo2ex host...",
                      own[0], own[1], own[2], own[3]);
@@ -203,6 +213,10 @@ bool bootStatusCommand(uint8_t* cmd, uint8_t cmdLen)
     if(cmdLen < (icd ? 7 : 6)) {
         sendStatus(SCSI_ST_CHECK_CONDITION);
         return true;
+    }
+
+    if(netHasRawNet() && (p[0] & 0x1f) == 0 && p[1] == 'C' && p[2] == 'E' && (p[3] & 0x7f) == HOSTMOD_RAW_NET) {
+        return false;       // W6100: network for STinG / MiNTnet - core 0 does it, also without the host
     }
 
     if(!icd) {

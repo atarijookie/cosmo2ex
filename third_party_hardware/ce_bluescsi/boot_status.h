@@ -15,6 +15,8 @@
 #define BOOTST_CONNECTING       7       // host found, connecting to it
 #define BOOTST_NET_JOINING      8       // joining the WiFi network
 #define BOOTST_NET_NO_CONFIG    9       // no WiFi network set (halted)
+#define BOOTST_NET_NO_LINK      10      // W6100: ethernet cable not connected
+#define BOOTST_NET_NO_DHCP      5       // W6100: no answer from DHCP, retrying
 
 // core 0
 void bootStatusSet(uint8_t code, const uint8_t* hostIp = NULL);     // hostIp: for BOOTST_CONNECTING

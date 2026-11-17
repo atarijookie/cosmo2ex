@@ -8,7 +8,7 @@
 // - Pico W / Pico 2 W: plugged in as is, network over WiFi.
 // - W6100-EVB-Pico / -Pico2: the W6100 sits on GP16..GP21, which are SCSI control lines on the BlueSCSI. These 6 header
 //   pins must stay unconnected, and 4 wires move the signals to GP10..GP13 (the SD card pins - the SD slot must stay
-//   empty). Network over the W6100 - NOT IMPLEMENTED YET.
+//   empty). Network over the W6100 (net.cpp), STinG / MiNTnet raw network too (sting_net.cpp).
 //
 // GPIO   BlueSCSI net     Pico W / 2W   W6100-EVB   meaning (target mode)
 // 0..7   DB0..DB7         0..7          0..7        data, inverted (L on the GPIO = 1 on the bus)

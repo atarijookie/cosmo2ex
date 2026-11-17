@@ -30,8 +30,11 @@ FQBN_HDD="rp2040:rp2040:rpipico:flash=2097152_524288,freq=133,opt=Small,os=none,
 # Raspberry Pi Pico 2 W, with the Arduino IDE settings from ce_pico_fdd/readme.md and the top of ce_pico_fdd.ino
 FQBN_FDD="rp2040:rp2040:rpipico2w:arch=arm,flash=4194304_2097152,freq=150,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only,wificountry=worldwide,uploadmethod=picoprobe_cmsis_dap"
 
-# BlueSCSI v2 board with Raspberry Pi Pico 2 W, with the Arduino IDE settings from the top of third_party_hardware/ce_bluescsi/ce_bluescsi.ino
-FQBN_BLUESCSI="rp2040:rp2040:rpipico2w:arch=arm,flash=4194304_2097152,freq=150,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only,wificountry=worldwide,uploadmethod=picoprobe_cmsis_dap"
+# BlueSCSI v2 board, with the Arduino IDE settings from the top of third_party_hardware/ce_bluescsi/ce_bluescsi.ino - 3 builds:
+# Pico W (also runs on the W6100-EVB-Pico), Pico 2 W, Pico 2 (for the W6100-EVB-Pico2)
+FQBN_BLUESCSI_W="rp2040:rp2040:rpipicow:flash=2097152_1048576,freq=133,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only,wificountry=worldwide,uploadmethod=picoprobe_cmsis_dap"
+FQBN_BLUESCSI_2W="rp2040:rp2040:rpipico2w:arch=arm,flash=4194304_2097152,freq=150,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only,wificountry=worldwide,uploadmethod=picoprobe_cmsis_dap"
+FQBN_BLUESCSI_2="rp2040:rp2040:rpipico2:arch=arm,flash=4194304_2097152,freq=150,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only,uploadmethod=picoprobe_cmsis_dap"
 
 # RP2040-Zero (Waveshare and its clones), with the Arduino IDE settings from ce_pico_display/readme.md - Generic RP2040
 # with the slow generic flash access (boot2), as the clones come with various flash chips
@@ -50,10 +53,10 @@ for projectPath in "$@"; do
     echo "Compiling $projectPath"
 
     case "$project" in
-        ce_pico_fdd)     FQBN=$FQBN_FDD ;;
-        ce_pico_display) FQBN=$FQBN_DISPLAY ;;
-        ce_bluescsi)     FQBN=$FQBN_BLUESCSI ;;
-        *)               FQBN=$FQBN_HDD ;;
+        ce_pico_fdd)     FQBNS=$FQBN_FDD ;;
+        ce_pico_display) FQBNS=$FQBN_DISPLAY ;;
+        ce_bluescsi)     FQBNS="$FQBN_BLUESCSI_W $FQBN_BLUESCSI_2W $FQBN_BLUESCSI_2" ;;   # one firmware per board
+        *)               FQBNS=$FQBN_HDD ;;
     esac
 
     # copy of the sketch with freshly generated PIO headers (the repo might be read-only, as in build.sh)
@@ -72,28 +75,32 @@ for projectPath in "$@"; do
         fi
     done
 
-    # the (slightly patched) Ethernet library shared by all the projects, must win over any other one
-    arduino-cli compile \
-        --fqbn "$FQBN" \
-        --library "$SRC/third_party/Ethernet" \
-        --build-path "$BUILD/$project" \
-        --warnings default \
-        "$SKETCH"
+    variant=0
+    for FQBN in $FQBNS; do
+        variant=$((variant + 1))
+        # the (slightly patched) Ethernet library shared by all the projects, must win over any other one
+        arduino-cli compile \
+            --fqbn "$FQBN" \
+            --library "$SRC/third_party/Ethernet" \
+            --build-path "$BUILD/$project-$variant" \
+            --warnings default \
+            "$SKETCH"
 
-    # device type from the firmware identity ("CEFWID:dev=HDD;type=W6100-EVB-PICO;..."), the display has none
-    TYPE=$(LC_ALL=C grep -aoE 'CEFWID:dev=[A-Z]+;type=[A-Z0-9-]+' "$BUILD/$project/$project.ino.bin" | head -n 1 | sed 's/.*type=//')
-    if [ -z "$TYPE" ]; then
+        # device type from the firmware identity ("CEFWID:dev=HDD;type=W6100-EVB-PICO;..."), the display has none
+        TYPE=$(LC_ALL=C grep -aoE 'CEFWID:dev=[A-Z]+;type=[A-Z0-9-]+' "$BUILD/$project-$variant/$project.ino.bin" | head -n 1 | sed 's/.*type=//')
+        if [ -z "$TYPE" ]; then
+            case "$project" in
+                ce_pico_display) TYPE=RP2040-ZERO ;;
+                *) echo "ERROR: no firmware identity found in $project"; exit 1 ;;
+            esac
+        fi
+
         case "$project" in
-            ce_pico_display) TYPE=RP2040-ZERO ;;
-            *) echo "ERROR: no firmware identity found in $project"; exit 1 ;;
+            ce_bluescsi) NAME="ce_pico_hdd_${TYPE}" ;;     # the web UI makes the name from dev (HDD) + type
+            *)           NAME="${project}_${TYPE}" ;;
         esac
-    fi
-
-    case "$project" in
-        ce_bluescsi) NAME="ce_pico_hdd_${TYPE}" ;;     # the web UI makes the name from dev (HDD) + type
-        *)           NAME="${project}_${TYPE}" ;;
-    esac
-    cp "$BUILD/$project/$project.ino.uf2" "$OUT/$NAME.uf2"
-    cp "$BUILD/$project/$project.ino.elf" "$OUT/$NAME.elf"
-    echo "Created $OUT/$NAME.uf2"
+        cp "$BUILD/$project-$variant/$project.ino.uf2" "$OUT/$NAME.uf2"
+        cp "$BUILD/$project-$variant/$project.ino.elf" "$OUT/$NAME.elf"
+        echo "Created $OUT/$NAME.uf2"
+    done
 done

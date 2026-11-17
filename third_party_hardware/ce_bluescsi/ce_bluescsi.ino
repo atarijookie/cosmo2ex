@@ -2,21 +2,27 @@
     ce_bluescsi - CosmosEx HDD (SCSI) on the BlueSCSI v2 board, with the network instead of the SD card.
     See readme.md. The host protocol is the same as ce_pico_hdd, the host sees it as a SCSI HDD.
 
-    Arduino IDE settings needed to compile it (the same as FQBN_BLUESCSI in firmware/compile.sh and in readme.md - keep
-    them in sync; the release file is ce_pico_hdd_BLUESCSI-PICO-2W.uf2):
+    3 builds - the same sources, the board chosen in the Arduino IDE decides (keep in sync with FQBN_BLUESCSI_* in
+    firmware/compile.sh; the release files are ce_pico_hdd_<type>.uf2, type from fw_update.h):
+
+    pico module on the BlueSCSI          Board (Tools menu)       Flash Size                     CPU Speed  release type
+    Pico W  or  W6100-EVB-Pico (*)       Raspberry Pi Pico W      2MB (Sketch: 1MB, FS: 1MB)     133 MHz    BLUESCSI-PICO-W
+    Pico 2 W                             Raspberry Pi Pico 2W     4MB (Sketch: 2MB, FS: 2MB)     150 MHz    BLUESCSI-PICO-2W
+    W6100-EVB-Pico2 (*)                  Raspberry Pi Pico 2      4MB (Sketch: 2MB, FS: 2MB)     150 MHz    BLUESCSI-W6100-EVB-PICO2
+
+    (*) with the adapter / 4 wires, see board.h. The RP2040 Pico W build finds out at runtime whether the WiFi chip is
+        there; the RP2350 Pico 2W build always starts the WiFi chip, so the EVB-Pico2 needs its own build.
 
     - core: Raspberry Pi Pico/RP2040/RP2350 by Earle F. Philhower (arduino-pico), version 5.4.2
             (Boards Manager URL: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json)
-    - no extra libraries - all used ones come with the core
+    - library: the patched Ethernet library from third_party/Ethernet (the same as ce_pico_hdd - see there how to link it
+            into the Arduino libraries dir), the rest comes with the core
     - WiFi credentials: copy secrets.example.h to secrets.h and fill it in (secrets.h is not in git)
 
-    Tools menu:
-    - Board:                Raspberry Pi Pico 2W
-    - CPU Architecture:     ARM
-    - Flash Size:           4MB (Sketch: 2MB, FS: 2MB)  - the FS is needed for the firmware update from the web UI (new +
-                                                          previous firmware); another FS size = different flash layout,
-                                                          the web update refuses it and the device must be flashed via USB
-    - CPU Speed:            150 MHz
+    Tools menu, the rest:
+    - Flash Size: see above - the FS is needed for the firmware update from the web UI (new + previous firmware); another
+                  FS size = different flash layout, the web update refuses it and the device must be flashed via USB
+    - CPU Architecture:     ARM  (RP2350)
     - Optimize:             Small (-Os) (standard)
     - Operating System:     None
     - Profiling:            Disabled
@@ -28,7 +34,7 @@
     - USB Stack:            Pico SDK  - NOT "No USB": with it the WiFi connection to the host stalls (see ce_pico_fdd/readme.md)
     - IP/Bluetooth Stack:   IPv4 Only
     - WiFi Region:          Worldwide
-    - Upload Method:        Picoprobe/Debugprobe (CMSIS-DAP)  - or hold BOOTSEL and copy the .uf2 onto the RP2350 drive
+    - Upload Method:        Picoprobe/Debugprobe (CMSIS-DAP)  - or hold BOOTSEL and copy the .uf2 onto the RPI-RP2 / RP2350 drive
 
     After changing a .pio file run firmware/pioasm.sh third_party_hardware/ce_bluescsi - the Arduino IDE doesn't
     regenerate the *.pio.h.
@@ -44,6 +50,7 @@
 #include "ipc.h"
 #include "led.h"
 #include "net.h"
+#include "sting_net.h"
 #include "fw_update.h"
 #include "boot_status.h"
 #include "core1_main_loop.h"
@@ -116,7 +123,7 @@ void setup(void)
 
     connectionInit();
     ledSetInitStep(LED_STEP_NETWORK);
-    bootStatusSet(BOOTST_NET_JOINING);
+    bootStatusSet(BOARD_IS_WIFI ? BOOTST_NET_JOINING : BOOTST_WAIT_IP);
 }
 
 // core 1 - the SCSI bus
@@ -178,24 +185,36 @@ void loop(void)
 
             // send SCSI command to host
             case STATE_GET_COMMAND:
+                if(stingNetCommand(bfr->data, bfr->length)) {  // network command of CE_ETH.STX (W6100 only), answered here, not by host
+                    break;
+                }
                 memcpy(atnSendACSIcommand + TX_HEADER_SIZE, bfr->data, bfr->length);
                 sendHeaderAndDataToHost(atnSendACSIcommand, ATN_SENDACSICOMMAND_LEN_TX - TX_HEADER_SIZE);
                 break;
 
             // create and send one header at the start
             case STATE_SEND_WRITE_MORE_DATA:
+                if(stingNetOwnsWrite()) {       // DMA write of STinG SEND, host doesn't know about it
+                    break;
+                }
                 storeHeader(header, ATN_WRITE_MORE_DATA, bfr->length);
                 sendDataToHost(header, TX_HEADER_SIZE);
                 break;
 
             // should write this data to host
             case STATE_DATA_WRITE:
+                if(stingNetOwnsWrite()) {
+                    stingNetWriteData(bfr->data, bfr->length);
+                    break;
+                }
                 sendDataToHost(bfr->data, bfr->length);
                 break;
         }
 
         ipcReleaseBuffer(bfr);
     }
+
+    stingNetProcess();      // raw ethernet frames for STinG (W6100 only)
 
     fwTrialLoop(connected); // new firmware after an update: confirm it once connected to host, or reboot (rollback)
 }

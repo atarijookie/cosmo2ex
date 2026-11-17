@@ -8,6 +8,7 @@
 #include "led.h"
 #include "fw_update.h"
 #include "boot_status.h"
+#include "sting_net.h"
 
 #define SERVER_UDP_PORT 7200 // port number where CE listens for client requests
 #define CLIENT_UDP_PORT 7201 // port where this client should listen for CE responses
@@ -271,6 +272,16 @@ static void showNetState(void)
         case NETST_WAIT_IP:
             ledSetInitStep(LED_STEP_NETWORK);
             bootStatusSet(BOOTST_WAIT_IP);
+            break;
+
+        case NETST_NO_LINK:
+            ledSetError(LED_ERR_NO_LINK);
+            bootStatusSet(BOOTST_NET_NO_LINK);
+            break;
+
+        case NETST_NO_DHCP:
+            ledSetError(LED_ERR_NO_DHCP);
+            bootStatusSet(BOOTST_NET_NO_DHCP);
             break;
 
         default:
@@ -541,6 +552,8 @@ static void handleReadDataReceived(void)
 
         ipcSetBufferAndPutToFifo(bfr, 1, STATE_DATA_READ, actualCnt, NULL, 0);
         dataCnt -= actualCnt;                   // update total data needed to be read
+
+        stingNetProcess();                      // long reads would let W6100 socket 0 (MACRAW) buffer overflow meanwhile
     }
 
     uint32_t took = millis() - start;

@@ -6,7 +6,7 @@
 #include <Udp.h>
 #include <IPAddress.h>
 
-// The network for the host connection, the same for WiFi (Pico W / 2W) and W6100 (EVB-Pico, not implemented yet):
+// The network for the host connection, the same for WiFi (Pico W / 2W) and W6100 (W6100-EVB-Pico / -Pico2):
 // connection.cpp uses just the Arduino Client / UDP classes from here. Core 0 only.
 
 #define NETST_STARTING      0
@@ -16,6 +16,8 @@
 #define NETST_JOIN_FAILED   4       // the last attempt to join failed, retrying
 #define NETST_WAIT_IP       5       // joined / link up, waiting for the IP from DHCP
 #define NETST_READY         6       // got IP
+#define NETST_NO_LINK       7       // W6100: ethernet cable not connected
+#define NETST_NO_DHCP       8       // W6100: no answer from DHCP, retrying
 
 bool netStart(void);                // in setup(): starts joining the network, doesn't wait; false: can't work (no chip / no config)
 void netProcess(void);              // from the main loop: rejoins the network when it's lost
@@ -33,5 +35,6 @@ Client& netHddClient(void);         // the connection to the host
 UDP& netUdp(void);                  // the host discovery
 void netBeforeConnect(void);        // set up the HDD client for connect()
 void netAfterConnect(void);         // set up the HDD client after a successful connect
+bool netHasRawNet(void);            // raw ethernet frames for STinG / MiNTnet possible (W6100 MACRAW) - sting_net.cpp
 
 #endif
