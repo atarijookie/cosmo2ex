@@ -1,0 +1,36 @@
+.pio_version 0      // only requires PIO version 0
+.program scsi_read
+.side_set 1         // side-set pin: REQ (board.pinReq), L = asserted
+
+; Sends bytes to the initiator (DATA IN, STATUS, MESSAGE IN) - "read" as seen from the Atari.
+; TX FIFO word: D0..D7 + DBP (9 bits, already inverted, see byteWithParity[]). ACK is on GP26 (PIN_ACK) on all boards.
+; The bridge knows the transfer ended when the SM is stalled on the pull with the TX FIFO empty - see readSmIdle().
+
+start:
+        pull                side 1          ; load from the TX FIFO into the OSR, REQ released
+        out pins, 9         side 1  [3]     ; data + parity to the bus, 80 ns setup time before REQ
+        wait 0 gpio 26      side 0          ; set REQ to L, wait until ACK is L
+        nop                 side 0  [8]     ; keep REQ in L, delay 180 ns to make this reasonably slow
+        wait 1 gpio 26      side 1          ; set REQ to H, wait until ACK is H
+
+
+% c-sdk {
+#include "hardware/clocks.h"
+#include "hardware/gpio.h"
+
+// the pin functions and directions are set by the bridge on each phase change (setDataDirection())
+static inline void scsi_read_program_init(PIO pio, uint sm, uint offset, uint pinReq)
+{
+    pio_sm_config cRead = scsi_read_program_get_default_config(offset);
+    sm_config_set_out_pins(&cRead, PIN_D0, 9);          // for OUT - D0..D7 + DBP
+    sm_config_set_sideset_pins(&cRead, pinReq);         // for SIDE_SET - REQ
+    sm_config_set_out_shift(&cRead, true, false, 32);   // Shift to right, autopull disabled
+    sm_config_set_fifo_join(&cRead, PIO_FIFO_JOIN_NONE);  // no fifo joining
+
+    float div = (float)clock_get_hz(clk_sys) / 50000000;    // calc divider for 50 MHz, that's 20 ns per instruction
+    sm_config_set_clkdiv(&cRead, div);
+
+    pio_sm_init(pio, sm, offset, &cRead);
+}
+
+%}

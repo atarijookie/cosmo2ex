@@ -41,3 +41,6 @@ webserver/static/app/
 # local .env overrides (dev setup), see .env
 .env.local
 test_ce/netspeed/netspeed_host
+
+# WiFi credentials of ce_bluescsi - never commit, see third_party_hardware/ce_bluescsi/secrets.example.h
+third_party_hardware/ce_bluescsi/secrets.h

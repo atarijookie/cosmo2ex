@@ -4,6 +4,7 @@
 # doesn't run pioasm; compile.sh regenerates them for its own build anyway, and warns when the committed ones are stale.
 #
 # usage: firmware/pioasm.sh [project ...]     project: ce_pico_hdd ce_pico_fdd ce_pico_display (default: all of them)
+#                                                      third_party_hardware/ce_bluescsi (not in the default)
 #
 # PICO_BUILDER_IMAGE env var - use this image instead of building ce-pico-builder locally, see build.sh
 
