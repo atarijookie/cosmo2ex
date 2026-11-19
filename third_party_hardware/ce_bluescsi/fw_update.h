@@ -17,18 +17,12 @@
 // device type - the same string is in the release file name: ce_pico_hdd_<FW_DEVICE_TYPE>.uf2 (the web UI makes the name
 // from dev + type, so this firmware is an HDD too, just of another type)
 #define FW_DEVICE_NAME      "HDD"
-// 3 builds (see ce_bluescsi.ino):
-// - RP2040, board Pico W:  runs on the Pico W (WiFi) and on the W6100-EVB-Pico (W6100) - detected at runtime
-// - RP2350, board Pico 2W: Pico 2 W only (WiFi)
-// - RP2350, board Pico 2:  W6100-EVB-Pico2 only (W6100)
-#if defined(PICO_RP2350) && defined(PICO_CYW43_SUPPORTED)
-    #define FW_DEVICE_TYPE  "BLUESCSI-PICO-2W"
-    #define FW_CHIP         "RP2350"
-#elif defined(PICO_RP2350)
+// 2 builds (see ce_bluescsi.ino): W6100-EVB-Pico (RP2040), W6100-EVB-Pico2 (RP2350)
+#if defined(PICO_RP2350)
     #define FW_DEVICE_TYPE  "BLUESCSI-W6100-EVB-PICO2"
     #define FW_CHIP         "RP2350"
 #else
-    #define FW_DEVICE_TYPE  "BLUESCSI-PICO-W"
+    #define FW_DEVICE_TYPE  "BLUESCSI-W6100-EVB-PICO"
     #define FW_CHIP         "RP2040"
 #endif
 

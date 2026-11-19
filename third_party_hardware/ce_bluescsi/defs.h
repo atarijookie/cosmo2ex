@@ -24,8 +24,9 @@
 #define CMD_TIMEOUT_SHORT       (CMD_TIMEOUT_ONESECOND / 2)     // this period will be 0.5 second
 #define CMD_TIMEOUT_LONG        (CMD_TIMEOUT_ONESECOND * 3)     // this period will be 3.0 second
 
-// Over WiFi the host's answer (or the next chunk of it) sometimes comes 0.2 - 1.5 s late (TCP retransmits). The TT gives the
-// data phase 3 s (SCSI_TIMEOUT_LONG in libacsiscsi), so wait for the host almost that long - ce_pico_hdd's 0.5 s is too short.
+// How long the bridge waits for the host's answer (or the next chunk of it). A TCP retransmit delays it by >= 200 ms. The TT
+// gives the data phase 3 s (SCSI_TIMEOUT_LONG in libacsiscsi), so waiting almost that long costs nothing - came from the
+// WiFi tests (answers 0.2 - 1.5 s late there), kept for the W6100 too.
 #define CMD_TIMEOUT_HOST        2500
 
 // commands sent from device to host (the same protocol as ce_pico_hdd)
@@ -70,7 +71,7 @@
 #define ATN_SENDACSICOMMAND_LEN_TX      (TX_HEADER_SIZE + 14)
 
 ///////////////////////////
-// SCSI pins - see board.h, most of them depend on the board (Pico W / 2W or the rewired W6100-EVB-Pico)
+// SCSI pins - see board.h, the rest of them is there (rewired on the W6100-EVB-Pico)
 
 #define PIN_D0              0       // D0..D7 + DBP on GP0..GP8 through the LVT245s, DATA_DIR sets their direction
 #define PIN_DBP             8

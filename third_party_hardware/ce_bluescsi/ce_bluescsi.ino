@@ -2,27 +2,24 @@
     ce_bluescsi - CosmosEx HDD (SCSI) on the BlueSCSI v2 board, with the network instead of the SD card.
     See readme.md. The host protocol is the same as ce_pico_hdd, the host sees it as a SCSI HDD.
 
-    3 builds - the same sources, the board chosen in the Arduino IDE decides (keep in sync with FQBN_BLUESCSI_* in
+    2 builds - the same sources, the board chosen in the Arduino IDE decides (keep in sync with FQBN_BLUESCSI_* in
     firmware/compile.sh; the release files are ce_pico_hdd_<type>.uf2, type from fw_update.h):
 
-    pico module on the BlueSCSI          Board (Tools menu)       Flash Size                     CPU Speed  release type
-    Pico W  or  W6100-EVB-Pico (*)       Raspberry Pi Pico W      2MB (Sketch: 1MB, FS: 1MB)     133 MHz    BLUESCSI-PICO-W
-    Pico 2 W                             Raspberry Pi Pico 2W     4MB (Sketch: 2MB, FS: 2MB)     150 MHz    BLUESCSI-PICO-2W
-    W6100-EVB-Pico2 (*)                  Raspberry Pi Pico 2      4MB (Sketch: 2MB, FS: 2MB)     150 MHz    BLUESCSI-W6100-EVB-PICO2
+    pico module on the BlueSCSI (*)   Board (Tools menu)     Flash Size                          CPU Speed  release type
+    W6100-EVB-Pico                    Raspberry Pi Pico      2MB (Sketch: 1536KB, FS: 512KB)     133 MHz    BLUESCSI-W6100-EVB-PICO
+    W6100-EVB-Pico2                   Raspberry Pi Pico 2    4MB (Sketch: 2MB, FS: 2MB)          150 MHz    BLUESCSI-W6100-EVB-PICO2
 
-    (*) with the adapter / 4 wires, see board.h. The RP2040 Pico W build finds out at runtime whether the WiFi chip is
-        there; the RP2350 Pico 2W build always starts the WiFi chip, so the EVB-Pico2 needs its own build.
+    (*) on the adapter third_party_hardware/evb_to_w_adapter_for_bluescsi, see board.h
 
     - core: Raspberry Pi Pico/RP2040/RP2350 by Earle F. Philhower (arduino-pico), version 5.4.2
             (Boards Manager URL: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json)
     - library: the patched Ethernet library from third_party/Ethernet (the same as ce_pico_hdd - see there how to link it
             into the Arduino libraries dir), the rest comes with the core
-    - WiFi credentials: copy secrets.example.h to secrets.h and fill it in (secrets.h is not in git)
 
     Tools menu, the rest:
     - Flash Size: see above - the FS is needed for the firmware update from the web UI (new + previous firmware); another
                   FS size = different flash layout, the web update refuses it and the device must be flashed via USB
-    - CPU Architecture:     ARM  (RP2350)
+    - CPU Architecture:     ARM  (Pico 2)
     - Optimize:             Small (-Os) (standard)
     - Operating System:     None
     - Profiling:            Disabled
@@ -31,9 +28,8 @@
     - C++ Exceptions:       Disabled
     - Debug Port:           Disabled
     - Debug Level:          None
-    - USB Stack:            Pico SDK  - NOT "No USB": with it the WiFi connection to the host stalls (see ce_pico_fdd/readme.md)
+    - USB Stack:            No USB
     - IP/Bluetooth Stack:   IPv4 Only
-    - WiFi Region:          Worldwide
     - Upload Method:        Picoprobe/Debugprobe (CMSIS-DAP)  - or hold BOOTSEL and copy the .uf2 onto the RPI-RP2 / RP2350 drive
 
     After changing a .pio file run firmware/pioasm.sh third_party_hardware/ce_bluescsi - the Arduino IDE doesn't
@@ -55,12 +51,11 @@
 #include "boot_status.h"
 #include "core1_main_loop.h"
 
-// Core 1 (setup1() + loop1()) handles the SCSI bus, core 0 (setup() + loop()) the rest.
-// The WiFi chip and lwIP are started by the arduino core before setup(), they run in the background (IRQ) on core 0.
+// Core 1 (setup1() + loop1()) handles the SCSI bus, core 0 (setup() + loop()) the rest - network (W6100), host protocol.
 
 bool core1_separate_stack = true;   // core 1 gets its own 8 kB stack instead of the 4 kB scratch one
 
-uint16_t version[2] = {0xa026, 0x1117}; // this means: hAns, 2026-11-17
+uint16_t version[2] = {0xa026, 0x1119}; // this means: hAns, 2026-11-19
 
 uint8_t atnSendFwVersion[ATN_SENDFWVERSION_LEN_TX];
 uint8_t atnSendACSIcommand[ATN_SENDACSICOMMAND_LEN_TX];
@@ -96,7 +91,7 @@ void setup(void)
     ledInit();
     ledSetInitStep(LED_STEP_SETUP);
 
-    debug("\n\n------------\nCORE 0 setup - BlueSCSI with %s, %s\n", board.name, rp2040.isPicoW() ? "WiFi chip found" : "no WiFi chip");
+    debug("\n\n------------\nCORE 0 setup - BlueSCSI with %s\n", board.name);
 
     loadSettings();
     debug("enabledIDs: %02X\n", settings.enabledIDs);
@@ -112,9 +107,8 @@ void setup(void)
     ledSetInitStep(LED_STEP_CORE1);
 
     if(!netStart()) {   // no network - the drive can't work, the boot status tells it to the Atari
-        bool noConfig = netState() == NETST_NO_CONFIG;
-        bootStatusSet(noConfig ? BOOTST_NET_NO_CONFIG : BOOTST_NET_NO_HW);
-        haltWithError(noConfig ? LED_ERR_NO_WIFI_CONFIG : LED_ERR_NO_NET_HW);
+        bootStatusSet(BOOTST_NET_NO_HW);
+        haltWithError(LED_ERR_NO_NET_HW);
     }
 
     netGetMac(atnSendFwVersion + TX_HEADER_SIZE + 6);   // the host knows the device by this MAC
@@ -123,7 +117,7 @@ void setup(void)
 
     connectionInit();
     ledSetInitStep(LED_STEP_NETWORK);
-    bootStatusSet(BOARD_IS_WIFI ? BOOTST_NET_JOINING : BOOTST_WAIT_IP);
+    bootStatusSet(BOOTST_WAIT_IP);
 }
 
 // core 1 - the SCSI bus

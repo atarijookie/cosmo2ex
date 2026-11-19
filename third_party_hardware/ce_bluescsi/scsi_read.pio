@@ -8,7 +8,8 @@
 
 start:
         pull                side 1          ; load from the TX FIFO into the OSR, REQ released
-        out pins, 9         side 1  [3]     ; data + parity to the bus, 80 ns setup time before REQ
+        out pins, 9         side 1          ; data + parity to the bus, 20 ns before REQ - as ce_pico_hdd (data and REQ
+                                            ; go through 74LVT245 / 74LVT125 buffers with about the same delay)
         wait 0 gpio 26      side 0          ; set REQ to L, wait until ACK is L
         nop                 side 0  [8]     ; keep REQ in L, delay 180 ns to make this reasonably slow
         wait 1 gpio 26      side 1          ; set REQ to H, wait until ACK is H

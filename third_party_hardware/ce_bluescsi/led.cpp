@@ -96,11 +96,7 @@ static bool currentLevel(uint32_t now)
 
 void ledInit(void)
 {
-    if(BOARD_IS_WIFI) {             // the LED on the WiFi chip
-        pinMode(LED_BUILTIN, OUTPUT);
-        digitalWrite(LED_BUILTIN, LOW);
-        ledAvailable = true;
-    } else if(board.pinLed != 0xff) {
+    if(board.pinLed != 0xff) {
         gpio_init(board.pinLed);
         gpio_put(board.pinLed, 0);
         gpio_set_dir(board.pinLed, GPIO_OUT);
@@ -108,7 +104,7 @@ void ledInit(void)
     }
 }
 
-// only on change - on the Pico W each LED write is a transfer to the WiFi chip
+// only on change
 void ledProcess(void)
 {
     static int lastLevel = -1;
@@ -123,9 +119,5 @@ void ledProcess(void)
     }
     lastLevel = level;
 
-    if(BOARD_IS_WIFI) {
-        digitalWrite(LED_BUILTIN, level ? HIGH : LOW);
-    } else {
-        gpio_put(board.pinLed, level);
-    }
+    gpio_put(board.pinLed, level);
 }

@@ -8,15 +8,12 @@
 // answers - see ce_pico_hdd/boot_status/status.s (boot_status_data.h is a copy). Sector 1 is the status itself.
 
 #define BOOTST_STARTING         1       // setup, before the network init
-#define BOOTST_NET_NO_HW        2       // network chip not found / not supported (halted)
-#define BOOTST_NET_JOIN_FAILED  3       // can't join the WiFi network, retrying
+#define BOOTST_NET_NO_HW        2       // W6100 not found (halted)
 #define BOOTST_WAIT_IP          4       // waiting for an IP address from DHCP
 #define BOOTST_SEARCHING        6       // got IP, looking for the host
 #define BOOTST_CONNECTING       7       // host found, connecting to it
-#define BOOTST_NET_JOINING      8       // joining the WiFi network
-#define BOOTST_NET_NO_CONFIG    9       // no WiFi network set (halted)
-#define BOOTST_NET_NO_LINK      10      // W6100: ethernet cable not connected
-#define BOOTST_NET_NO_DHCP      5       // W6100: no answer from DHCP, retrying
+#define BOOTST_NET_NO_LINK      3       // ethernet cable not connected
+#define BOOTST_NET_NO_DHCP      5       // no answer from DHCP, retrying
 
 // core 0
 void bootStatusSet(uint8_t code, const uint8_t* hostIp = NULL);     // hostIp: for BOOTST_CONNECTING

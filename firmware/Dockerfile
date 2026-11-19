@@ -1,4 +1,4 @@
-# Builder image for the Pico firmwares (ce_pico_hdd, ce_pico_fdd, ce_pico_display):
+# Builder image for the Pico firmwares (ce_pico_hdd, ce_pico_fdd, ce_pico_display, third_party_hardware/ce_bluescsi):
 # arduino-cli + the arduino-pico core (earlephilhower) + U8g2 (Arduino library manager), no sources inside - those
 # are mounted at run time, see firmware/build.sh.
 #

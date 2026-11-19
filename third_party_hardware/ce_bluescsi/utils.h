@@ -24,7 +24,7 @@ void cmdTimeoutChangeLength(uint32_t newPeriod);
 struct __attribute__((packed)) TSettings
 {
     uint32_t magic;
-    uint8_t mac[6];         // for the W6100 - the WiFi chip has its own MAC
+    uint8_t mac[6];         // for the W6100
     uint8_t enabledIDs;     // from the host (web UI)
 };
 

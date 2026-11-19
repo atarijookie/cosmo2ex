@@ -161,7 +161,7 @@ bool onDataRead(uint32_t cnt, uint8_t* bfr)
     return true;
 }
 
-// A buffer to core 0. It sends the written data over WiFi, which sometimes stalls for a while (TCP retransmit) - wait for
+// A buffer to core 0. It sends the written data to the host, which sometimes stalls for a while (TCP retransmit) - wait for
 // a free buffer as long as the command timeout allows (the Atari waits too, REQ stays H meanwhile).
 static IPCbuffer* getBufferForCore0(void)
 {

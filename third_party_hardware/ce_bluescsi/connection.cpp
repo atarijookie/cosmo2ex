@@ -209,8 +209,6 @@ static void connectToCEhost(void)
 
     if(connected)
     {
-        netAfterConnect();
-
         debug("connectToCEhost - RECONNECTED %u ms after connection lost, %u attempts\n", msSinceLost(), connAttempts);
         connectFailCount = 0;
 
@@ -259,16 +257,6 @@ static void showNetState(void)
 {
     switch(netState())
     {
-        case NETST_JOINING:
-            ledSetInitStep(LED_STEP_NETWORK);
-            bootStatusSet(BOOTST_NET_JOINING);
-            break;
-
-        case NETST_JOIN_FAILED:
-            ledSetError(LED_ERR_NO_LINK);
-            bootStatusSet(BOOTST_NET_JOIN_FAILED);
-            break;
-
         case NETST_WAIT_IP:
             ledSetInitStep(LED_STEP_NETWORK);
             bootStatusSet(BOOTST_WAIT_IP);
@@ -310,7 +298,7 @@ void connectToHost(void)
     }
 
     IPAddress ip = netLocalIP();
-    bool ipValid = (ip[0] | ip[1] | ip[2] | ip[3]) != 0;    // 0.0.0.0 during a short WiFi drop - not a new IP
+    bool ipValid = (ip[0] | ip[1] | ip[2] | ip[3]) != 0;    // 0.0.0.0 - no IP, not a new one
     if(ipValid && ip != lastIp) {                      // new IP (DHCP) - the old connection is dead
         debug("connectToHost - own IP: %s\n", ip.toString().c_str());
 
@@ -527,7 +515,7 @@ static void handleReadDataReceived(void)
 
         while(true)
         {
-            if(clientHdd->available() > 0) {                // WiFiClient::read() without data is not a good idea
+            if(clientHdd->available() > 0) {
                 actualCnt = clientHdd->read(bfr->data, cntNow);   // try to read desired cntNow to buffer
             }
 
@@ -558,7 +546,7 @@ static void handleReadDataReceived(void)
 
     uint32_t took = millis() - start;
 
-    // slow over WiFi? The TT gives the whole data phase 3 s (SCSI_TIMEOUT_LONG in libacsiscsi), the bridge 1 s per chunk
+    // slow? The TT gives the whole data phase 3 s (SCSI_TIMEOUT_LONG in libacsiscsi), the bridge CMD_TIMEOUT_HOST per chunk
     if(dataCnt > 0 || maxGap >= 200 || took >= 1000 || noBufferCount > 0) {
         debug("readData - %u of %u B in %u ms, max gap %u ms, no free buffer %u x%s\n", hddHeader.len - dataCnt, hddHeader.len,
               took, maxGap, noBufferCount, stalled ? " - STALLED" : "");

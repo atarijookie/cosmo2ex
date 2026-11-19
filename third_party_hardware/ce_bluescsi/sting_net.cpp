@@ -6,8 +6,8 @@
 #include "sting_net.h"
 #include "net.h"
 
-// Copy of ce_pico_hdd/sting_net.cpp - keep them the same, except: works only on the W6100 boards (netHasRawNet()), on
-// WiFi the commands go to the host like any other (WiFi can't carry a second MAC address).
+// Copy of ce_pico_hdd/sting_net.cpp - keep them the same, except: netHasRawNet() check (no W6100 found - the commands go
+// to the host like any other).
 
 // Network for STinG over raw ethernet frames (W6100 socket 0 in MACRAW mode). STinG gets its own MAC address (derived
 // from ours), the W6100 sockets for host connection keep using our MAC + IP. The pico filters received frames (only IPv4
@@ -636,7 +636,7 @@ static void onGetStats(void)
 //------------------
 bool stingNetCommand(uint8_t *cmd, uint32_t cmdLen)
 {
-    if(!netHasRawNet()) {                           // WiFi - not here
+    if(!netHasRawNet()) {                           // no W6100
         return false;
     }
 

@@ -133,7 +133,7 @@ void core1Loop(void)
         bfr = NULL;
     }
 
-    if(bfr && !gotAnswer) {     // how long the host took to answer - over WiFi it varies a lot
+    if(bfr && !gotAnswer) {     // how long the host took to answer - for the log, if it's slow
         gotAnswer = true;
         uint32_t took = millis() - cmdStartMs;
 

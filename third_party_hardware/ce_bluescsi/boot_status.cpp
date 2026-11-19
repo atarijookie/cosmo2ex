@@ -2,13 +2,13 @@
 // ce_pico_hdd/boot_status_data.h, made by ce_pico_hdd/boot_status/make_bootsector.py - keep them the same).
 //
 // While not connected to the host, core 1 answers the commands for the enabled IDs itself (core 0 may be blocked in the
-// WiFi / connect for seconds):
+// DHCP / connect for seconds):
 // - READ(6) / READ(10) of the lowest enabled ID: sector 0 = the boot status sector, sector 1 = the status. Only reads
 //   within sectors 0..1 - anything else, e.g. the 32 sectors CE_DD's boot sector loads from sector 1 when the connection
 //   drops right after the chain to it, gets CHECK CONDITION, so nothing runs the status data as code.
 // - REQUEST SENSE: NOT READY, logical unit is becoming ready.
 // - HOSTMOD_RAW_NET (STinG / MiNTnet) commands: on the W6100 boards not handled here, core 0 answers them also without
-//   the host (sting_net.cpp). On WiFi there's no raw network - CHECK CONDITION as anything else.
+//   the host (sting_net.cpp).
 // - anything else: CHECK CONDITION.
 // Once connected, all of it goes to the host as before.
 
@@ -99,19 +99,7 @@ static void makeStatusSector(uint8_t id)
     char state[192];
     switch(code) {
         case BOOTST_NET_NO_HW:
-            snprintf(state, sizeof(state), " %s not working / not supported!\r\n The drive can't work.", netName());
-            break;
-
-        case BOOTST_NET_NO_CONFIG:
-            snprintf(state, sizeof(state), " No WiFi network set!\r\n The drive can't work.");
-            break;
-
-        case BOOTST_NET_JOINING:
-            snprintf(state, sizeof(state), " Joining the WiFi network:\r\n   %s", netSsid());
-            break;
-
-        case BOOTST_NET_JOIN_FAILED:
-            snprintf(state, sizeof(state), " Can't join the WiFi network:\r\n   %s\r\n Still trying...", netSsid());
+            snprintf(state, sizeof(state), " Ethernet chip (W6100) not found!\r\n The drive can't work - power it off and on.");
             break;
 
         case BOOTST_WAIT_IP:
@@ -216,7 +204,7 @@ bool bootStatusCommand(uint8_t* cmd, uint8_t cmdLen)
     }
 
     if(netHasRawNet() && (p[0] & 0x1f) == 0 && p[1] == 'C' && p[2] == 'E' && (p[3] & 0x7f) == HOSTMOD_RAW_NET) {
-        return false;       // W6100: network for STinG / MiNTnet - core 0 does it, also without the host
+        return false;       // network for STinG / MiNTnet - core 0 does it, also without the host
     }
 
     if(!icd) {

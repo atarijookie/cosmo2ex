@@ -46,7 +46,7 @@ __attribute__((used)) const char fwIdent[] = "CEFWID:dev=" FW_DEVICE_NAME ";type
 #define FW_FILE_STATE           "fw_state.bin"      // TFwState - trial of a new firmware / rollback
 
 //========================================================
-// platform: BlueSCSI - connection from net.cpp (WiFi), core 1 started via setup1() / loop1()
+// platform: BlueSCSI - connection from net.cpp (W6100), core 1 started via setup1() / loop1()
 
 // core 1 gets idled by the arduino core for each flash write (LittleFS, EEPROM) - nothing to do here
 static void flashLockoutStart(void) {}

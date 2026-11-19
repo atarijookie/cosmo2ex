@@ -30,11 +30,10 @@ FQBN_HDD="rp2040:rp2040:rpipico:flash=2097152_524288,freq=133,opt=Small,os=none,
 # Raspberry Pi Pico 2 W, with the Arduino IDE settings from ce_pico_fdd/readme.md and the top of ce_pico_fdd.ino
 FQBN_FDD="rp2040:rp2040:rpipico2w:arch=arm,flash=4194304_2097152,freq=150,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only,wificountry=worldwide,uploadmethod=picoprobe_cmsis_dap"
 
-# BlueSCSI v2 board, with the Arduino IDE settings from the top of third_party_hardware/ce_bluescsi/ce_bluescsi.ino - 3 builds:
-# Pico W (also runs on the W6100-EVB-Pico), Pico 2 W, Pico 2 (for the W6100-EVB-Pico2)
-FQBN_BLUESCSI_W="rp2040:rp2040:rpipicow:flash=2097152_1048576,freq=133,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only,wificountry=worldwide,uploadmethod=picoprobe_cmsis_dap"
-FQBN_BLUESCSI_2W="rp2040:rp2040:rpipico2w:arch=arm,flash=4194304_2097152,freq=150,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only,wificountry=worldwide,uploadmethod=picoprobe_cmsis_dap"
-FQBN_BLUESCSI_2="rp2040:rp2040:rpipico2:arch=arm,flash=4194304_2097152,freq=150,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=picosdk,ipbtstack=ipv4only,uploadmethod=picoprobe_cmsis_dap"
+# BlueSCSI v2 board with a W6100-EVB-Pico / -Pico2 on the adapter, with the Arduino IDE settings from the top of
+# third_party_hardware/ce_bluescsi/ce_bluescsi.ino - 2 builds
+FQBN_BLUESCSI_EVB="rp2040:rp2040:rpipico:flash=2097152_524288,freq=133,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=nousb,ipbtstack=ipv4only,uploadmethod=picoprobe_cmsis_dap"
+FQBN_BLUESCSI_EVB2="rp2040:rp2040:rpipico2:arch=arm,flash=4194304_2097152,freq=150,opt=Small,os=none,profile=Disabled,rtti=Disabled,stackprotect=Disabled,exceptions=Disabled,dbgport=Disabled,dbglvl=None,usbstack=nousb,ipbtstack=ipv4only,uploadmethod=picoprobe_cmsis_dap"
 
 # RP2040-Zero (Waveshare and its clones), with the Arduino IDE settings from ce_pico_display/readme.md - Generic RP2040
 # with the slow generic flash access (boot2), as the clones come with various flash chips
@@ -55,7 +54,7 @@ for projectPath in "$@"; do
     case "$project" in
         ce_pico_fdd)     FQBNS=$FQBN_FDD ;;
         ce_pico_display) FQBNS=$FQBN_DISPLAY ;;
-        ce_bluescsi)     FQBNS="$FQBN_BLUESCSI_W $FQBN_BLUESCSI_2W $FQBN_BLUESCSI_2" ;;   # one firmware per board
+        ce_bluescsi)     FQBNS="$FQBN_BLUESCSI_EVB $FQBN_BLUESCSI_EVB2" ;;   # one firmware per board
         *)               FQBNS=$FQBN_HDD ;;
     esac
 
@@ -63,7 +62,6 @@ for projectPath in "$@"; do
     SKETCH="$BUILD/src/$project"
     mkdir -p "$SKETCH"
     cp -R "$SRC/$projectPath/." "$SKETCH"
-    rm -f "$SKETCH/secrets.h"       # local WiFi credentials (ce_bluescsi) - never in a built firmware
     "$(dirname "$0")/pio_gen.sh" "$SKETCH"
     printf '#define CE_BUILD_ID "%s"\n' "$BUILD_ID" > "$SKETCH/build_id.h"     # used by fw_update.cpp, Arduino IDE builds don't have it
 

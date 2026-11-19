@@ -19,7 +19,7 @@
 static const uint16_t scsi_read_program_instructions[] = {
             //     .wrap_target
     0x90a0, //  0: pull   block           side 1
-    0x7309, //  1: out    pins, 9         side 1 [3]
+    0x7009, //  1: out    pins, 9         side 1
     0x201a, //  2: wait   0 gpio, 26      side 0
     0xa842, //  3: nop                    side 0 [8]
     0x309a, //  4: wait   1 gpio, 26      side 1

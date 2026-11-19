@@ -2,8 +2,8 @@
 # Builds the Pico firmwares (.uf2 to drag & drop onto the Pico in BOOTSEL mode, + .elf for debugging)
 # into firmware/out/, using arduino-cli in the ce-pico-builder docker image (firmware/Dockerfile).
 #
-# usage: firmware/build.sh [project ...]     project: ce_pico_hdd ce_pico_fdd ce_pico_display (default: all of them)
-#                                                     third_party_hardware/ce_bluescsi (not in the default, untested)
+# usage: firmware/build.sh [project ...]     project: ce_pico_hdd ce_pico_fdd ce_pico_display
+#                                                     third_party_hardware/ce_bluescsi (default: all of them)
 #
 # PICO_BUILDER_IMAGE env var - use this (already pulled / pullable) image instead of building
 # ce-pico-builder locally, e.g. ghcr.io/<owner>/ce-pico-builder:<tag> (this is what CI does)
@@ -16,7 +16,7 @@ OUT="$FW_DIR/out"
 
 PROJECTS="$*"
 if [ -z "$PROJECTS" ]; then
-    PROJECTS="ce_pico_hdd ce_pico_fdd ce_pico_display"
+    PROJECTS="ce_pico_hdd ce_pico_fdd ce_pico_display third_party_hardware/ce_bluescsi"
 fi
 
 IMAGE=${PICO_BUILDER_IMAGE:-}
